@@ -9,10 +9,12 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install client dependencies and build
+# Install client dependencies
 COPY client/package*.json ./client/
 RUN cd client && npm install
 
+# Copy client source and build
+# vite.config.js sets outDir: '../public' so output lands at /app/public/
 COPY client/ ./client/
 RUN cd client && npm run build
 
@@ -41,8 +43,9 @@ RUN cd server && npm install --omit=dev
 # Copy server source
 COPY server/ ./server/
 
-# Copy built frontend from builder stage into the location Express expects
-COPY --from=builder /app/client/dist ./public/
+# Copy built frontend — Vite outputs to /app/public/ in the builder stage
+# because outDir is '../public' relative to the client/ directory
+COPY --from=builder /app/public ./public/
 
 # Railway injects PORT — Express already reads process.env.PORT
 EXPOSE 3000
