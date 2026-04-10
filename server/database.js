@@ -872,14 +872,14 @@ function initializeDatabase(onReady) {
     });
 
     // Migration 021 — add missing design_connection_type column to rooms
-    db.get(`SELECT name FROM migrations WHERE name = '021'`, (err, row) => {
-      if (row) return;
+    db.get(`SELECT COUNT(*) as count FROM schema_migrations WHERE version = '021'`, (err, row) => {
+      if (row && row.count > 0) return;
       db.run(`ALTER TABLE rooms ADD COLUMN design_connection_type TEXT DEFAULT 'BOE'`, (alterErr) => {
         if (alterErr && !alterErr.message.includes('duplicate column')) {
           console.error('Migration 021 error:', alterErr);
           return;
         }
-        db.run(`INSERT INTO migrations (name, description) VALUES ('021', 'Add missing design_connection_type to rooms')`);
+        db.run(`INSERT OR IGNORE INTO schema_migrations (version, description) VALUES ('021', 'Add missing design_connection_type to rooms')`);
         console.log('Migration 021 complete — design_connection_type added to rooms');
       });
     });
