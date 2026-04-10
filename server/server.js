@@ -31,6 +31,7 @@ const {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
+  waitForDb,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -1096,12 +1097,15 @@ app.get('*', (req, res) => {
 // STARTUP
 // ============================================================
 
-// Clean up expired anonymous projects before accepting traffic.
-// This is the only housekeeping needed — no cron job required
-// for a single-server deployment at this scale.
-cleanupAnonymousProjects().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`API available at http://localhost:${PORT}/api`);
+// waitForDb ensures the schema and all migrations are fully complete
+// before we attempt cleanup or accept any traffic. This is critical
+// on Railway where the Volume may mount slightly after process start,
+// meaning the DB open and migration sequence must finish first.
+waitForDb(() => {
+  cleanupAnonymousProjects().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`API available at http://localhost:${PORT}/api`);
+    });
   });
 });
