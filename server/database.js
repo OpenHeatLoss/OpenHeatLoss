@@ -28,9 +28,23 @@ const db = new sqlite3.Database(dbPath, (err) => {
   } else {
     console.log('Connected to SQLite database at:', dbPath);
     db.run('PRAGMA foreign_keys = ON');
-    initializeDatabase();
+    initializeDatabase(_dbReadyCallback);
   }
 });
+
+// _dbReadyCallback is set by waitForDb() before the db opens.
+// _dbReady tracks whether initialisation has already completed
+// (handles the case where require() is slow and DB finishes first).
+let _dbReadyCallback = null;
+let _dbReady = false;
+
+function waitForDb(fn) {
+  if (_dbReady) {
+    fn();
+  } else {
+    _dbReadyCallback = fn;
+  }
+}
 
 // Promisified helpers — all database operations use these
 // rather than raw callbacks, keeping the rest of the code clean.
@@ -60,7 +74,7 @@ const allQuery = (sql, params = []) => new Promise((resolve, reject) => {
 // Creates all tables in dependency order (parents before children).
 // Safe to call on an empty database — uses IF NOT EXISTS throughout.
 // ---------------------------------------------------------------------------
-function initializeDatabase() {
+function initializeDatabase(onReady) {
   db.serialize(() => {
 
     // -- TIER 1: no foreign key dependencies ----------------------------------
@@ -845,6 +859,15 @@ function initializeDatabase() {
     });
 
     console.log('Database schema initialised');
+
+    // This fires last in the serialize queue — after all CREATE TABLE and
+    // migration statements. SQLite processes the queue in order, so by the
+    // time this callback runs the schema is complete and ready for use.
+    db.run('SELECT 1', (err) => {
+      if (err) console.error('Database readiness check failed:', err.message);
+      _dbReady = true;
+      if (typeof onReady === 'function') onReady();
+    });
   });
 }
 
@@ -1593,4 +1616,5 @@ module.exports = {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
+  waitForDb,
 };
