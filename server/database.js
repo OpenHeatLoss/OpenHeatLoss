@@ -222,7 +222,20 @@ function initializeDatabase(onReady) {
         infiltration_rate         REAL DEFAULT 0.5,
         mechanical_supply         REAL DEFAULT 0,
         mechanical_extract        REAL DEFAULT 0,
-        radiator_schedule_complete INTEGER DEFAULT 0
+        radiator_schedule_complete INTEGER DEFAULT 0,
+        design_connection_type    TEXT DEFAULT 'BOE',
+        thermal_bridging_addition REAL NOT NULL DEFAULT 0.10,
+        exposed_envelope_m2       REAL DEFAULT 0,
+        has_suspended_floor       INTEGER DEFAULT 0,
+        is_top_storey             INTEGER DEFAULT 0,
+        bg_vent_count             INTEGER DEFAULT 0,
+        bg_fan_count              INTEGER DEFAULT 0,
+        bg_flue_small_count       INTEGER DEFAULT 0,
+        bg_flue_large_count       INTEGER DEFAULT 0,
+        bg_open_fire_count        INTEGER DEFAULT 0,
+        continuous_vent_type      TEXT DEFAULT 'none',
+        continuous_vent_rate_m3h  REAL DEFAULT 0,
+        mvhr_efficiency           REAL DEFAULT 0
       )
     `);
 
@@ -856,6 +869,19 @@ function initializeDatabase(onReady) {
           console.log('Migration 020 complete — user_id added to projects');
         }
       );
+    });
+
+    // Migration 021 — add missing design_connection_type column to rooms
+    db.get(`SELECT name FROM migrations WHERE name = '021'`, (err, row) => {
+      if (row) return;
+      db.run(`ALTER TABLE rooms ADD COLUMN design_connection_type TEXT DEFAULT 'BOE'`, (alterErr) => {
+        if (alterErr && !alterErr.message.includes('duplicate column')) {
+          console.error('Migration 021 error:', alterErr);
+          return;
+        }
+        db.run(`INSERT INTO migrations (name, description) VALUES ('021', 'Add missing design_connection_type to rooms')`);
+        console.log('Migration 021 complete — design_connection_type added to rooms');
+      });
     });
 
     console.log('Database schema initialised');
