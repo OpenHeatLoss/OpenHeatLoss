@@ -1,19 +1,18 @@
 # nixpacks.toml — Railway build configuration
 # Place this file at the project root (/heatloss/nixpacks.toml).
 #
-# Both Node and Python are declared explicitly so the PDF generators
-# (ReportLab/Python) and Express (Node) are available in the same container.
-#
-# ReportLab is declared as a Nix package directly — this avoids needing pip
-# in the Nix environment, which is not included by default with python312.
+# Node and Python declared explicitly so both runtimes are available.
+# ReportLab is installed via requirements.txt in the server folder,
+# which Nixpacks picks up automatically during the install phase.
 
 [phases.setup]
-nixPkgs = ["nodejs_20", "python312", "python312Packages.reportlab"]
+nixPkgs = ["nodejs_20", "python312"]
 
 [phases.install]
 cmds = [
   "cd server && npm install",
   "cd client && npm install && npm run build",
+  "pip install -r server/requirements.txt",
 ]
 
 [start]
