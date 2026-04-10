@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Heat Pump Quote Checklist</title>
+<style>
+  :root {
+    --accent: #534AB7;
+    --accent-bg: #EEEDFE;
+    --accent-dark: #3C3489;
+    --success: #3B6D11;
+    --success-bg: #EAF3DE;
+    --warn: #854F0B;
+    --warn-bg: #FAEEDA;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --teal: #0F6E56;
+    --teal-bg: #E1F5EE;
+    --border: #d0cfc8;
+    --border-light: #e8e7e2;
+    --bg: #ffffff;
+    --bg-secondary: #f6f5f1;
+    --bg-tertiary: #efede8;
+    --text: #1a1a18;
+    --text-secondary: #6b6a65;
+    --text-tertiary: #9b9a95;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #AFA9EC;
+      --accent-bg: #26215C;
+      --accent-dark: #CECBF6;
+      --success: #97C459;
+      --success-bg: #173404;
+      --warn: #EF9F27;
+      --warn-bg: #412402;
+      --danger: #F09595;
+      --danger-bg: #501313;
+      --teal: #5DCAA5;
+      --teal-bg: #04342C;
+      --border: #3a3a38;
+      --border-light: #2e2e2c;
+      --bg: #1c1c1a;
+      --bg-secondary: #242422;
+      --bg-tertiary: #2a2a28;
+      --text: #f0efe9;
+      --text-secondary: #a0a09a;
+      --text-tertiary: #6a6a65;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', system-ui, sans-serif; background: var(--bg-secondary); color: var(--text); font-size: 15px; line-height: 1.5; -webkit-tap-highlight-color: transparent; }
+
+  .header { background: var(--bg); border-bottom: 1px solid var(--border-light); padding: 16px 16px 12px; position: sticky; top: 0; z-index: 100; }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 15px; font-weight: 700; }
+  .logo-text { font-size: 16px; font-weight: 600; color: var(--text); }
+  .logo-sub { font-size: 11px; color: var(--text-secondary); margin-top: -2px; }
+  .toolbar { display: flex; gap: 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s; -webkit-appearance: none; font-family: inherit; }
+  .btn:hover { background: var(--bg-secondary); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.88; }
+  .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .progress-wrap { display: flex; align-items: center; gap: 10px; }
+  .progress-bar-outer { flex: 1; height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+  .progress-bar-inner { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s ease; width: 0%; }
+  .progress-text { font-size: 12px; color: var(--text-secondary); min-width: 65px; text-align: right; }
+
+  .stats-row { display: flex; gap: 6px; padding: 10px 16px 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .stat-chip { display: flex; align-items: center; gap: 5px; background: var(--bg); border: 1px solid var(--border-light); border-radius: 20px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
+  .stat-chip strong { color: var(--text); font-weight: 600; }
+
+  .content { padding: 12px 16px 90px; max-width: 680px; margin: 0 auto; }
+
+  .card { background: var(--bg); border: 1px solid var(--border-light); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .field-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .field-grid.one { grid-template-columns: 1fr; }
+  .field label { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; font-weight: 500; }
+  .field input, .field select, .field textarea { width: 100%; padding: 8px 10px; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text); -webkit-appearance: none; appearance: none; font-family: inherit; }
+  .field textarea { resize: vertical; min-height: 50px; line-height: 1.4; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(83,74,183,0.1); }
+  .hint { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; line-height: 1.4; }
+  .hint.warn { color: var(--warn); }
+
+  .calc-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-light); font-size: 14px; }
+  .calc-row:last-child { border-bottom: none; }
+  .calc-row.total { font-weight: 600; font-size: 15px; padding-top: 10px; }
+  .calc-row.bus { color: var(--success); }
+  .calc-row.client-total { font-weight: 600; font-size: 16px; color: var(--accent); padding-top: 8px; }
+  .alert { font-size: 12px; padding: 8px 10px; border-radius: var(--radius-sm); margin-top: 10px; line-height: 1.5; }
+  .alert.warn { background: var(--warn-bg); color: var(--warn); }
+  .alert.ok { background: var(--success-bg); color: var(--success); }
+  .alert.info { background: var(--accent-bg); color: var(--accent); }
+
+  .divider { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; padding: 14px 4px 6px; }
+
+  .section-card { background: var(--bg); border: 1px solid var(--border-light); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; cursor: pointer; user-select: none; }
+  .section-header:active { background: var(--bg-secondary); }
+  .section-left { display: flex; align-items: center; gap: 10px; }
+  .section-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .section-name { font-size: 15px; font-weight: 500; }
+  .section-right { display: flex; align-items: center; gap: 6px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 500; }
+  .badge.complete { background: var(--success-bg); color: var(--success); }
+  .badge.recc-badge { background: var(--danger-bg); color: var(--danger); font-size: 10px; }
+  .chevron { font-size: 11px; color: var(--text-tertiary); transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+  .section-body { display: none; border-top: 1px solid var(--border-light); }
+  .section-body.open { display: block; }
+
+  .check-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border-light); }
+  .check-item:last-of-type { border-bottom: none; }
+  .check-item input[type=checkbox] { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+  .check-content { flex: 1; min-width: 0; }
+  .check-label { font-size: 14px; line-height: 1.4; }
+  .check-label.done { color: var(--text-tertiary); text-decoration: line-through; }
+  .check-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.4; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .tag { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 8px; font-weight: 600; letter-spacing: 0.02em; }
+  .tag.recc { background: var(--danger-bg); color: var(--danger); }
+  .tag.legal { background: var(--warn-bg); color: var(--warn); }
+  .tag.bus { background: var(--success-bg); color: var(--success); }
+
+  .notes-area { padding: 10px 16px 14px; background: var(--bg-secondary); }
+  .notes-area label { display: block; font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-bottom: 5px; }
+  .notes-area textarea { width: 100%; padding: 9px 11px; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); resize: vertical; min-height: 56px; font-family: inherit; line-height: 1.5; }
+  .notes-area textarea:focus { outline: none; border-color: var(--accent); }
+
+  .fab-row { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--border-light); padding: 10px 16px; display: flex; gap: 8px; justify-content: center; z-index: 99; }
+  .fab-row .btn { flex: 1; justify-content: center; max-width: 200px; }
+  .toast { position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 18px; border-radius: 20px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+
+  @media print {
+    .header { position: static; }
+    .fab-row, .toolbar { display: none; }
+    .section-body { display: block !important; }
+    .chevron { display: none; }
+    body { background: white; }
+    .content { padding-bottom: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">
+      <div class="logo-mark">Q</div>
+      <div>
+        <div class="logo-text">Quote Checklist</div>
+        <div class="logo-sub">Heat pump proposal preparation</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn" onclick="loadQuote()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3M8 2v8M5 7l3 3 3-3"/></svg>
+        Load
+      </button>
+      <button class="btn" onclick="confirmReset()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 101 3"/><path d="M3 12V8H7"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+  <div class="progress-wrap">
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="prog-bar"></div></div>
+    <div class="progress-text" id="prog-text">0 / 0</div>
+  </div>
+</div>
+
+<div class="stats-row">
+  <div class="stat-chip">Done: <strong id="stat-pct">0%</strong></div>
+  <div class="stat-chip">RECC items: <strong id="stat-recc">0 / 0</strong></div>
+  <div class="stat-chip">Quote total: <strong id="stat-total">—</strong></div>
+  <div class="stat-chip">Client pays: <strong id="stat-client">—</strong></div>
+</div>
+
+<div class="content">
+
+  <!-- JOB DETAILS -->
+  <div class="card" style="margin-top:4px">
+    <div class="card-title">Job details</div>
+    <div class="field-grid">
+      <div class="field"><label>Client name</label><input type="text" id="f-client" placeholder="Mr & Mrs Smith" oninput="autosave()"></div>
+      <div class="field"><label>Quote date</label><input type="date" id="f-date" oninput="autosave()"></div>
+    </div>
+    <div class="field-grid one">
+      <div class="field"><label>Property address</label><input type="text" id="f-address" placeholder="12 Acacia Avenue, Manchester M1 1AA" oninput="autosave()"></div>
+    </div>
+    <div class="field-grid">
+      <div class="field">
+        <label>System type</label>
+        <select id="f-system" onchange="autosave(); calcPricing()">
+          <option value="ashp">Air source heat pump (ASHP)</option>
+          <option value="gshp">Ground source heat pump (GSHP)</option>
+        </select>
+      </div>
+      <div class="field"><label>Quote reference</label><input type="text" id="f-ref" placeholder="e.g. 2026-042" oninput="autosave()"></div>
+    </div>
+    <div class="field-grid">
+      <div class="field"><label>Quote valid (days)</label><input type="number" id="f-valid" value="30" oninput="autosave()"></div>
+      <div class="field"><label>Prepared by</label><input type="text" id="f-surveyor" placeholder="Your name" oninput="autosave()"></div>
+    </div>
+    <div class="field-grid one">
+      <div class="field">
+        <label>Survey basis</label>
+        <select id="f-basis" onchange="autosave()">
+          <option value="full">Full site survey completed — Consumer Journey 1</option>
+          <option value="prelim">Preliminary visit only — full survey to follow (Consumer Journey 2)</option>
+        </select>
+        <div class="hint">RECC / MCS 3005 — state which journey applies on the quote document</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRICING CALCULATOR -->
+  <div class="card">
+    <div class="card-title">Pricing summary</div>
+    <div class="field-grid">
+      <div class="field"><label>Heat pump unit (ex VAT) £</label><input type="number" id="p-hp" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Cylinder (ex VAT) £</label><input type="number" id="p-cyl" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Radiators / emitters (ex VAT) £</label><input type="number" id="p-rads" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Other materials (ex VAT) £</label><input type="number" id="p-mats" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Labour (ex VAT) £</label><input type="number" id="p-labour" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Electrical works (ex VAT) £</label><input type="number" id="p-elec" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Design / survey fee (ex VAT) £</label><input type="number" id="p-design" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>MCS registration £</label><input type="number" id="p-mcs" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field"><label>Other (ex VAT) £</label><input type="number" id="p-other" placeholder="0" oninput="calcPricing()"></div>
+      <div class="field">
+        <label>VAT rate</label>
+        <select id="p-vat" onchange="calcPricing()">
+          <option value="0">0% — domestic heat pump installation</option>
+          <option value="5">5%</option>
+          <option value="20">20%</option>
+        </select>
+      </div>
+    </div>
+    <div style="border-top: 1px solid var(--border-light); padding-top: 10px; margin-top: 4px;">
+      <div class="calc-row"><span>Subtotal (ex VAT)</span><span>£<span id="c-sub">0.00</span></span></div>
+      <div class="calc-row"><span>VAT</span><span>£<span id="c-vat">0.00</span></span></div>
+      <div class="calc-row total"><span>Grand total (inc VAT)</span><span>£<span id="c-total">0.00</span></span></div>
+      <div class="calc-row bus"><span id="c-bus-label">BUS grant (ASHP) — deducted from final payment</span><span>− £<span id="c-bus">7,500</span></span></div>
+      <div class="calc-row client-total"><span>Client pays</span><span>£<span id="c-client">0.00</span></span></div>
+    </div>
+
+    <div style="margin-top:14px; border-top: 1px solid var(--border-light); padding-top:14px;">
+      <div class="card-title" style="margin-bottom:10px">Payment schedule</div>
+      <div class="field-grid three">
+        <div class="field"><label>Deposit £ (max 25%)</label><input type="number" id="p-dep" placeholder="0" oninput="calcDeposit()"></div>
+        <div class="field"><label>Further advance £</label><input type="number" id="p-adv" placeholder="0" oninput="calcDeposit()"></div>
+        <div class="field"><label>Balance on completion £</label><input type="number" id="p-bal" placeholder="0" oninput="autosave()"></div>
+      </div>
+      <div id="deposit-msg"></div>
+      <div class="field-grid one" style="margin-top:8px">
+        <div class="field">
+          <label>Hourly rate for variation works £/hr</label>
+          <input type="number" id="p-rate" placeholder="e.g. 65" oninput="autosave()">
+          <div class="hint warn">RECC requirement — must be stated in the quote document</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider">Pre-send checklist</div>
+  <div id="sections-container"></div>
+
+</div>
+
+<div class="fab-row">
+  <button class="btn primary" onclick="saveQuote()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l2 2 10-10"/></svg>
+    Save checklist
+  </button>
+  <button class="btn" onclick="exportPDF()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="1" width="9" height="14" rx="1"/><path d="M7 1v4h4M5 8h4M5 11h3"/></svg>
+    Export PDF
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SECTIONS = [
+  {
+    id: "design",
+    title: "System design inputs",
+    icon: "📐",
+    bg: "#E6F1FB",
+    items: [
+      { t: "Heat loss calculation completed — room by room", sub: "MCS 3005 compliance — whole-house figure alone is not sufficient" },
+      { t: "Design flow temperature confirmed and documented (target ≤55°C)" },
+      { t: "Heat pump model, output (kW) and COP selected to match heat loss" },
+      { t: "SCOP figure noted — required for MCS performance estimate" },
+      { t: "Cylinder model, volume (litres) and coil sizing confirmed for DHW demand" },
+      { t: "Emitter upgrades required — rooms identified, new sizes specified" },
+      { t: "Buffer vessel decision made — required or not, documented" },
+      { t: "Electrical supply requirements confirmed — circuit, distance, DNO notification" },
+      { t: "External unit location finalised — clearances, PD / planning, noise checked" },
+      { t: "MCS Heat Pump System Performance Estimate completed", recc: true, sub: "Compulsory document — must accompany all quotes (MCS 3005-D)" },
+      { t: "Final system design shared with client and approval obtained in writing", recc: true, sub: "Required before work starts — RECC and MCS requirement" },
+    ],
+    note: "Design assumptions, conditions noted, anything flagged for variation"
+  },
+  {
+    id: "scope",
+    title: "Scope of works",
+    icon: "📋",
+    bg: "#EEEDFE",
+    items: [
+      { t: "Heat pump — make, model, output, quantity listed as line item", recc: true, sub: "RECC requires itemised goods list" },
+      { t: "Cylinder — make, model, capacity listed as line item", recc: true },
+      { t: "All other goods listed: radiators, valves, controls, pipework, fixings", recc: true },
+      { t: "System flush and chemical cleanse included and itemised" },
+      { t: "Electrical works itemised — consumer unit works, dedicated circuit, cable route" },
+      { t: "Emitter upgrades itemised — room by room" },
+      { t: "Controls package specified — thermostat, zoning, smart controls if applicable" },
+      { t: "Testing and commissioning included", recc: true },
+      { t: "MCS registration included and costed", recc: true, sub: "Required for BUS grant eligibility" },
+      { t: "Building notice / building control — included or explicitly excluded, stated", recc: true },
+      { t: "Old boiler / cylinder removal and disposal — included or explicitly excluded", recc: true },
+      { t: "Goods and services shown as separate line items in quote", recc: true, sub: "RECC requires goods sub-total and services sub-total shown separately" },
+    ],
+    note: "Scope notes — anything unusual or project-specific to document"
+  },
+  {
+    id: "exclusions",
+    title: "Exclusions and client responsibilities",
+    icon: "⚠️",
+    bg: "#FAEEDA",
+    items: [
+      { t: "All exclusions drafted — everything not in scope stated explicitly", recc: true, sub: "RECC 'no surprises' policy — exclusions protect you and the client" },
+      { t: "Making good / redecoration — excluded or included, clearly stated", recc: true },
+      { t: "Asbestos — risk noted, exclusion stated if applicable" },
+      { t: "Groundworks (slabs, trenches, reinstatement) — scope confirmed or excluded" },
+      { t: "Planning permission — client's responsibility stated clearly", recc: true, sub: "Listed building or conservation area — flag if relevant" },
+      { t: "EPC assessment — included, excluded, or noted as client's responsibility", recc: true },
+      { t: "Fabric improvement works (insulation etc.) — out of scope if not included" },
+      { t: "Variation rate stated for any unforeseen or additional works", recc: true, sub: "RECC requires hourly or daily rate to be in the quote document" },
+      { t: "Any sub-contractors named if third parties will carry out work", recc: true, sub: "RECC requires sub-contracting arrangements to be declared" },
+    ],
+    note: "Exclusions notes — anything specific to this job to flag"
+  },
+  {
+    id: "bus",
+    title: "BUS grant eligibility",
+    icon: "💰",
+    bg: "#EAF3DE",
+    items: [
+      { t: "Property is in England or Wales", bus: true },
+      { t: "Client is the homeowner (not a tenant)", bus: true },
+      { t: "Property is not a new build (unless self-build)", bus: true },
+      { t: "Existing system is fossil fuel — gas, oil, or LPG (not replacing another heat pump)", bus: true },
+      { t: "Heating capacity requirement is ≤45kW", bus: true },
+      { t: "EPC checked — no outstanding loft or cavity wall insulation recommendations", bus: true, sub: "This is the most common eligibility blocker — check before quoting" },
+      { t: "EPC insulation exemption confirmed if property has solid walls or listed status", bus: true },
+      { t: "BUS grant amount confirmed and shown correctly in quote — check current figure at ofgem.gov.uk", bus: true, recc: true },
+      { t: "Quote states clearly whether BUS grant is deducted from final balance payment", bus: true, recc: true },
+      { t: "Client informed Ofgem will contact them directly to confirm contract", bus: true },
+      { t: "If BUS grant is essential to client proceeding — condition included in contract", recc: true, sub: "RECC: if grant essential, client must be able to cancel and receive deposit back if grant fails" },
+      { t: "Client advised to inform home insurer about installation", sub: "RECC guidance — not mandatory but good practice" },
+    ],
+    note: "BUS notes — any eligibility concerns or conditions to document"
+  },
+  {
+    id: "commercial",
+    title: "Commercial and payment terms",
+    icon: "💷",
+    bg: "#FCEBEB",
+    items: [
+      { t: "Quote validity period stated — typically 30 days", recc: true },
+      { t: "Deposit confirmed — does not exceed 25% of total inc VAT", recc: true, sub: "RECC hard limit — exceeding this is a code breach" },
+      { t: "Deposit + advance payment do not exceed 60% of total inc VAT", recc: true, sub: "RECC hard limit — further advance must also be no earlier than 3 weeks before delivery" },
+      { t: "Deposit insurance arranged — insurer name stated in quote", recc: true, sub: "All deposits must be insured — mandatory RECC requirement" },
+      { t: "Balance payment terms stated — e.g. payable on commissioning day", recc: true },
+      { t: "Payment methods stated (BACS, card, cheque etc.)" },
+      { t: "Timetable for installation included — indicative start and duration", recc: true },
+      { t: "Any preparatory work the client must complete before installation — stated", recc: true },
+      { t: "Minimum 2-year workmanship warranty confirmed and insured", recc: true, sub: "RECC minimum — warranty must be backed by insurance" },
+      { t: "Manufacturer warranties noted for heat pump unit and cylinder" },
+      { t: "Annual servicing requirements explained to client", recc: true },
+      { t: "After-sales support arrangements described", recc: true },
+    ],
+    note: "Payment notes — any non-standard terms or conditions for this job"
+  },
+  {
+    id: "legal",
+    title: "Legal and RECC compliance",
+    icon: "⚖️",
+    bg: "#FBEAF0",
+    items: [
+      { t: "Company name, registered address, telephone, email, website on quote document", recc: true, legal: true },
+      { t: "Company registration number and VAT number on quote", recc: true, legal: true },
+      { t: "MCS certification number and certification body stated", recc: true },
+      { t: "RECC membership number stated", recc: true },
+      { t: "Cancellation rights explained — 14-day cooling off period", recc: true, legal: true, sub: "Consumer Contracts Regulations 2013 — mandatory for off-premises (in-home) contracts" },
+      { t: "Cancellation form included with quote pack", recc: true, legal: true, sub: "Use RECC model form — off-premises version for in-home sales" },
+      { t: "RECC consumer leaflet included with proposal pack", recc: true },
+      { t: "RECC model contract / terms of business included", recc: true },
+      { t: "Data protection / GDPR notice included", recc: true, legal: true },
+      { t: "Insurance details provided — public liability insurer named", recc: true },
+      { t: "Complaint handling procedure included — RECC arbitration route explained", recc: true },
+      { t: "Applicable law and jurisdiction stated in terms (England & Wales)", recc: true, legal: true },
+      { t: "If Consumer Journey 2 — variation to contract clause included", recc: true, sub: "Required if quote is based on a preliminary visit only" },
+      { t: "If listed building / conservation area — planning responsibility explicitly stated", recc: true },
+    ],
+    note: "Legal notes — any specific circumstances on this job"
+  },
+  {
+    id: "document",
+    title: "Final document check — before sending",
+    icon: "✅",
+    bg: "#E1F5EE",
+    items: [
+      { t: "Quote reference number added" },
+      { t: "Client name and site address correct on all documents" },
+      { t: "All figures checked and totals verified — no arithmetic errors" },
+      { t: "VAT rate correct — domestic heat pump installations are 0% VAT" },
+      { t: "BUS grant deduction shown clearly and at correct current amount" },
+      { t: "Goods and services shown as separate sub-totals", recc: true },
+      { t: "Performance estimate attached and reference matches quote", recc: true },
+      { t: "All pack documents assembled: quote, performance estimate, contract terms, cancellation form, RECC leaflet", recc: true },
+      { t: "No placeholder text remaining in documents — all [insert X] fields completed" },
+      { t: "Quote proofread for errors and client-appropriate language" },
+      { t: "Delivery method confirmed — email with read receipt, or post" },
+      { t: "Follow-up call or visit diarised — when will you check in with the client?" },
+    ],
+    note: "Any final notes before sending"
+  }
+];
+
+let state = { checks: {}, notes: {}, fields: {} };
+let totalRecc = 0;
+
+function init() {
+  SECTIONS.forEach(sec => {
+    sec.items.forEach((item, ii) => {
+      state.checks[sec.id + "_" + ii] = false;
+      if (item.recc) totalRecc++;
+    });
+  });
+  document.getElementById("stat-recc").textContent = "0 / " + totalRecc;
+  buildSections();
+  setToday();
+}
+
+function setToday() {
+  const el = document.getElementById("f-date");
+  if (!el.value) el.value = new Date().toISOString().slice(0, 10);
+}
+
+function calcPricing() {
+  const g = id => parseFloat(document.getElementById(id).value) || 0;
+  const sub = g("p-hp") + g("p-cyl") + g("p-rads") + g("p-mats") + g("p-labour") + g("p-elec") + g("p-design") + g("p-mcs") + g("p-other");
+  const vatPct = parseFloat(document.getElementById("p-vat").value) / 100;
+  const vat = sub * vatPct;
+  const total = sub + vat;
+  const bus = 7500;
+  const client = Math.max(0, total - bus);
+  const sys = document.getElementById("f-system").value;
+  document.getElementById("c-sub").textContent = sub.toFixed(2);
+  document.getElementById("c-vat").textContent = vat.toFixed(2);
+  document.getElementById("c-total").textContent = total.toLocaleString("en-GB", {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById("c-bus-label").textContent = "BUS grant (" + (sys === "gshp" ? "GSHP" : "ASHP") + ") — deducted from final payment";
+  document.getElementById("c-client").textContent = client.toLocaleString("en-GB", {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById("stat-total").textContent = total > 0 ? "£" + Math.round(total).toLocaleString() : "—";
+  document.getElementById("stat-client").textContent = client > 0 ? "£" + Math.round(client).toLocaleString() : "—";
+  calcDeposit();
+  autosave();
+}
+
+function calcDeposit() {
+  const totalText = document.getElementById("c-total").textContent.replace(/,/g, "");
+  const total = parseFloat(totalText) || 0;
+  const dep = parseFloat(document.getElementById("p-dep").value) || 0;
+  const adv = parseFloat(document.getElementById("p-adv").value) || 0;
+  const msg = document.getElementById("deposit-msg");
+  if (!total || (!dep && !adv)) { msg.innerHTML = ""; return; }
+  const max25 = total * 0.25;
+  const max60 = total * 0.60;
+  const depPct = ((dep / total) * 100).toFixed(1);
+  const combPct = (((dep + adv) / total) * 100).toFixed(1);
+  if (dep > max25) {
+    msg.innerHTML = `<div class="alert warn">⚠ Deposit of £${dep.toFixed(2)} is ${depPct}% — exceeds the RECC maximum of 25% (£${max25.toFixed(2)}). Must be reduced before quoting.</div>`;
+  } else if ((dep + adv) > max60) {
+    msg.innerHTML = `<div class="alert warn">⚠ Deposit + advance (£${(dep+adv).toFixed(2)}) is ${combPct}% — exceeds the RECC 60% combined maximum (£${max60.toFixed(2)}).</div>`;
+  } else if (dep > 0) {
+    msg.innerHTML = `<div class="alert ok">✓ Deposit ${depPct}% — within RECC 25% limit. Combined advance: ${combPct}% — within 60% limit.</div>`;
+  }
+  autosave();
+}
+
+function buildSections() {
+  const c = document.getElementById("sections-container");
+  c.innerHTML = "";
+  SECTIONS.forEach(sec => {
+    const reccCount = sec.items.filter(i => i.recc).length;
+    const div = document.createElement("div");
+    div.className = "section-card";
+    div.id = "sec-" + sec.id;
+    const items = sec.items.map((item, ii) => {
+      const key = sec.id + "_" + ii;
+      let tags = "";
+      if (item.recc) tags += `<span class="tag recc">RECC</span>`;
+      if (item.legal) tags += `<span class="tag legal">LEGAL</span>`;
+      if (item.bus) tags += `<span class="tag bus">BUS</span>`;
+      return `<div class="check-item">
+        <input type="checkbox" id="${key}" onchange="toggle('${key}')">
+        <div class="check-content">
+          <div class="check-label" id="lbl-${key}">${item.t}</div>
+          ${item.sub ? `<div class="check-sub">${item.sub}</div>` : ""}
+          ${tags ? `<div class="tag-row">${tags}</div>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    div.innerHTML = `
+      <div class="section-header" onclick="toggleSec('${sec.id}')">
+        <div class="section-left">
+          <div class="section-icon" style="background:${sec.bg}">${sec.icon}</div>
+          <span class="section-name">${sec.title}</span>
+        </div>
+        <div class="section-right">
+          ${reccCount ? `<span class="badge recc-badge">${reccCount} RECC</span>` : ""}
+          <span class="badge" id="badge-${sec.id}">0 / ${sec.items.length}</span>
+          <span class="chevron" id="chev-${sec.id}">▼</span>
+        </div>
+      </div>
+      <div class="section-body" id="body-${sec.id}">
+        <div>${items}</div>
+        <div class="notes-area">
+          <label>Notes</label>
+          <textarea id="note-${sec.id}" placeholder="${sec.note}" oninput="saveNote('${sec.id}', this.value)"></textarea>
+        </div>
+      </div>`;
+    c.appendChild(div);
+  });
+  updateProgress();
+}
+
+function toggleSec(id) {
+  document.getElementById("body-" + id).classList.toggle("open");
+  document.getElementById("chev-" + id).classList.toggle("open");
+}
+
+function toggle(key) {
+  state.checks[key] = document.getElementById(key).checked;
+  document.getElementById("lbl-" + key).classList.toggle("done", state.checks[key]);
+  updateProgress();
+  autosave();
+}
+
+function saveNote(id, val) { state.notes[id] = val; autosave(); }
+
+function updateProgress() {
+  const total = Object.keys(state.checks).length;
+  const done = Object.values(state.checks).filter(Boolean).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById("prog-bar").style.width = pct + "%";
+  document.getElementById("prog-text").textContent = done + " / " + total;
+  document.getElementById("stat-pct").textContent = pct + "%";
+  let reccDone = 0;
+  SECTIONS.forEach(sec => {
+    const keys = sec.items.map((_, ii) => sec.id + "_" + ii);
+    const secDone = keys.filter(k => state.checks[k]).length;
+    const badge = document.getElementById("badge-" + sec.id);
+    if (badge) { badge.textContent = secDone + " / " + sec.items.length; badge.className = "badge" + (secDone === sec.items.length ? " complete" : ""); }
+    sec.items.forEach((item, ii) => { if (item.recc && state.checks[sec.id + "_" + ii]) reccDone++; });
+  });
+  document.getElementById("stat-recc").textContent = reccDone + " / " + totalRecc;
+}
+
+function collectFields() {
+  const ids = ["f-client","f-date","f-address","f-system","f-ref","f-valid","f-surveyor","f-basis","p-hp","p-cyl","p-rads","p-mats","p-labour","p-elec","p-design","p-mcs","p-other","p-vat","p-dep","p-adv","p-bal","p-rate"];
+  const obj = {};
+  ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
+  return obj;
+}
+
+function autosave() {
+  state.fields = collectFields();
+  try { localStorage.setItem("hpq_auto", JSON.stringify(state)); } catch(e) {}
+}
+
+function saveQuote() {
+  state.fields = collectFields();
+  const client = (state.fields["f-client"] || "quote").replace(/[^a-z0-9]/gi, "_");
+  const date = state.fields["f-date"] || new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `HP_Quote_${client}_${date}.json`;
+  a.click();
+  showToast("Checklist saved");
+}
+
+function loadQuote() {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json";
+  input.onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try { state = JSON.parse(ev.target.result); applyState(); showToast("Loaded: " + file.name); }
+      catch { alert("Could not read this file."); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function applyState() {
+  if (state.fields) Object.entries(state.fields).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
+  Object.entries(state.checks || {}).forEach(([key, val]) => {
+    const cb = document.getElementById(key); const lbl = document.getElementById("lbl-" + key);
+    if (cb) cb.checked = val; if (lbl) lbl.classList.toggle("done", val);
+  });
+  Object.entries(state.notes || {}).forEach(([id, val]) => { const ta = document.getElementById("note-" + id); if (ta) ta.value = val; });
+  updateProgress(); calcPricing();
+}
+
+function confirmReset() {
+  if (!confirm("Reset all fields and checks?")) return;
+  state = { checks: {}, notes: {}, fields: {} };
+  SECTIONS.forEach(sec => sec.items.forEach((_, ii) => { state.checks[sec.id + "_" + ii] = false; }));
+  document.querySelectorAll("input:not([type=checkbox]), select, textarea").forEach(el => {
+    if (el.id === "p-vat") el.value = "0";
+    else if (el.id === "f-valid") el.value = "30";
+    else if (el.id === "f-system") el.value = "ashp";
+    else if (el.id === "f-basis") el.value = "full";
+    else el.value = "";
+  });
+  document.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+  document.querySelectorAll(".check-label").forEach(l => l.classList.remove("done"));
+  document.getElementById("deposit-msg").innerHTML = "";
+  setToday(); updateProgress(); calcPricing();
+  showToast("Reset");
+}
+
+function exportPDF() {
+  document.querySelectorAll(".section-body").forEach(b => b.classList.add("open"));
+  showToast("Opening print / save as PDF…");
+  setTimeout(() => window.print(), 400);
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+function tryAutosave() {
+  try {
+    const saved = localStorage.getItem("hpq_auto");
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    const client = parsed.fields && parsed.fields["f-client"];
+    if (client && confirm("Resume last quote?\n\n" + client + (parsed.fields["f-address"] ? "\n" + parsed.fields["f-address"] : ""))) {
+      state = parsed; applyState();
+    }
+  } catch(e) {}
+}
+
+init();
+tryAutosave();
+</script>
+</body>
+</html>

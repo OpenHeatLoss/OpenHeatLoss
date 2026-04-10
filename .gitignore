@@ -1,0 +1,23 @@
+# Dependencies — reinstalled automatically
+node_modules/
+
+# Built frontend — rebuilt on deploy
+public/
+
+# SQLite database — never commit your data
+server/db/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Environment files — may contain secrets
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Vite cache
+client/.vite/

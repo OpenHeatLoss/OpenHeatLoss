@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Heat Pump Site Survey</title>
+<style>
+  :root {
+    --accent: #185FA5;
+    --accent-bg: #E6F1FB;
+    --accent-dark: #0C447C;
+    --success: #3B6D11;
+    --success-bg: #EAF3DE;
+    --warn: #854F0B;
+    --warn-bg: #FAEEDA;
+    --border: #d0cfc8;
+    --border-light: #e8e7e2;
+    --bg: #ffffff;
+    --bg-secondary: #f6f5f1;
+    --bg-tertiary: #efede8;
+    --text: #1a1a18;
+    --text-secondary: #6b6a65;
+    --text-tertiary: #9b9a95;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #378ADD;
+      --accent-bg: #042C53;
+      --accent-dark: #85B7EB;
+      --success: #97C459;
+      --success-bg: #173404;
+      --warn: #EF9F27;
+      --warn-bg: #412402;
+      --border: #3a3a38;
+      --border-light: #2e2e2c;
+      --bg: #1c1c1a;
+      --bg-secondary: #242422;
+      --bg-tertiary: #2a2a28;
+      --text: #f0efe9;
+      --text-secondary: #a0a09a;
+      --text-tertiary: #6a6a65;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-secondary);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .header {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-light);
+    padding: 16px 16px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 16px; font-weight: 700;
+  }
+  .logo-text { font-size: 16px; font-weight: 600; color: var(--text); }
+  .logo-sub { font-size: 11px; color: var(--text-secondary); margin-top: -2px; }
+  .toolbar { display: flex; gap: 6px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 12px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+    -webkit-appearance: none;
+  }
+  .btn:hover { background: var(--bg-secondary); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .btn.danger { color: #c0392b; border-color: #e0b0b0; }
+  .btn.danger:hover { background: #fdf0f0; }
+  .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .progress-wrap { display: flex; align-items: center; gap: 10px; }
+  .progress-bar-outer {
+    flex: 1; height: 5px; background: var(--bg-tertiary);
+    border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar-inner {
+    height: 100%; background: var(--accent);
+    border-radius: 3px; transition: width 0.3s ease;
+    width: 0%;
+  }
+  .progress-text { font-size: 12px; color: var(--text-secondary); min-width: 65px; text-align: right; }
+  .stats-row {
+    display: flex; gap: 6px; padding: 10px 16px 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .stat-chip {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--bg); border: 1px solid var(--border-light);
+    border-radius: 20px; padding: 4px 10px;
+    font-size: 12px; color: var(--text-secondary);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .stat-chip strong { color: var(--text); font-weight: 600; }
+  .content { padding: 12px 16px 80px; max-width: 680px; margin: 0 auto; }
+  .client-card {
+    background: var(--bg); border: 1px solid var(--border-light);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+  }
+  .client-card h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .field-row.full { grid-template-columns: 1fr; }
+  .field label { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; font-weight: 500; }
+  .field input, .field select {
+    width: 100%; padding: 8px 10px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-secondary); color: var(--text);
+    -webkit-appearance: none; appearance: none;
+    font-family: inherit;
+  }
+  .field input:focus, .field select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(24, 95, 165, 0.12);
+  }
+  .section-card {
+    background: var(--bg); border: 1px solid var(--border-light);
+    border-radius: var(--radius); margin-bottom: 8px; overflow: hidden;
+  }
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; cursor: pointer; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .section-header:active { background: var(--bg-secondary); }
+  .section-left { display: flex; align-items: center; gap: 10px; }
+  .section-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+  }
+  .section-name { font-size: 15px; font-weight: 500; }
+  .section-right { display: flex; align-items: center; gap: 8px; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .badge.complete { background: var(--success-bg); color: var(--success); }
+  .chevron {
+    font-size: 11px; color: var(--text-tertiary);
+    transition: transform 0.2s; display: inline-block;
+  }
+  .chevron.open { transform: rotate(180deg); }
+  .section-body { display: none; border-top: 1px solid var(--border-light); }
+  .section-body.open { display: block; }
+  .checklist { padding: 4px 0; }
+  .check-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border-light);
+  }
+  .check-item:last-of-type { border-bottom: none; }
+  .check-item input[type=checkbox] {
+    width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0;
+    accent-color: var(--accent); cursor: pointer;
+  }
+  .check-content { flex: 1; }
+  .check-label { font-size: 14px; line-height: 1.4; transition: color 0.15s; }
+  .check-label.done { color: var(--text-tertiary); text-decoration: line-through; }
+  .photo-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 7px; border-radius: 10px;
+    background: var(--warn-bg); color: var(--warn);
+    margin-top: 4px; font-weight: 500;
+  }
+  .notes-area { padding: 10px 16px 14px; }
+  .notes-area label { display: block; font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-bottom: 5px; }
+  .notes-area textarea {
+    width: 100%; padding: 9px 11px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-secondary); color: var(--text);
+    resize: vertical; min-height: 62px; font-family: inherit;
+    line-height: 1.5;
+  }
+  .notes-area textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(24,95,165,0.1); }
+  .fab-row {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border-light);
+    padding: 10px 16px; display: flex; gap: 8px;
+    justify-content: center; z-index: 99;
+  }
+  .fab-row .btn { flex: 1; justify-content: center; max-width: 200px; }
+  .toast {
+    position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg);
+    padding: 9px 18px; border-radius: 20px;
+    font-size: 13px; font-weight: 500;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; z-index: 200; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  @media (min-width: 480px) {
+    .field-row { grid-template-columns: 1fr 1fr; }
+  }
+  @media print {
+    .header { position: static; }
+    .fab-row { display: none; }
+    .toolbar { display: none; }
+    .section-body { display: block !important; }
+    .chevron { display: none; }
+    body { background: white; }
+    .content { padding-bottom: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">
+      <div class="logo-mark">H</div>
+      <div>
+        <div class="logo-text">Site Survey</div>
+        <div class="logo-sub">Heat pump assessment</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn" onclick="loadSurvey()" title="Load saved survey">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3M8 2v8M5 7l3 3 3-3"/></svg>
+        Load
+      </button>
+      <button class="btn danger" onclick="confirmReset()" title="Reset form">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 101 3"/><path d="M3 12V8H7"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+  <div class="progress-wrap">
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="prog-bar"></div></div>
+    <div class="progress-text" id="prog-text">0 / 0</div>
+  </div>
+</div>
+
+<div class="stats-row" id="stats-row">
+  <div class="stat-chip">Progress: <strong id="stat-pct">0%</strong></div>
+  <div class="stat-chip">Checked: <strong id="stat-checked">0</strong></div>
+  <div class="stat-chip">Photos needed: <strong id="stat-photos">—</strong></div>
+  <div class="stat-chip" id="stat-date-chip" style="display:none">Survey date: <strong id="stat-date"></strong></div>
+</div>
+
+<div class="content">
+
+  <div class="client-card">
+    <h3>Survey details</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>Client name</label>
+        <input type="text" id="client-name" placeholder="Mr & Mrs Smith" oninput="autosave()">
+      </div>
+      <div class="field">
+        <label>Survey date</label>
+        <input type="date" id="survey-date" oninput="autosave(); updateDateChip()">
+      </div>
+    </div>
+    <div class="field-row full">
+      <div class="field">
+        <label>Property address</label>
+        <input type="text" id="address" placeholder="12 Acacia Avenue, Manchester, M1 1AA" oninput="autosave()">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Property type</label>
+        <select id="prop-type" onchange="autosave()">
+          <option value="">Select…</option>
+          <option>Detached</option>
+          <option>Semi-detached</option>
+          <option>End terrace</option>
+          <option>Mid terrace</option>
+          <option>Flat / apartment</option>
+          <option>Bungalow</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Approx. year built</label>
+        <input type="text" id="year-built" placeholder="e.g. 1935" oninput="autosave()">
+      </div>
+    </div>
+  </div>
+
+  <div id="sections-container"></div>
+
+</div>
+
+<div class="fab-row">
+  <button class="btn primary" onclick="saveSurvey()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l2 2 10-10"/></svg>
+    Save survey
+  </button>
+  <button class="btn" onclick="exportPDF()">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="1" width="9" height="14" rx="1"/><path d="M7 1v4h4M5 8h4M5 11h3"/></svg>
+    Export PDF
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SECTIONS = [
+  {
+    id: "property", title: "Property details", icon: "🏠",
+    color: "#E6F1FB",
+    items: [
+      { t: "Property type confirmed (detached / semi / terrace / flat / bungalow)", p: false },
+      { t: "Number of storeys including any room-in-roof", p: false },
+      { t: "Total floor area (m²) — measured or confirmed with client", p: false },
+      { t: "Listed building status or conservation area restrictions", p: false },
+      { t: "Occupancy — number of occupants and typical daily routine", p: false },
+      { t: "Any pets or specific room temperature requirements noted", p: false },
+    ],
+    note: "General observations — condition, access, unusual features"
+  },
+  {
+    id: "fabric", title: "Building fabric", icon: "🧱",
+    color: "#FAEEDA",
+    items: [
+      { t: "Wall construction confirmed — solid, unfilled cavity, filled cavity, or insulated", p: true, pn: "All external elevations showing wall construction" },
+      { t: "Wall U-value estimated or known", p: false },
+      { t: "Evidence of EWI or IWI — thickness and type if present", p: true, pn: "Any existing wall insulation detail" },
+      { t: "Roof type — pitched, flat, or room-in-roof", p: true, pn: "Loft hatch access and insulation depth" },
+      { t: "Loft insulation depth and type (glass wool, loose fill, spray foam)", p: false },
+      { t: "Spray foam in loft — note location and extent", p: true, pn: "Spray foam coverage if present" },
+      { t: "Ground floor type — suspended timber or solid slab", p: false },
+      { t: "Floor insulation present or accessible?", p: false },
+      { t: "Window type — single, double, triple; approximate age and condition", p: true, pn: "Representative window showing frame and glazing type" },
+      { t: "Door type, material and condition", p: false },
+      { t: "Any planned fabric upgrades that should be factored into design", p: false },
+    ],
+    note: "Note unusual construction, thermal bridges, or any areas of concern"
+  },
+  {
+    id: "existing", title: "Existing heating system", icon: "🔥",
+    color: "#FCEBEB",
+    items: [
+      { t: "Heat source — gas, oil, LPG, electric; make, model, output (kW)", p: true, pn: "Boiler / heat source: full view showing make, model and flue" },
+      { t: "Boiler age and service history", p: false },
+      { t: "System type — sealed or open vented", p: false },
+      { t: "Current flow and return temperatures set at boiler", p: false },
+      { t: "Cylinder — present? Vented or unvented? Size (litres)?", p: true, pn: "Cylinder: condition, connections and any immersion heater" },
+      { t: "Cold water mains pressure and flow rate tested or noted", p: false },
+      { t: "Main pipework sizes — 8 / 10 / 15 / 22 / 28mm; note dominant size", p: true, pn: "Pipework at boiler showing connection sizes and condition" },
+      { t: "System pump — location, make, type, current speed setting", p: true, pn: "Pump: full view with any visible settings" },
+      { t: "Expansion vessel — size and condition if accessible", p: false },
+      { t: "Controls — thermostat type, programmer, TRVs, any smart controls", p: true, pn: "Main controls: programmer, thermostat, any room stats" },
+      { t: "Zoning — single or multi-zone? Note which rooms are separate zones", p: false },
+      { t: "Inhibitor and system cleanliness — any evidence of sludge or scale", p: false },
+    ],
+    note: "Note what can be retained and what must be replaced — key for cost estimate"
+  },
+  {
+    id: "emitters", title: "Heat emitters — room by room", icon: "♨️",
+    color: "#FAEEDA",
+    items: [
+      { t: "Ground floor: each room noted with radiator size (H × L mm) and type (K1/K2/P+)", p: true, pn: "Each radiator — include any hidden behind furniture or in alcoves" },
+      { t: "First floor: each room noted with radiator size and type", p: true, pn: "First floor radiators" },
+      { t: "Additional floors (if applicable)", p: false },
+      { t: "TRVs fitted — make and approximate age noted", p: false },
+      { t: "Any UFH zones — location, pipe centres, floor finish, manifold location", p: true, pn: "UFH manifold and any visible pipe layout" },
+      { t: "Fan coils or fan-assisted radiators anywhere in property", p: false },
+      { t: "Any rooms that are currently cold, uncomfortable or complained about", p: false },
+      { t: "Any rooms without radiators that client wants heated", p: false },
+    ],
+    note: "Sketch room layout with radiator positions — use notes or a separate sketch sheet"
+  },
+  {
+    id: "electrical", title: "Electrical supply", icon: "⚡",
+    color: "#E6F1FB",
+    items: [
+      { t: "Consumer unit location and available space for new circuit(s)", p: true, pn: "Consumer unit: full view showing spare ways, type and main fuse" },
+      { t: "Main fuse rating confirmed — 60A / 80A / 100A", p: false },
+      { t: "Single or three phase supply?", p: false },
+      { t: "Any existing dedicated heating circuit", p: false },
+      { t: "Smart meter installed? Which tariff — Octopus Agile, Cosy, other?", p: false },
+      { t: "Export tariff or solar PV installed?", p: true, pn: "Inverter / generation meter if solar PV present" },
+      { t: "Proposed ASHP location: distance from consumer unit estimated", p: false },
+      { t: "Cable route identified — internal or external run?", p: false },
+      { t: "DNO notification or supply upgrade likely to be required?", p: false },
+    ],
+    note: "Flag anything needing electrical contractor input or DNO involvement"
+  },
+  {
+    id: "location", title: "External unit location", icon: "📍",
+    color: "#EAF3DE",
+    items: [
+      { t: "Proposed ASHP location confirmed — aspect (N/S/E/W) and any shading", p: true, pn: "Proposed location: wide shot showing full clearances, walls, fencing" },
+      { t: "Minimum clearances available — front, sides, top and rear", p: false },
+      { t: "Distance from nearest habitable room windows — client and neighbours", p: false },
+      { t: "Distance from nearest neighbouring property boundary", p: false },
+      { t: "Permitted development applicable or planning consent required?", p: false },
+      { t: "Ground condition at proposed location — slab, gravel, soft ground", p: true, pn: "Ground surface and drainage at proposed unit location" },
+      { t: "Pipe route from external unit to plant room identified", p: true, pn: "Wall penetration point and proposed pipe route" },
+      { t: "Any unusual noise sensitivity — bedroom windows, neighbour proximity", p: false },
+    ],
+    note: "Note any constraints that will affect unit selection or placement"
+  },
+  {
+    id: "plantroom", title: "Plant room / airing cupboard", icon: "🔧",
+    color: "#E1F5EE",
+    items: [
+      { t: "Plant room location confirmed and dimensions measured (H × W × D)", p: true, pn: "Plant room: full space showing all dimensions and existing equipment" },
+      { t: "Access for installation confirmed — door width, corridor, stairs", p: false },
+      { t: "Buffer vessel required? Space available?", p: false },
+      { t: "New cylinder dimensions and weight checked against available space", p: false },
+      { t: "Access route for cylinder delivery identified", p: false },
+      { t: "Condensate drain location and fall available", p: false },
+      { t: "Ventilation in plant room — adequate for heat dissipation?", p: false },
+      { t: "Any structural concerns — floor loading, ceiling height", p: false },
+    ],
+    note: "Measure and sketch plant room with dimensions — essential for design"
+  },
+  {
+    id: "client", title: "Client discussion", icon: "💬",
+    color: "#EEEDFE",
+    items: [
+      { t: "Client's primary driver — bills / comfort / environment / future-proofing", p: false },
+      { t: "Current complaints about existing system noted", p: false },
+      { t: "Cold or problematic rooms discussed", p: false },
+      { t: "DHW requirements — usage patterns, showers vs baths, simultaneous use", p: false },
+      { t: "Smart controls — interest level discussed", p: false },
+      { t: "Budget range — has client shared an expectation?", p: false },
+      { t: "Timescale — when does the client want to proceed?", p: false },
+      { t: "Any planned renovation or building works to sequence with this project", p: false },
+      { t: "BUS grant eligibility discussed and noted", p: false },
+      { t: "MCS requirements explained to client", p: false },
+    ],
+    note: "Note any strong preferences, concerns or commitments made to the client"
+  },
+  {
+    id: "photos", title: "Final photo sweep", icon: "📷",
+    color: "#FBEAF0",
+    items: [
+      { t: "Front elevation — full property width", p: true, pn: "Standard design record" },
+      { t: "Rear elevation", p: true, pn: "" },
+      { t: "Side elevations (both sides)", p: true, pn: "" },
+      { t: "Gas meter and electric meter — together if possible", p: true, pn: "Confirm meter type, location and serial numbers" },
+      { t: "Any areas of damp, mould, condensation or fabric defects", p: true, pn: "Flag for client advice and design note" },
+      { t: "Street view / site entrance — useful for quoting access", p: true, pn: "" },
+      { t: "Anything unusual, unexpected or needing flagging in the design", p: true, pn: "" },
+    ],
+    note: "Final walkthrough — anything missed? Any commitments to the client to follow up?"
+  }
+];
+
+let state = { checks: {}, notes: {}, client: {} };
+let photoTotal = 0;
+
+function init() {
+  SECTIONS.forEach(sec => {
+    sec.items.forEach((item, ii) => {
+      const key = sec.id + "_" + ii;
+      state.checks[key] = false;
+      if (item.p) photoTotal++;
+    });
+  });
+  document.getElementById("stat-photos").textContent = photoTotal;
+  buildSections();
+  setTodayDate();
+}
+
+function setTodayDate() {
+  const d = document.getElementById("survey-date");
+  if (!d.value) {
+    const now = new Date();
+    d.value = now.toISOString().slice(0, 10);
+    updateDateChip();
+  }
+}
+
+function updateDateChip() {
+  const val = document.getElementById("survey-date").value;
+  if (val) {
+    const d = new Date(val + "T00:00:00");
+    document.getElementById("stat-date").textContent = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    document.getElementById("stat-date-chip").style.display = "";
+  }
+}
+
+function buildSections() {
+  const container = document.getElementById("sections-container");
+  container.innerHTML = "";
+  SECTIONS.forEach(sec => {
+    const div = document.createElement("div");
+    div.className = "section-card";
+    div.id = "sec-" + sec.id;
+    let itemsHTML = sec.items.map((item, ii) => {
+      const key = sec.id + "_" + ii;
+      return `<div class="check-item">
+        <input type="checkbox" id="${key}" onchange="toggle('${key}')">
+        <div class="check-content">
+          <label class="check-label" for="${key}" id="lbl-${key}">${item.t}</label>
+          ${item.p ? `<div><span class="photo-tag">📷 ${item.pn || "take photo"}</span></div>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    div.innerHTML = `
+      <div class="section-header" onclick="toggleSec('${sec.id}')">
+        <div class="section-left">
+          <div class="section-icon" style="background:${sec.color}">${sec.icon}</div>
+          <span class="section-name">${sec.title}</span>
+        </div>
+        <div class="section-right">
+          <span class="badge" id="badge-${sec.id}">0 / ${sec.items.length}</span>
+          <span class="chevron" id="chev-${sec.id}">▼</span>
+        </div>
+      </div>
+      <div class="section-body" id="body-${sec.id}">
+        <div class="checklist">${itemsHTML}</div>
+        <div class="notes-area">
+          <label>Notes — ${sec.note}</label>
+          <textarea id="note-${sec.id}" placeholder="Tap to add notes…" oninput="saveNote('${sec.id}', this.value)"></textarea>
+        </div>
+      </div>`;
+    container.appendChild(div);
+  });
+  updateProgress();
+}
+
+function toggleSec(id) {
+  const body = document.getElementById("body-" + id);
+  const chev = document.getElementById("chev-" + id);
+  const open = body.classList.contains("open");
+  body.classList.toggle("open", !open);
+  chev.classList.toggle("open", !open);
+}
+
+function toggle(key) {
+  state.checks[key] = document.getElementById(key).checked;
+  document.getElementById("lbl-" + key).classList.toggle("done", state.checks[key]);
+  updateProgress();
+  autosave();
+}
+
+function saveNote(id, val) {
+  state.notes[id] = val;
+  autosave();
+}
+
+function updateProgress() {
+  const total = Object.keys(state.checks).length;
+  const done = Object.values(state.checks).filter(Boolean).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById("prog-bar").style.width = pct + "%";
+  document.getElementById("prog-text").textContent = done + " / " + total;
+  document.getElementById("stat-pct").textContent = pct + "%";
+  document.getElementById("stat-checked").textContent = done;
+  SECTIONS.forEach(sec => {
+    const keys = sec.items.map((_, ii) => sec.id + "_" + ii);
+    const secDone = keys.filter(k => state.checks[k]).length;
+    const badge = document.getElementById("badge-" + sec.id);
+    badge.textContent = secDone + " / " + sec.items.length;
+    badge.className = "badge" + (secDone === sec.items.length ? " complete" : "");
+  });
+}
+
+function collectClientFields() {
+  return {
+    name: document.getElementById("client-name").value,
+    date: document.getElementById("survey-date").value,
+    address: document.getElementById("address").value,
+    propType: document.getElementById("prop-type").value,
+    yearBuilt: document.getElementById("year-built").value,
+  };
+}
+
+function autosave() {
+  state.client = collectClientFields();
+  try { localStorage.setItem('hps_autosave', JSON.stringify(state)); } catch(e) {}
+
+  // Silent background sync to API if we have a project context
+  const projectId = new URLSearchParams(window.location.search).get('projectId');
+  if (projectId) {
+    fetch(`/api/projects/${projectId}/survey`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    }).catch(() => {}); // silent fail when offline
+  }
+}
+
+// saveSurvey() function:
+
+async function saveSurvey() {
+  state.client = collectClientFields();
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get('projectId');
+
+  // Always save locally as a file (offline backup)
+  const name = state.client.name || 'survey';
+  const date = state.client.date || new Date().toISOString().slice(0, 10);
+  const filename = `HP_Survey_${name.replace(/[^a-z0-9]/gi, '_')}_${date}.json`;
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+
+  // If opened from a project, also save to the API
+  if (projectId) {
+    try {
+      await fetch(`/api/projects/${projectId}/survey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+      showToast('Saved to project + file downloaded');
+    } catch (e) {
+      showToast('File saved (offline — will sync when connected)');
+    }
+  } else {
+    showToast('Survey saved as ' + filename);
+  }
+}
+
+function loadSurvey() {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json";
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const loaded = JSON.parse(ev.target.result);
+        state = loaded;
+        applyState();
+        showToast("Survey loaded: " + file.name);
+      } catch(err) {
+        alert("Could not read file. Please select a valid survey JSON file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function applyState() {
+  if (state.client) {
+    document.getElementById("client-name").value = state.client.name || "";
+    document.getElementById("survey-date").value = state.client.date || "";
+    document.getElementById("address").value = state.client.address || "";
+    document.getElementById("prop-type").value = state.client.propType || "";
+    document.getElementById("year-built").value = state.client.yearBuilt || "";
+    updateDateChip();
+  }
+  Object.entries(state.checks || {}).forEach(([key, val]) => {
+    const cb = document.getElementById(key);
+    const lbl = document.getElementById("lbl-" + key);
+    if (cb) { cb.checked = val; }
+    if (lbl) lbl.classList.toggle("done", val);
+  });
+  Object.entries(state.notes || {}).forEach(([id, val]) => {
+    const ta = document.getElementById("note-" + id);
+    if (ta) ta.value = val;
+  });
+  updateProgress();
+}
+
+function confirmReset() {
+  if (confirm("Reset all fields and checkboxes? This cannot be undone.")) resetAll();
+}
+
+function resetAll() {
+  state = { checks: {}, notes: {}, client: {} };
+  SECTIONS.forEach(sec => {
+    sec.items.forEach((_, ii) => { state.checks[sec.id + "_" + ii] = false; });
+  });
+  document.getElementById("client-name").value = "";
+  document.getElementById("address").value = "";
+  document.getElementById("prop-type").value = "";
+  document.getElementById("year-built").value = "";
+  Object.keys(state.checks).forEach(key => {
+    const cb = document.getElementById(key);
+    const lbl = document.getElementById("lbl-" + key);
+    if (cb) cb.checked = false;
+    if (lbl) lbl.classList.remove("done");
+  });
+  document.querySelectorAll("textarea").forEach(t => t.value = "");
+  setTodayDate();
+  updateProgress();
+  showToast("Survey reset");
+}
+
+function exportPDF() {
+  document.querySelectorAll(".section-body").forEach(b => b.classList.add("open"));
+  showToast("Opening print / save as PDF…");
+  setTimeout(() => window.print(), 400);
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+function tryLoadAutosave() {
+  try {
+    const saved = localStorage.getItem("hps_autosave");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const hasData = parsed.client && (parsed.client.name || parsed.client.address);
+      if (hasData && confirm("Resume last survey?\n\n" + (parsed.client.name || "") + " — " + (parsed.client.address || "unsaved address"))) {
+        state = parsed;
+        applyState();
+      }
+    }
+  } catch(e) {}
+}
+
+// Replace the existing init(); tryLoadAutosave(); at the bottom with:
+
+async function initWithProject() {
+  init(); // runs existing setup (builds sections, sets today's date etc.)
+
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get('projectId');
+
+  if (projectId) {
+    // Pre-fill client fields from URL params
+    const clientName = params.get('client');
+    const address    = params.get('address');
+    const postcode   = params.get('postcode');
+
+    if (clientName) document.getElementById('client-name').value = clientName;
+    if (address)    document.getElementById('address').value = address;
+
+    // Try to load a previously saved survey for this project from the API
+    try {
+      const resp = await fetch(`/api/projects/${projectId}/survey`);
+      const saved = await resp.json();
+      if (saved) {
+        state = saved;
+        applyState();
+        showToast('Survey loaded from project');
+        return; // don't fall through to localStorage autosave
+      }
+    } catch (e) {
+      // API unreachable — fine, we're offline
+    }
+  } else {
+    // No project context — use existing localStorage autosave behaviour
+    tryLoadAutosave();
+  }
+}
+
+initWithProject();
+</script>
+</body>
+</html>
