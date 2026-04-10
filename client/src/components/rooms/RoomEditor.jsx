@@ -1,4 +1,5 @@
 // client/src/components/rooms/RoomEditor.jsx
+import { useState, useEffect } from 'react';
 import { TrashIcon } from '../common/Icons';
 import ElementEditor from './ElementEditor';
 import EmitterEditor from './EmitterEditor';
@@ -45,10 +46,57 @@ export default function RoomEditor({
   onDeleteEmitter,
   onAddRadiatorSpec,
 }) {
+  // ── Local state for typed inputs ──────────────────────────────────────────
+  // Mirrors the room prop so inputs respond instantly without waiting for the
+  // server round-trip. onUpdate is called on blur, not on every keystroke.
+  // useEffect syncs local state when switching to a different room (room.id
+  // changes), but NOT on every prop update — that would overwrite typing.
+  const [local, setLocal] = useState({
+    name:         room.name,
+    internalTemp: room.internalTemp,
+    roomLength:   room.roomLength,
+    roomWidth:    room.roomWidth,
+    roomHeight:   room.roomHeight,
+    volume:       room.volume,
+    floorArea:    room.floorArea,
+  });
+
+  useEffect(() => {
+    setLocal({
+      name:         room.name,
+      internalTemp: room.internalTemp,
+      roomLength:   room.roomLength,
+      roomWidth:    room.roomWidth,
+      roomHeight:   room.roomHeight,
+      volume:       room.volume,
+      floorArea:    room.floorArea,
+    });
+  }, [room.id]); // only re-sync when switching rooms, not on every server reload
+
+  const handleChange = (field, value) => {
+    setLocal(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleNumberBlur = (field) => {
+    const raw    = local[field];
+    const parsed = parseFloat(raw);
+    const safe   = isNaN(parsed) ? 0 : parsed;
+    setLocal(prev => ({ ...prev, [field]: safe }));
+    onUpdate(room.id, field, safe);
+  };
+
+  const handleNameBlur = () => {
+    const name = local.name.trim() || 'New Room';
+    setLocal(prev => ({ ...prev, name }));
+    onUpdate(room.id, 'name', name);
+  };
+
+  // ── Calculations use the server-authoritative room prop, not local state ──
+  // Local state is purely for display while typing. Calculations only update
+  // after a blur commits the value and loadProject reloads the room.
   const isEN12831 = (project?.ventilationMethod ?? 'en12831_cibse2026') === 'en12831_cibse2026';
   const refTemp   = project?.referenceTemp ?? 10.6;
 
-  // ── Design figures (at Te,design) ─────────────────────────────────────────
   const transmissionLoss = calculateTransmissionLoss(room, project.externalTemp);
 
   const en12831Result = isEN12831 && project
@@ -64,14 +112,13 @@ export default function RoomEditor({
     ? transmissionLoss + en12831Result.ventGeneratorDesign
     : totalLossEmitter;
 
-  // ── Typical figures (at Te,ref) ───────────────────────────────────────────
-  // Both fabric and ventilation recalculated at the reference temperature
-  // per CIBSE DHDG 2026 Worksheet A2 parallel calculation columns.
   const fabricTypical = calculateTransmissionLoss(room, refTemp);
   const ventTypical   = isEN12831 && en12831Result
-    ? en12831Result.ventGeneratorTypical   // already at Ti - Te,ref
+    ? en12831Result.ventGeneratorTypical
     : 0;
   const totalTypical  = fabricTypical + ventTypical;
+
+  const inputClass = 'w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500';
 
   return (
     <div>
@@ -81,8 +128,9 @@ export default function RoomEditor({
           <label className="block text-sm font-semibold mb-1">Room Name</label>
           <input
             type="text"
-            value={room.name}
-            onChange={e => onUpdate(room.id, 'name', e.target.value)}
+            value={local.name}
+            onChange={e => handleChange('name', e.target.value)}
+            onBlur={handleNameBlur}
             className="w-full border border-gray-300 rounded px-3 py-2 text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Room Name"
           />
@@ -102,9 +150,10 @@ export default function RoomEditor({
           <label className="block text-sm font-semibold mb-1">Internal Temp (°C)</label>
           <input
             type="number"
-            value={room.internalTemp}
-            onChange={e => onUpdate(room.id, 'internalTemp', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.internalTemp}
+            onChange={e => handleChange('internalTemp', e.target.value)}
+            onBlur={() => handleNumberBlur('internalTemp')}
+            className={inputClass}
           />
         </div>
         <div>
@@ -112,9 +161,10 @@ export default function RoomEditor({
           <input
             type="number"
             step="0.1"
-            value={room.roomLength}
-            onChange={e => onUpdate(room.id, 'roomLength', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.roomLength}
+            onChange={e => handleChange('roomLength', e.target.value)}
+            onBlur={() => handleNumberBlur('roomLength')}
+            className={inputClass}
           />
         </div>
         <div>
@@ -122,9 +172,10 @@ export default function RoomEditor({
           <input
             type="number"
             step="0.1"
-            value={room.roomWidth}
-            onChange={e => onUpdate(room.id, 'roomWidth', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.roomWidth}
+            onChange={e => handleChange('roomWidth', e.target.value)}
+            onBlur={() => handleNumberBlur('roomWidth')}
+            className={inputClass}
           />
         </div>
         <div>
@@ -132,9 +183,10 @@ export default function RoomEditor({
           <input
             type="number"
             step="0.1"
-            value={room.roomHeight}
-            onChange={e => onUpdate(room.id, 'roomHeight', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.roomHeight}
+            onChange={e => handleChange('roomHeight', e.target.value)}
+            onBlur={() => handleNumberBlur('roomHeight')}
+            className={inputClass}
           />
         </div>
         <div>
@@ -142,9 +194,10 @@ export default function RoomEditor({
           <input
             type="number"
             step="0.01"
-            value={room.volume.toFixed(2)}
-            onChange={e => onUpdate(room.id, 'volume', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.volume}
+            onChange={e => handleChange('volume', e.target.value)}
+            onBlur={() => handleNumberBlur('volume')}
+            className={inputClass}
           />
           {room.roomLength > 0 && room.roomWidth > 0 && room.roomHeight > 0 && (
             <div className="text-xs text-gray-500 mt-1">
@@ -157,9 +210,10 @@ export default function RoomEditor({
           <input
             type="number"
             step="0.01"
-            value={room.floorArea.toFixed(2)}
-            onChange={e => onUpdate(room.id, 'floorArea', parseFloat(e.target.value))}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            value={local.floorArea}
+            onChange={e => handleChange('floorArea', e.target.value)}
+            onBlur={() => handleNumberBlur('floorArea')}
+            className={inputClass}
           />
           {room.roomLength > 0 && room.roomWidth > 0 && (
             <div className="text-xs text-gray-500 mt-1">
@@ -168,7 +222,7 @@ export default function RoomEditor({
           )}
         </div>
 
-        {/* Thermal bridging — spans full width so it has room for the label */}
+        {/* Thermal bridging — select fires once on change, no local state needed */}
         <div className="col-span-3">
           <label className="block text-sm font-semibold mb-1">
             Thermal Bridging Addition
@@ -231,9 +285,7 @@ export default function RoomEditor({
             <div className="text-lg font-bold text-blue-600">{transmissionLoss.toFixed(0)} W</div>
           </div>
           <div className="bg-green-50 p-2 rounded">
-            <div className="text-gray-500 text-xs">
-              Ventilation — emitter sizing
-            </div>
+            <div className="text-gray-500 text-xs">Ventilation — emitter sizing</div>
             <div className="text-lg font-bold text-green-600">{ventilationLossEmitter.toFixed(0)} W</div>
           </div>
           <div className="bg-purple-50 p-2 rounded">

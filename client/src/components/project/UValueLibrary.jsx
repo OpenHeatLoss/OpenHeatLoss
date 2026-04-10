@@ -1,8 +1,107 @@
 // client/src/components/project/UValueLibrary.jsx
+//
+// Architecture note:
+//   Each library entry row is extracted into a UValueRow component that holds
+//   its own local state for typed inputs (name, u_value, notes). This prevents
+//   the server round-trip from resetting fields while the user is typing.
+//   The element_category select fires onUpdate immediately — no local state needed.
+
+import { useState, useEffect } from 'react';
 import FloorUValueCalculator from './FloorUValueCalculator';
 import { PlusIcon, TrashIcon } from '../common/Icons';
 import { ELEMENT_TYPES } from '../../utils/constants';
 
+// ---------------------------------------------------------------------------
+// UValueRow — one row per library entry, holds local state for typed inputs
+// ---------------------------------------------------------------------------
+function UValueRow({ uVal, onUpdate, onDelete }) {
+  const [local, setLocal] = useState({
+    name:    uVal.name,
+    uValue:  uVal.u_value,
+    notes:   uVal.notes ?? '',
+  });
+
+  // Sync when switching projects or after an external reload changes the entry
+  useEffect(() => {
+    setLocal({
+      name:    uVal.name,
+      uValue:  uVal.u_value,
+      notes:   uVal.notes ?? '',
+    });
+  }, [uVal.id]);
+
+  const handleChange = (field, value) => {
+    setLocal(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleTextBlur = (field) => {
+    onUpdate(uVal.id, field, local[field]);
+  };
+
+  const handleNumberBlur = () => {
+    const parsed = parseFloat(local.uValue);
+    const safe   = isNaN(parsed) ? 0 : parsed;
+    setLocal(prev => ({ ...prev, uValue: safe }));
+    onUpdate(uVal.id, 'uValue', safe);
+  };
+
+  return (
+    <div className="grid grid-cols-5 gap-2 items-center bg-gray-50 p-3 rounded">
+      {/* Category — select fires immediately, no local state needed */}
+      <select
+        value={uVal.element_category}
+        onChange={e => onUpdate(uVal.id, 'elementCategory', e.target.value)}
+        className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+      >
+        {ELEMENT_TYPES.map(type => (
+          <option key={type} value={type}>{type}</option>
+        ))}
+      </select>
+
+      {/* Name */}
+      <input
+        type="text"
+        value={local.name}
+        onChange={e => handleChange('name', e.target.value)}
+        onBlur={() => handleTextBlur('name')}
+        placeholder="e.g., Cavity wall with insulation"
+        className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+      />
+
+      {/* U-value */}
+      <input
+        type="number"
+        step="0.01"
+        value={local.uValue}
+        onChange={e => handleChange('uValue', e.target.value)}
+        onBlur={handleNumberBlur}
+        className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+      />
+
+      {/* Notes */}
+      <input
+        type="text"
+        value={local.notes}
+        onChange={e => handleChange('notes', e.target.value)}
+        onBlur={() => handleTextBlur('notes')}
+        placeholder="Optional notes"
+        className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+      />
+
+      {/* Delete */}
+      <button
+        onClick={() => onDelete(uVal.id)}
+        className="text-red-600 hover:text-red-700 justify-self-center transition"
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// UValueLibrary — renders the list and delegates each row to UValueRow
+// ---------------------------------------------------------------------------
 export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onUpdate, onDelete }) {
   return (
     <div>
@@ -30,44 +129,12 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
             <div></div>
           </div>
           {project.uValueLibrary.map(uVal => (
-            <div key={uVal.id} className="grid grid-cols-5 gap-2 items-center bg-gray-50 p-3 rounded">
-              <select
-                value={uVal.element_category}
-                onChange={(e) => onUpdate(uVal.id, 'elementCategory', e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
-              >
-                {ELEMENT_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={uVal.name}
-                onChange={(e) => onUpdate(uVal.id, 'name', e.target.value)}
-                placeholder="e.g., Cavity wall with insulation"
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="number"
-                step="0.01"
-                value={uVal.u_value}
-                onChange={(e) => onUpdate(uVal.id, 'uValue', parseFloat(e.target.value))}
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="text"
-                value={uVal.notes}
-                onChange={(e) => onUpdate(uVal.id, 'notes', e.target.value)}
-                placeholder="Optional notes"
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={() => onDelete(uVal.id)}
-                className="text-red-600 hover:text-red-700 justify-self-center transition"
-              >
-                <TrashIcon />
-              </button>
-            </div>
+            <UValueRow
+              key={uVal.id}
+              uVal={uVal}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       ) : (
@@ -75,10 +142,11 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
           <p>No U-values defined yet. Click "Add U-Value" to create your library.</p>
         </div>
       )}
+
       <div className="mt-8 border-t pt-6">
-  <h2 className="text-xl font-bold mb-4">Floor U-Value Calculator</h2>
-  <FloorUValueCalculator onSaveToLibrary={onAddFromCalculator} />
-</div>
+        <h2 className="text-xl font-bold mb-4">Floor U-Value Calculator</h2>
+        <FloorUValueCalculator onSaveToLibrary={onAddFromCalculator} />
+      </div>
     </div>
   );
 }
