@@ -620,6 +620,7 @@ const deleteProject = async (id) => {
 
   const handleSaveInstallAddress = async (installDraft) => {
     if (currentProject.installationAddressId) {
+      // Address row already exists — update it in place
       await api.updateAddress(currentProject.installationAddressId, {
         addressLine1: installDraft.customerAddressLine1,
         addressLine2: installDraft.customerAddressLine2,
@@ -628,7 +629,22 @@ const deleteProject = async (id) => {
         postcode:     installDraft.customerPostcode,
         what3words:   installDraft.customerWhat3words,
       });
+    } else {
+      // No address row yet (anonymous or newly created project) —
+      // create one and link it to this project.
+      await api.addProjectAddress(currentProject.id, {
+        addressLine1: installDraft.customerAddressLine1,
+        addressLine2: installDraft.customerAddressLine2,
+        town:         installDraft.customerTown,
+        county:       installDraft.customerCounty,
+        postcode:     installDraft.customerPostcode,
+        what3words:   installDraft.customerWhat3words,
+        addressType:  'installation',
+        isPrimary:    true,
+      });
     }
+
+    // Apply MCS design temperature from postcode if available
     const mcs = getMCSDataFromPostcode(installDraft.customerPostcode);
     if (mcs) {
       await api.updateDesignParams(currentProject.id, {
