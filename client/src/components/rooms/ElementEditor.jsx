@@ -110,8 +110,7 @@ function ElementRow({
     area:   element.area,
   });
 
-  // Sync when switching to a different element (e.g. after a room reload
-  // inserts a new element above this one and React re-uses the component)
+  // Sync all fields when switching to a different element
   useEffect(() => {
     setLocal({
       length: element.length,
@@ -119,6 +118,12 @@ function ElementRow({
       area:   element.area,
     });
   }, [element.id]);
+
+  // area is auto-calculated server-side when length or height changes and
+  // comes back via loadProject — sync it so the input box reflects the result
+  useEffect(() => {
+    setLocal(prev => ({ ...prev, area: element.area }));
+  }, [element.area]);
 
   const handleNumberChange = (field, value) => {
     setLocal(prev => ({ ...prev, [field]: value }));

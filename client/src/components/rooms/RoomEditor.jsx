@@ -61,6 +61,7 @@ export default function RoomEditor({
     floorArea:    room.floorArea,
   });
 
+  // Re-sync all fields when switching to a different room
   useEffect(() => {
     setLocal({
       name:         room.name,
@@ -71,7 +72,18 @@ export default function RoomEditor({
       volume:       room.volume,
       floorArea:    room.floorArea,
     });
-  }, [room.id]); // only re-sync when switching rooms, not on every server reload
+  }, [room.id]);
+
+  // volume and floorArea are auto-calculated server-side when dimensions change
+  // and come back via loadProject — sync them whenever the server value changes
+  // so the input boxes reflect the calculated result after a dimension blur.
+  useEffect(() => {
+    setLocal(prev => ({ ...prev, volume: room.volume }));
+  }, [room.volume]);
+
+  useEffect(() => {
+    setLocal(prev => ({ ...prev, floorArea: room.floorArea }));
+  }, [room.floorArea]);
 
   const handleChange = (field, value) => {
     setLocal(prev => ({ ...prev, [field]: value }));
