@@ -28,24 +28,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
   } else {
     console.log('Connected to SQLite database at:', dbPath);
     db.run('PRAGMA foreign_keys = ON');
-    initializeDatabase(_dbReadyCallback);
+    initializeDatabase();
   }
 });
-
-// _dbReadyCallback is set by waitForDb() before the db opens.
-// _dbReady tracks whether initialisation has already completed
-// (handles the case where require() is slow and DB finishes first).
-let _dbReadyCallback = null;
-let _dbReady = false;
-
-function waitForDb(fn) {
-  if (_dbReady) {
-    // DB already initialised by the time this is called — fire immediately
-    fn();
-  } else {
-    _dbReadyCallback = fn;
-  }
-}
 
 // Promisified helpers — all database operations use these
 // rather than raw callbacks, keeping the rest of the code clean.
@@ -75,7 +60,7 @@ const allQuery = (sql, params = []) => new Promise((resolve, reject) => {
 // Creates all tables in dependency order (parents before children).
 // Safe to call on an empty database — uses IF NOT EXISTS throughout.
 // ---------------------------------------------------------------------------
-function initializeDatabase(onReady) {
+function initializeDatabase() {
   db.serialize(() => {
 
     // -- TIER 1: no foreign key dependencies ----------------------------------
@@ -280,6 +265,29 @@ function initializeDatabase(onReady) {
         display_order     INTEGER DEFAULT 0,
         no_trv            INTEGER DEFAULT 0,
         created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS room_ufh_specs (
+        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id                   INTEGER NOT NULL UNIQUE
+                                    REFERENCES rooms(id) ON DELETE CASCADE,
+        floor_construction        TEXT    DEFAULT 'screed',
+        pipe_spacing_mm           INTEGER DEFAULT 150,
+        pipe_od_m                 REAL    DEFAULT 0.016,
+        screed_depth_above_pipe_m REAL    DEFAULT 0.045,
+        lambda_screed             REAL    DEFAULT 1.2,
+        floor_covering            TEXT    DEFAULT 'tiles',
+        r_lambda                  REAL    DEFAULT 0.00,
+        active_area_factor        REAL    DEFAULT 1.00,
+        zone_type                 TEXT    DEFAULT 'occupied',
+        notes                     TEXT,
+        ufh_flow_temp             REAL    DEFAULT 45,
+        ufh_return_temp           REAL    DEFAULT 40,
+        has_actuator              INTEGER DEFAULT 0,
+        created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at                DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -723,15 +731,20 @@ function initializeDatabase(onReady) {
 
     // -- MIGRATION 017 --------------------------------------------------------
     // Add has_actuator to room_ufh_specs.
-    // When false (default), the UFH circuit is always open and contributes to
-    // the minimum effective system volume for the 20 L/kW modulation check.
-    // Default 0 (no actuator = always open) is the safer assumption for most
-    // retrofits where UFH is not individually zone-controlled.
+    // NOTE: room_ufh_specs is now in the baseline CREATE TABLE above with
+    // has_actuator included. On a fresh DB this migration is a no-op.
+    // On existing DBs that have the table but lack the column, the ALTER runs.
+    // On existing DBs where the table was missing entirely (e.g. Railway fresh
+    // deploy before this fix), the CREATE TABLE IF NOT EXISTS above handles it.
     // -------------------------------------------------------------------------
     db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '017'", (err, row) => {
       if (row && row.count > 0) return;
+      // Try ALTER — safe to ignore "duplicate column" and "no such table" errors
+      // since the baseline schema now creates the table with has_actuator included.
       db.run(`ALTER TABLE room_ufh_specs ADD COLUMN has_actuator INTEGER DEFAULT 0`, (alterErr) => {
-        if (alterErr && !alterErr.message.includes('duplicate column name')) {
+        if (alterErr &&
+            !alterErr.message.includes('duplicate column name') &&
+            !alterErr.message.includes('no such table')) {
           console.error('Migration 017 error:', alterErr.message);
           return;
         }
@@ -832,18 +845,6 @@ function initializeDatabase(onReady) {
     });
 
     console.log('Database schema initialised');
-
-    // This db.run fires last in the serialize queue — after all CREATE TABLE
-    // statements and migration checks have been submitted. SQLite processes
-    // the queue in order, so by the time this callback runs, the schema and
-    // all migrations are complete and the database is ready for use.
-    db.run('SELECT 1', (err) => {
-      if (err) {
-        console.error('Database readiness check failed:', err.message);
-      }
-      _dbReady = true;
-      if (typeof onReady === 'function') onReady();
-    });
   });
 }
 
@@ -1426,7 +1427,8 @@ const roomEmitters = {
 // ---------------------------------------------------------------------------
 const ufhSpecs = {
   getByRoomId: (roomId) =>
-    getQuery('SELECT * FROM room_ufh_specs WHERE room_id = ?', [roomId]),
+    getQuery('SELECT * FROM room_ufh_specs WHERE room_id = ?', [roomId])
+      .catch(() => null),  // return null if table doesn't exist yet
 
   upsert: (roomId, data) => runQuery(`
   INSERT INTO room_ufh_specs
@@ -1591,5 +1593,4 @@ module.exports = {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
-  waitForDb,
 };
