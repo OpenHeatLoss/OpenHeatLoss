@@ -1357,7 +1357,7 @@ const elements = {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [data.roomId, data.elementType, data.description,
      data.length, data.height, data.area, data.uValue, data.tempFactor,
-     data.customDeltaT || null, data.subtractFromElementId || null,
+     data.customDeltaT ?? null, data.subtractFromElementId ?? null,
      data.includeInEnvelope ?? 0]
   ),
 
@@ -1368,7 +1368,7 @@ const elements = {
       include_in_envelope = ?
     WHERE id = ?`,
     [data.elementType, data.description, data.length, data.height, data.area,
-     data.uValue, data.tempFactor, data.customDeltaT || null,
+     data.uValue, data.tempFactor, data.customDeltaT ?? null,
      data.subtractFromElementId || null,
      data.includeInEnvelope ?? 0,
      id]
