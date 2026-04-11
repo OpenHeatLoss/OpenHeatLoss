@@ -50,4 +50,4 @@ COPY --from=builder /app/public ./public/
 # Railway injects PORT — Express already reads process.env.PORT
 EXPOSE 3000
 
-CMD ["node", "server/server.js"]
+CMD ["sh", "-c", "node server/migrate.js && node server/server.js"]
