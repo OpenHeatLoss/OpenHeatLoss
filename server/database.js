@@ -744,32 +744,70 @@ const radiatorSchedule = {
 
 // ---------------------------------------------------------------------------
 // GET COMPLETE PROJECT
-// Assembles everything the frontend needs in a single async call.
+// Assembles everything the frontend needs with minimal round-trips.
+//
+// Strategy:
+//   Batch 1 (parallel): project + designParams + rooms + uValueLibrary + radSpecs
+//   Batch 2 (parallel): client + clientAddresses + projectAddresses
+//                     + ALL room sub-data fetched once per type using ANY($1)
+//
+// For N rooms this is 7 queries total regardless of room count,
+// vs the previous 6 + 4N sequential queries.
 // ---------------------------------------------------------------------------
 async function getCompleteProject(projectId) {
-  const project = await projects.getById(projectId);
+  // Batch 1 — things we can fetch knowing only the projectId
+  const [project, dp, projectRooms, uValues, radSpecs] = await Promise.all([
+    projects.getById(projectId),
+    designParams.getByProjectId(projectId),
+    rooms.getByProjectId(projectId),
+    uValueLibrary.getByProjectId(projectId),
+    radiatorSpecs.getAll(),
+  ]);
+
   if (!project) return null;
 
-  const client = project.client_id
-    ? await clients.getById(project.client_id)
-    : null;
-  const clientAddresses = project.client_id
-    ? await addresses.getByClientId(project.client_id)
-    : [];
+  const roomIds = projectRooms.map(r => r.id);
 
-  const projectAddressList = await addresses.getByProjectId(projectId);
-  const dp = await designParams.getByProjectId(projectId);
+  // Batch 2 — client data (needs project.client_id) + all room sub-data in
+  // one query per type using ANY($1) rather than one query per room.
+  const [
+    client,
+    clientAddresses,
+    projectAddressList,
+    allElements,
+    allEmitters,
+    allRadSchedule,
+    allUfhSpecs,
+  ] = await Promise.all([
+    project.client_id ? clients.getById(project.client_id) : Promise.resolve(null),
+    project.client_id ? addresses.getByClientId(project.client_id) : Promise.resolve([]),
+    addresses.getByProjectId(projectId),
 
-  const projectRooms = await rooms.getByProjectId(projectId);
+    // Fetch all elements / emitters / schedule / UFH for every room at once
+    roomIds.length
+      ? allQuery('SELECT * FROM elements WHERE room_id = ANY($1) ORDER BY room_id, id', [roomIds])
+      : Promise.resolve([]),
+    roomIds.length
+      ? allQuery('SELECT * FROM room_emitters WHERE room_id = ANY($1)', [roomIds])
+      : Promise.resolve([]),
+    roomIds.length
+      ? allQuery(
+          'SELECT * FROM radiator_schedule WHERE room_id = ANY($1) ORDER BY room_id, display_order, id',
+          [roomIds]
+        )
+      : Promise.resolve([]),
+    roomIds.length
+      ? allQuery('SELECT * FROM room_ufh_specs WHERE room_id = ANY($1)', [roomIds])
+      : Promise.resolve([]),
+  ]);
+
+  // Stitch sub-data back onto each room in JS — no extra round-trips
   for (const room of projectRooms) {
-    room.elements         = await elements.getByRoomId(room.id);
-    room.emitters         = await roomEmitters.getByRoomId(room.id);
-    room.radiatorSchedule = await radiatorSchedule.getByRoomId(room.id);
-    room.ufhSpecs         = await ufhSpecs.getByRoomId(room.id) || null;
+    room.elements         = allElements.filter(e => e.room_id === room.id);
+    room.emitters         = allEmitters.filter(e => e.room_id === room.id);
+    room.radiatorSchedule = allRadSchedule.filter(e => e.room_id === room.id);
+    room.ufhSpecs         = allUfhSpecs.find(e => e.room_id === room.id) || null;
   }
-
-  const uValues  = await uValueLibrary.getByProjectId(projectId);
-  const radSpecs = await radiatorSpecs.getAll();
 
   return {
     ...project,
