@@ -1,5 +1,5 @@
 // client/src/components/calculations/RadiatorSizing.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { calculateRoomTotal } from '../../utils/calculations';
 import { RADIATOR_CONNECTION_TYPES, CONNECTION_TYPE_CORRECTIONS } from '../../utils/constants';
 import { PlusIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, XIcon } from '../common/Icons';
@@ -320,6 +320,7 @@ export default function RadiatorSizing({
   onUpdateRadiatorSchedule,
   onUpdateUFHSpecs,
   onAddUFHEmitter,
+  onRemoveUFH,
 }) {
   const [expandedRooms, setExpandedRooms] = useState(new Set());
   const [showAddRadiator, setShowAddRadiator] = useState(false);
@@ -744,6 +745,7 @@ export default function RadiatorSizing({
                       project={project}
                       systemSettings={systemSettings}
                       onUpdateUFHSpecs={onUpdateUFHSpecs}
+                      onRemoveUFH={onRemoveUFH}
                     />
                   )}
                   <RoomRadiatorSchedule
@@ -918,7 +920,7 @@ function SystemSummaryPanel({ analysis, systemSettings }) {
 // ---------------------------------------------------------------------------
 // UFH PANEL
 // ---------------------------------------------------------------------------
-function UFHPanel({ room, project, systemSettings, onUpdateUFHSpecs }) {
+function UFHPanel({ room, project, systemSettings, onUpdateUFHSpecs, onRemoveUFH }) {
   const defaultSpecs = {
     floorConstruction:    'screed',
     pipeSpacingMm:        150,
@@ -937,6 +939,11 @@ function UFHPanel({ room, project, systemSettings, onUpdateUFHSpecs }) {
   };
   const [draft, setDraft] = useState(room.ufhSpecs || defaultSpecs);
   const [saving, setSaving] = useState(false);
+
+  // Sync draft when server data changes (e.g. after save + reload, or tab switch)
+  useEffect(() => {
+    if (room.ufhSpecs) setDraft(room.ufhSpecs);
+  }, [room.ufhSpecs]);
 
   const isScreedException = draft.floorConstruction === 'screed';
 
@@ -1009,7 +1016,21 @@ function UFHPanel({ room, project, systemSettings, onUpdateUFHSpecs }) {
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-      <h4 className="font-semibold text-blue-900 mb-3">UFH specification</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-semibold text-blue-900">UFH specification</h4>
+        {onRemoveUFH && (
+          <button
+            onClick={() => {
+              if (window.confirm('Remove UFH specification from this room?\n\nThe UFH emitter will also be removed. This cannot be undone.')) {
+                onRemoveUFH(room.id);
+              }
+            }}
+            className="text-xs text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 rounded px-2 py-1 transition"
+          >
+            Remove UFH
+          </button>
+        )}
+      </div>
 
       {/* UFH circuit temperatures */}
       <div className="bg-white border border-blue-200 rounded-lg p-3 mb-4">

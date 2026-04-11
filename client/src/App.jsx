@@ -1046,6 +1046,19 @@ const deleteProject = async (id) => {
     }
   };
 
+  const removeUFHSpecs = async (roomId) => {
+    try {
+      // Remove the UFH emitter entry and the UFH spec row for this room
+      const room = currentProject.rooms.find(r => r.id === roomId);
+      const ufhEmitter = room?.emitters?.find(e => e.emitterType === 'UFH');
+      if (ufhEmitter) await api.deleteRoomEmitter(ufhEmitter.id);
+      await api.deleteUFHSpecs(roomId);
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error removing UFH specs:', error);
+    }
+  };
+
   // Radiator Schedule handlers
   const updateRadiatorSchedule = async (roomId, action, data) => {
     try {
@@ -1399,6 +1412,7 @@ const deleteProject = async (id) => {
                 onUpdateRadiatorSchedule={updateRadiatorSchedule}
                 onUpdateUFHSpecs={updateUFHSpecs}
                 onAddUFHEmitter={addUFHEmitter}
+                onRemoveUFH={removeUFHSpecs}
               />
             )}
             {activeTab === 'pipe-sizing' && (
