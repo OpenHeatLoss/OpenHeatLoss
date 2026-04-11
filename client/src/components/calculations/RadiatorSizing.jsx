@@ -438,7 +438,11 @@ export default function RadiatorSizing({
           lambdaScreed: ufh.lambdaScreed          ?? 1.2,
         } : null;
         const minMWT  = calcMinMWTForOutput(qWm2Target, room.internalTemp, ufh.floorConstruction, ufh.pipeSpacingMm, ufh.rLambda, sp);
-        const minFlow = mwtToFlowTemp(minMWT, systemSettings.returnTemp);
+        // Use the UFH circuit's own return temp, not the system return temp.
+        // mwtToFlowTemp(mwt, ret) = 2*mwt - ret; using system return gives a
+        // nonsensically low result when the UFH ΔT differs from the system ΔT.
+        const ufhDeltaT = ufhFlow - ufhReturn;
+        const minFlow = minMWT + (ufhDeltaT / 2);
         if (minUFHFlowTemp === null || minFlow > minUFHFlowTemp) minUFHFlowTemp = minFlow;
         const currentQ  = calcUFHOutput(mwt, room.internalTemp, ufh.floorConstruction, ufh.pipeSpacingMm, ufh.rLambda, sp);
         const floorTemp = calcFloorSurfaceTemp(room.internalTemp, currentQ);
