@@ -636,6 +636,24 @@ async function runMigrations() {
 // ---------------------------------------------------------------------------
 async function main() {
   console.log('=== Mysa Heating Platform — Postgres migration ===');
+  
+  // Retry connection up to 10 times with 2s delay — Postgres may not be
+  // ready immediately on Railway, especially on first deploy.
+  const MAX_RETRIES = 10;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await pool.query('SELECT 1');
+      break; // connected
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        console.error('Could not connect to Postgres after', MAX_RETRIES, 'attempts');
+        process.exit(1);
+      }
+      console.log(`Waiting for Postgres... (attempt ${attempt}/${MAX_RETRIES})`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
   try {
     await baseline();
     await recreateViews();
