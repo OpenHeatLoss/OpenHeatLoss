@@ -478,7 +478,9 @@ app.get('/api/projects', async (req, res) => {
 
 app.get('/api/projects/:id', async (req, res) => {
   try {
-    const project = await getCompleteProject(req.params.id);
+    const companyId    = req.user?.companyId || null;
+    const sessionToken = req.user ? null : req.anonToken;
+    const project = await getCompleteProject(req.params.id, { companyId, sessionToken });
     if (!project) return res.status(404).json({ error: 'Project not found' });
     res.json(project);
   } catch (error) {
@@ -507,7 +509,9 @@ app.post('/api/projects', async (req, res) => {
       await addresses.linkToProject(projectId, installationAddressId, 'installation', 1);
     }
 
-    const newProject = await getCompleteProject(projectId);
+    const companyId2    = req.user?.companyId || null;
+    const sessionToken2 = req.user ? null : req.anonToken;
+    const newProject = await getCompleteProject(projectId, { companyId: companyId2, sessionToken: sessionToken2 });
     res.status(201).json(newProject);
   } catch (error) {
     console.error('Error creating project:', error);

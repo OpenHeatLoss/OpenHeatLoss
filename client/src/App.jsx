@@ -1025,12 +1025,15 @@ const deleteProject = async (id) => {
     }
   };
 
+  // Change addRadiatorSpec to return the new id:
   const addRadiatorSpec = async (radiatorData) => {
     try {
-      await api.createRadiatorSpec(radiatorData);
+      const result = await api.createRadiatorSpec(radiatorData);
       await loadProject(currentProject.id, true);
+      return result.id;  // ← return the new id to the caller
     } catch (error) {
       console.error('Error adding radiator spec:', error);
+      return null;
     }
   };
 

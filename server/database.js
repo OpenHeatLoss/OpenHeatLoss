@@ -791,14 +791,14 @@ const radiatorSchedule = {
 // For N rooms this is 7 queries total regardless of room count,
 // vs the previous 6 + 4N sequential queries.
 // ---------------------------------------------------------------------------
-async function getCompleteProject(projectId) {
+async function getCompleteProject(projectId, { companyId = null, sessionToken = null } = {}) {
   // Batch 1 — things we can fetch knowing only the projectId
   const [project, dp, projectRooms, uValues, radSpecs] = await Promise.all([
     projects.getById(projectId),
     designParams.getByProjectId(projectId),
     rooms.getByProjectId(projectId),
     uValueLibrary.getByProjectId(projectId),
-    radiatorSpecs.getAll(),
+    radiatorSpecs.getAll({ companyId, sessionToken }),
   ]);
 
   if (!project) return null;
