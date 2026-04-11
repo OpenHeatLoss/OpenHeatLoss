@@ -884,6 +884,19 @@ function initializeDatabase(onReady) {
       });
     });
 
+    // Migration 022 - add plan column to users
+    db.get(`SELECT COUNT(*) as count FROM schema_migrations WHERE version = '022'`, (err, row) => {
+      if (row && row.count > 0) return;
+      db.run(`ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'`, (alterErr) => {
+        if (alterErr && !alterErr.message.includes('duplicate column')) {
+          console.error('Migration 022 error:', alterErr);
+          return;
+        }
+        db.run(`INSERT OR IGNORE INTO schema_migrations (version, description) VALUES ('022', 'Add plan column to users')`);
+        console.log('Migration 022 complete — plan column added to users');
+      });
+    });
+
     console.log('Database schema initialised');
 
     // This fires last in the serialize queue — after all CREATE TABLE and

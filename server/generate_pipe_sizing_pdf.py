@@ -127,8 +127,12 @@ def generate_pipe_sizing_pdf(data, output_path):
     story = []
 
     # ── Title ─────────────────────────────────────────────────────────────────
+    brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
+        fontSize=11, textColor=BLUE_MID, alignment=TA_CENTER, spaceAfter=2)
+    story.append(Paragraph("OpenHeatLoss.com", brand_style))
     story.append(Paragraph("Pipe Sizing Installation Report", title_style))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_style))
+    story.append(Spacer(1, 0.3*cm))
 
     # ── Project info  17.0cm: [5.0, 12.0] ────────────────────────────────────
     story.append(Paragraph("Project Information", heading_style))

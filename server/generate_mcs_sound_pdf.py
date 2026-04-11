@@ -55,9 +55,11 @@ def create_mcs_sound_pdf(data, output_filename):
     story = []
     
     # Header
+    brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
+        fontSize=11, textColor=colors.HexColor('#1e40af'), alignment=TA_CENTER, spaceAfter=2)
+    story.append(Paragraph("OpenHeatLoss.com", brand_style))
     story.append(Paragraph("MCS 020 a) Sound Calculation Assessment", title_style))
-    story.append(Paragraph("Air Source Heat Pump - Permitted Development", styles['Normal']))
-    story.append(Spacer(1, 0.5*cm))
+    story.append(Spacer(1, 0.3*cm))
     
     # Project Information
     story.append(Paragraph("Project Information", heading_style))

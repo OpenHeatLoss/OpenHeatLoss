@@ -55,8 +55,11 @@ def create_mcs_performance_pdf(data, output_filename):
     story = []
     
     # Header
+    brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
+        fontSize=11, textColor=colors.HexColor('#1e40af'), alignment=TA_CENTER, spaceAfter=2)
+    story.append(Paragraph("OpenHeatLoss.com", brand_style))
     story.append(Paragraph("MCS 031 Heat Pump System Performance Estimate", title_style))
-    story.append(Spacer(1, 0.5*cm))
+    story.append(Spacer(1, 0.3*cm))
     
     # Project Information
     story.append(Paragraph("Project Information", heading_style))

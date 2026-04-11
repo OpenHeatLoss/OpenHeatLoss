@@ -27,13 +27,10 @@ function App() {
   const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan }
-  const [showAuthModal, setShowAuthModal] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId }
+  const [showAuthModal, setShowAuthModal] = useState(null); // null | 'register' | 'login'
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-
-  // Derived: only pro users can access the project dashboard
-  const canSeeDashboard = currentUser?.plan === 'pro';
 
   // Boot sequence:
   // 1. Check if already logged in (auth_token cookie via /api/auth/me)
@@ -623,7 +620,6 @@ const deleteProject = async (id) => {
 
   const handleSaveInstallAddress = async (installDraft) => {
     if (currentProject.installationAddressId) {
-      // Address row already exists — update it in place
       await api.updateAddress(currentProject.installationAddressId, {
         addressLine1: installDraft.customerAddressLine1,
         addressLine2: installDraft.customerAddressLine2,
@@ -632,22 +628,7 @@ const deleteProject = async (id) => {
         postcode:     installDraft.customerPostcode,
         what3words:   installDraft.customerWhat3words,
       });
-    } else {
-      // No address row yet (anonymous or newly created project) —
-      // create one and link it to this project.
-      await api.addProjectAddress(currentProject.id, {
-        addressLine1: installDraft.customerAddressLine1,
-        addressLine2: installDraft.customerAddressLine2,
-        town:         installDraft.customerTown,
-        county:       installDraft.customerCounty,
-        postcode:     installDraft.customerPostcode,
-        what3words:   installDraft.customerWhat3words,
-        addressType:  'installation',
-        isPrimary:    true,
-      });
     }
-
-    // Apply MCS design temperature from postcode if available
     const mcs = getMCSDataFromPostcode(installDraft.customerPostcode);
     if (mcs) {
       await api.updateDesignParams(currentProject.id, {
@@ -1134,7 +1115,7 @@ const deleteProject = async (id) => {
   }
 
   // Project selection screen
-  if (!currentProject && canSeeDashboard) {
+  if (!currentProject) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">
@@ -1180,35 +1161,6 @@ const deleteProject = async (id) => {
               />
             )}
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Free registered user with no project loaded — reload their project
-  // This handles logout → reload, error fallbacks, etc.
-  if (!currentProject && currentUser && !canSeeDashboard) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
-          <h2 className="text-xl font-bold text-gray-800 mb-2">OpenHeatLoss</h2>
-          <p className="text-gray-500 mb-6">Loading your project...</p>
-          <button
-            onClick={async () => {
-              const res = await fetch('/api/projects');
-              const userProjects = await res.json();
-              if (userProjects.length > 0) loadProject(userProjects[0].id);
-            }}
-            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition"
-          >
-            Open Project
-          </button>
-          <button
-            onClick={handleLogout}
-            className="block mx-auto mt-3 text-sm text-gray-400 hover:text-gray-600"
-          >
-            Log out
-          </button>
         </div>
       </div>
     );
@@ -1295,14 +1247,12 @@ const deleteProject = async (id) => {
                 Log out
               </button>
             )}
-            {canSeeDashboard && (
-              <button
-                onClick={() => setCurrentProject(null)}
-                className="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded transition"
-              >
-                Close
-              </button>
-            )}
+            <button
+              onClick={() => setCurrentProject(null)}
+              className="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded transition"
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>
@@ -1425,14 +1375,12 @@ const deleteProject = async (id) => {
               <SaveIcon />
               {isAnonymous ? 'Register free to Save' : (saving ? 'Saving...' : 'Save Project')}
             </button>
-            {canSeeDashboard && (
-              <button
-                onClick={() => setCurrentProject(null)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition font-semibold shadow-md"
-              >
-                Close Project
-              </button>
-            )}
+            <button
+              onClick={() => setCurrentProject(null)}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition font-semibold shadow-md"
+            >
+              Close Project
+            </button>
           </div>
         </div>
       </div>

@@ -112,6 +112,9 @@ def create_heat_loss_pdf(data, output_filename):
     story = []
 
     # ── Header ──────────────────────────────────────────────────────────────
+    brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
+        fontSize=11, textColor=BLUE_MID, alignment=TA_CENTER, spaceAfter=2)
+    story.append(Paragraph("OpenHeatLoss.com", brand_style))
     story.append(Paragraph("Heat Loss Calculation Report", title_style))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_style))
     story.append(Spacer(1, 0.3*cm))
@@ -509,6 +512,117 @@ def create_heat_loss_pdf(data, output_filename):
         story.append(Paragraph("No rooms have been added to this project.", styles['Normal']))
 
     story.append(Spacer(1, 0.4*cm))
+
+    # ── SCOP Estimator ───────────────────────────────────────────────────
+    scop = data.get('scop')
+    if scop:
+        story.append(Paragraph("Performance Estimator (SCOP)", heading_style))
+
+        green_light = colors.HexColor('#dcfce7')
+        blue_light2  = colors.HexColor('#dbeafe')
+        purple_light = colors.HexColor('#ede9fe')
+        purple_mid   = colors.HexColor('#7c3aed')
+
+        # ── Three headline figures ────────────────────────────────────────
+        sh_scop  = scop.get('shScop', '—')
+        dhw_scop = scop.get('dhwScop')
+        ws_scop  = scop.get('wholeScop')
+
+        sh_sub  = f"Without defrost: {scop.get('shScopNoDefrost', '—')}"
+        dhw_sub = (
+            f"{scop.get('occupants')} occupants · {scop.get('cylinderLitres')}L · "
+            f"Pasteurisation COP: {scop.get('dhwCopPast', '—')}"
+            if dhw_scop else "Enter occupants & cylinder volume in MCS031 to enable"
+        )
+        ws_sub = (
+            f"{scop.get('wholeTotalHeatKwh', 0):,.0f} kWh heat · "
+            f"{scop.get('wholeTotalElecKwh', 0):,.0f} kWh electricity"
+            if ws_scop else "Requires DHW data"
+        )
+
+        scop_header_style = ParagraphStyle('SCH', parent=styles['Normal'],
+            fontSize=8, textColor=colors.HexColor('#6b7280'), alignment=TA_CENTER)
+        scop_value_style  = ParagraphStyle('SCV', parent=styles['Normal'],
+            fontSize=20, fontName='Helvetica-Bold', alignment=TA_CENTER)
+        scop_sub_style    = ParagraphStyle('SCS', parent=styles['Normal'],
+            fontSize=7.5, textColor=colors.HexColor('#6b7280'), alignment=TA_CENTER)
+
+        def scop_cell(label, value, sub, bg, value_color):
+            return [
+                Paragraph(label, scop_header_style),
+                Paragraph(str(value) if value else '—',
+                          ParagraphStyle('SCV2', parent=scop_value_style, textColor=value_color)),
+                Paragraph(sub, scop_sub_style),
+            ]
+
+        scop_rows = [
+            [
+                scop_cell("Space Heating SCOP", sh_scop,
+                          sh_sub, green_light, GREEN),
+                scop_cell("DHW SCOP", dhw_scop,
+                          dhw_sub, blue_light2, BLUE_MID),
+                scop_cell("Whole-System SCOP", ws_scop,
+                          ws_sub, purple_light, purple_mid),
+            ]
+        ]
+
+        scop_table = Table(scop_rows, colWidths=[5.8*cm, 5.8*cm, 5.8*cm])
+        scop_style = [
+            ('BACKGROUND', (0, 0), (0, 0), green_light),
+            ('BACKGROUND', (1, 0), (1, 0), blue_light2 if dhw_scop else GRAY_LIGHT),
+            ('BACKGROUND', (2, 0), (2, 0), purple_light if ws_scop else GRAY_LIGHT),
+            ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN',     (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
+        ]
+        scop_table.setStyle(TableStyle(scop_style))
+        story.append(scop_table)
+        story.append(Spacer(1, 0.3*cm))
+
+        # ── Annual energy table ───────────────────────────────────────────
+        energy_rows = [['', 'Heat demand', 'Electricity']]
+        energy_rows.append([
+            'Space heating',
+            f"{scop.get('shHeatKwh', 0):,.0f} kWh",
+            f"{scop.get('shElecKwh', 0):,.0f} kWh",
+        ])
+        if dhw_scop:
+            energy_rows.append([
+                'Domestic hot water',
+                f"{scop.get('dhwHeatKwh', 0):,.0f} kWh",
+                f"{scop.get('dhwElecKwh', 0):,.0f} kWh",
+            ])
+        if ws_scop:
+            energy_rows.append([
+                'TOTAL',
+                f"{scop.get('wholeTotalHeatKwh', 0):,.0f} kWh",
+                f"{scop.get('wholeTotalElecKwh', 0):,.0f} kWh",
+            ])
+
+        energy_table = Table(energy_rows, colWidths=[5.8*cm, 5.8*cm, 5.8*cm])
+        energy_style = make_table_style(header_bg=GRAY_DARK) + [
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('FONTNAME', (0, len(energy_rows)-1), (-1, len(energy_rows)-1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, len(energy_rows)-1), (-1, len(energy_rows)-1), BLUE_LIGHT),
+            ('LINEABOVE', (0, len(energy_rows)-1), (-1, len(energy_rows)-1), 1, BLUE_MID),
+        ] if ws_scop else make_table_style(header_bg=GRAY_DARK) + [
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ]
+        energy_table.setStyle(TableStyle(energy_style))
+        story.append(energy_table)
+        story.append(Spacer(1, 0.15*cm))
+        story.append(Paragraph(
+            f"Carnot efficiency model fitted from EN 14511 test data. Flow temperature derived from building W/K "
+            f"via LMTD exponent method. Balance point {scop.get('balancePoint', 12.5)}\u00b0C. "
+            f"UK bin hours per EN 14825:2022 Annex C extended climate. "
+            f"This is an engineering estimate, not a replacement for MCS compliance calculation.",
+            small_style
+        ))
+        story.append(Spacer(1, 0.3*cm))
 
     # ── Ventilation Warnings ─────────────────────────────────────────────
     vent_warnings = data.get('ventWarnings', [])

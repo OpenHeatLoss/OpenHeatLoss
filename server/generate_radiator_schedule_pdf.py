@@ -101,8 +101,12 @@ def create_radiator_schedule_pdf(data, output_filename):
     story = []
 
     # ── Header ──────────────────────────────────────────────────────────────
+    brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
+        fontSize=11, textColor=BLUE_MID, alignment=TA_CENTER, spaceAfter=2)
+    story.append(Paragraph("OpenHeatLoss.com", brand_style))
     story.append(Paragraph("Radiator Schedule", title_style))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_style))
+    story.append(Spacer(1, 0.3*cm))
 
     # ── Project info  17.4cm: [2.4, 6.3, 2.4, 6.3] ───────────────────────
     cust_name = f"{data.get('customerTitle','')} {data.get('customerFirstName','')} {data.get('customerSurname','')}".strip()

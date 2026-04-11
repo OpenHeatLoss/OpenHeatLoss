@@ -302,6 +302,25 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
         },
         ventWarnings,
         rooms: roomData,
+        // SCOP estimator — only included if calculated
+        scop: shScop ? {
+          shScop:          shScop.scop,
+          shScopNoDefrost: shScop.scopNoDefrost,
+          shHeatKwh:       shScop.totalHeatKwh,
+          shElecKwh:       shScop.totalElecKwh,
+          dhwScop:         dhwScop ? dhwScop.dhwScop    : null,
+          dhwCopPast:      dhwScop ? dhwScop.copPast    : null,
+          dhwHeatKwh:      dhwScop ? dhwScop.totalDHWHeatKwh : null,
+          dhwElecKwh:      dhwScop ? dhwScop.totalElecKwh    : null,
+          occupants:       project.mcsOccupants       || null,
+          cylinderLitres:  project.mcsCylinderVolume  || null,
+          wholeScop:       wholeScop ? wholeScop.wholeSystemScop : null,
+          wholeTotalHeatKwh: wholeScop ? wholeScop.totalHeatKwh  : null,
+          wholeTotalElecKwh: wholeScop ? wholeScop.totalElecKwh  : null,
+          defrostPct,
+          balancePoint,
+          emitterType,
+        } : null,
       };
 
       const response = await fetch('/api/generate-pdf/heat-loss', {
