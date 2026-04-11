@@ -124,14 +124,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Create a company record for this user (company-of-one model).
     // They can update their company name/details later in Settings.
-    const companyResult = await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO companies (name) VALUES (?)`,
-        [`${name}'s Company`],
-        function(err) { if (err) reject(err); else resolve({ id: this.lastID }); }
-      );
-    });
-    const companyId = companyResult.id;
+    const companyResult = await pool.query(
+      `INSERT INTO companies (name) VALUES ($1) RETURNING id`,
+      [`${name}'s Company`]
+    );
+    const companyId = companyResult.rows[0].id;
 
     // Hash password and create user
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -149,14 +146,11 @@ app.post('/api/auth/register', async (req, res) => {
     let projectId = null;
     if (claimed.changes > 0) {
       // Find the project we just claimed
-      const claimedProject = await new Promise((resolve, reject) => {
-        db.get(
-          'SELECT id FROM projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
-          [userId],
-          (err, row) => { if (err) reject(err); else resolve(row); }
-        );
-      });
-      if (claimedProject) projectId = claimedProject.id;
+      const claimedProject = await pool.query(
+        'SELECT id FROM projects WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [userId]
+      );
+      if (claimedProject.rows[0]) projectId = claimedProject.rows[0].id;
     }
 
     // Issue JWT in an httpOnly cookie — 30-day expiry
@@ -278,12 +272,7 @@ app.post('/api/anonymous/project', async (req, res) => {
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const rows = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM v_project_dashboard', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const { rows } = await pool.query('SELECT * FROM v_project_dashboard');
     res.json(rows);
   } catch (error) {
     console.error('Error fetching dashboard:', error);
@@ -551,13 +540,10 @@ app.patch('/api/projects/:id/status', async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
-    await new Promise((resolve, reject) => {
-      db.run(
-        'UPDATE projects SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [status, req.params.id],
-        (err) => { if (err) reject(err); else resolve(); }
-      );
-    });
+    await pool.query(
+      'UPDATE projects SET status = $1, updated_at = NOW() WHERE id = $2',
+      [status, req.params.id]
+    );
     res.json({ id: req.params.id, status });
   } catch (error) {
     console.error('Error updating status:', error);
@@ -774,15 +760,11 @@ app.delete('/api/radiator-specs/:id', async (req, res) => {
 
 app.get('/api/radiator-specs/:id/usage', async (req, res) => {
   try {
-    const row = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT COUNT(*) as count FROM radiator_schedule
-         WHERE radiator_spec_id = ?`,
-        [req.params.id],
-        (err, row) => { if (err) reject(err); else resolve(row); }
-      );
-    });
-    res.json({ count: row.count });
+    const { rows } = await pool.query(
+      'SELECT COUNT(*) as count FROM radiator_schedule WHERE radiator_spec_id = $1',
+      [req.params.id]
+    );
+    res.json({ count: parseInt(rows[0].count) });
   } catch (error) {
     console.error('Error fetching radiator usage:', error);
     res.status(500).json({ error: 'Failed to fetch usage count' });
@@ -867,16 +849,12 @@ app.delete('/api/rooms/:roomId/ufh-specs', async (req, res) => {
 // Get saved survey for a project (returns null if none saved yet)
 app.get('/api/projects/:id/survey', async (req, res) => {
   try {
-    const row = await new Promise((resolve, reject) => {
-      db.get(
-        'SELECT data FROM survey_checklists WHERE project_id = ?',
-        [req.params.id],
-        (err, row) => { if (err) reject(err); else resolve(row); }
-      );
-    });
-    if (!row) return res.json(null);
-    // data is stored as a JSON string — parse before sending
-    res.json(JSON.parse(row.data));
+    const { rows } = await pool.query(
+      'SELECT data FROM survey_checklists WHERE project_id = $1',
+      [req.params.id]
+    );
+    if (!rows[0]) return res.json(null);
+    res.json(typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data);
   } catch (error) {
     console.error('Error fetching survey:', error);
     res.status(500).json({ error: 'Failed to fetch survey' });
@@ -886,17 +864,14 @@ app.get('/api/projects/:id/survey', async (req, res) => {
 // Save (upsert) survey data for a project
 app.post('/api/projects/:id/survey', async (req, res) => {
   try {
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO survey_checklists (project_id, data, updated_at)
-         VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(project_id) DO UPDATE SET
-           data = excluded.data,
-           updated_at = CURRENT_TIMESTAMP`,
-        [req.params.id, JSON.stringify(req.body)],
-        (err) => { if (err) reject(err); else resolve(); }
-      );
-    });
+    await pool.query(
+      `INSERT INTO survey_checklists (project_id, data, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (project_id) DO UPDATE SET
+         data = EXCLUDED.data,
+         updated_at = NOW()`,
+      [req.params.id, JSON.stringify(req.body)]
+    );
     res.json({ saved: true });
   } catch (error) {
     console.error('Error saving survey:', error);
@@ -911,23 +886,18 @@ app.post('/api/projects/:id/survey', async (req, res) => {
 // Get the most recent quote for a project, with its line items
 app.get('/api/projects/:id/quotes', async (req, res) => {
   try {
-    const quote = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM quotes WHERE project_id = ?
-         ORDER BY created_at DESC LIMIT 1`,
-        [req.params.id],
-        (err, row) => { if (err) reject(err); else resolve(row); }
-      );
-    });
+    const quoteRes = await pool.query(
+      'SELECT * FROM quotes WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [req.params.id]
+    );
+    const quote = quoteRes.rows[0];
     if (!quote) return res.json(null);
 
-    const items = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM quote_items WHERE quote_id = ? ORDER BY display_order, id',
-        [quote.id],
-        (err, rows) => { if (err) reject(err); else resolve(rows); }
-      );
-    });
+    const itemsRes = await pool.query(
+      'SELECT * FROM quote_items WHERE quote_id = $1 ORDER BY display_order, id',
+      [quote.id]
+    );
+    const items = itemsRes.rows;
 
     // Parse the checklist JSON blob if present
     let checklist = null;
@@ -949,38 +919,25 @@ app.post('/api/projects/:id/quotes', async (req, res) => {
     const year = new Date().getFullYear();
 
     // Count quotes created this year to get the next sequential number
-    const count = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT COUNT(*) as n FROM quotes
-         WHERE strftime('%Y', created_at) = ?`,
-        [String(year)],
-        (err, row) => { if (err) reject(err); else resolve(row.n); }
-      );
-    });
+    const countRes = await pool.query(
+      `SELECT COUNT(*) as n FROM quotes WHERE EXTRACT(YEAR FROM created_at) = $1`,
+      [year]
+    );
+    const count = parseInt(countRes.rows[0].n);
 
     const reference = `${year}-${String(count + 1).padStart(3, '0')}`;
 
-    const result = await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO quotes
-           (project_id, reference, version, status, prepared_by,
-            valid_days, survey_basis, total_ex_vat, vat_amount,
-            total_inc_vat, bus_grant, client_pays, deposit_amount,
-            hourly_rate, issued_at)
-         VALUES (?, ?, 1, 'draft', ?, 30, 'full', 0, 0, 0, 7500, 0, 0, 0,
-                 CURRENT_TIMESTAMP)`,
-        [req.params.id, reference, req.body.preparedBy || ''],
-        function(err) { if (err) reject(err); else resolve(this.lastID); }
-      );
-    });
-
-    const newQuote = await new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM quotes WHERE id = ?',
-        [result],
-        (err, row) => { if (err) reject(err); else resolve(row); }
-      );
-    });
+    const insertRes = await pool.query(
+      `INSERT INTO quotes
+         (project_id, reference, version, status, prepared_by,
+          valid_days, survey_basis, total_ex_vat, vat_amount,
+          total_inc_vat, bus_grant, client_pays, deposit_amount,
+          hourly_rate, issued_at)
+       VALUES ($1, $2, 1, 'draft', $3, 30, 'full', 0, 0, 0, 7500, 0, 0, 0, NOW())
+       RETURNING *`,
+      [req.params.id, reference, req.body.preparedBy || '']
+    );
+    const newQuote = insertRes.rows[0];
 
     res.status(201).json({ ...newQuote, items: [], checklist: null });
   } catch (error) {
@@ -993,34 +950,31 @@ app.post('/api/projects/:id/quotes', async (req, res) => {
 app.put('/api/quotes/:id', async (req, res) => {
   try {
     const d = req.body;
-    await new Promise((resolve, reject) => {
-      db.run(
-        `UPDATE quotes SET
-           status = ?, survey_basis = ?, prepared_by = ?,
-           valid_days = ?, total_ex_vat = ?, vat_amount = ?,
-           total_inc_vat = ?, bus_grant = ?, client_pays = ?,
-           deposit_amount = ?, hourly_rate = ?,
-           notes = ?,
-           updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-        [
-          d.status || 'draft',
-          d.surveyBasis || 'full',
-          d.preparedBy || '',
-          d.validDays || 30,
-          d.totalExVat || 0,
-          d.vatAmount || 0,
-          d.totalIncVat || 0,
-          d.busGrant || 7500,
-          d.clientPays || 0,
-          d.depositAmount || 0,
-          d.hourlyRate || 0,
-          d.checklist ? JSON.stringify(d.checklist) : null,
-          req.params.id,
-        ],
-        (err) => { if (err) reject(err); else resolve(); }
-      );
-    });
+    await pool.query(
+      `UPDATE quotes SET
+         status = $1, survey_basis = $2, prepared_by = $3,
+         valid_days = $4, total_ex_vat = $5, vat_amount = $6,
+         total_inc_vat = $7, bus_grant = $8, client_pays = $9,
+         deposit_amount = $10, hourly_rate = $11,
+         notes = $12,
+         updated_at = NOW()
+       WHERE id = $13`,
+      [
+        d.status || 'draft',
+        d.surveyBasis || 'full',
+        d.preparedBy || '',
+        d.validDays || 30,
+        d.totalExVat || 0,
+        d.vatAmount || 0,
+        d.totalIncVat || 0,
+        d.busGrant || 7500,
+        d.clientPays || 0,
+        d.depositAmount || 0,
+        d.hourlyRate || 0,
+        d.checklist ? JSON.stringify(d.checklist) : null,
+        req.params.id,
+      ]
+    );
     res.json({ saved: true });
   } catch (error) {
     console.error('Error updating quote:', error);
@@ -1035,34 +989,25 @@ app.put('/api/quotes/:id/items', async (req, res) => {
   try {
     const items = req.body.items || [];
 
-    await new Promise((resolve, reject) => {
-      db.run(
-        'DELETE FROM quote_items WHERE quote_id = ?',
-        [req.params.id],
-        (err) => { if (err) reject(err); else resolve(); }
-      );
-    });
+    await pool.query('DELETE FROM quote_items WHERE quote_id = $1', [req.params.id]);
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO quote_items
-             (quote_id, item_type, description, quantity,
-              unit_price, total_price, is_optional, display_order)
-           VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
-          [
-            req.params.id,
-            item.itemType || 'goods',
-            item.description,
-            item.quantity || 1,
-            item.unitPrice || 0,
-            item.totalPrice || 0,
-            i,
-          ],
-          (err) => { if (err) reject(err); else resolve(); }
-        );
-      });
+      await pool.query(
+        `INSERT INTO quote_items
+           (quote_id, item_type, description, quantity,
+            unit_price, total_price, is_optional, display_order)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
+        [
+          req.params.id,
+          item.itemType || 'goods',
+          item.description,
+          item.quantity || 1,
+          item.unitPrice || 0,
+          item.totalPrice || 0,
+          i,
+        ]
+      );
     }
 
     res.json({ saved: true, count: items.length });
