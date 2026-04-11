@@ -1185,9 +1185,8 @@ const deleteProject = async (id) => {
     );
   }
 
-  // Free registered user with no project loaded — reload their project
-  // This handles logout → reload, error fallbacks, etc.
-  if (!currentProject && currentUser && !canSeeDashboard) {
+  // Free registered user with no project loaded, OR still loading (anonymous boot)
+  if (!currentProject) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
