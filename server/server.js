@@ -718,9 +718,14 @@ app.delete('/api/u-values/:id', async (req, res) => {
 // RADIATOR SPECS
 // ============================================================
 
+// GET /api/radiator-specs
+// Returns global specs + caller's own (company or anonymous).
+// No auth required — anonymous users get global + their session specs.
 app.get('/api/radiator-specs', async (req, res) => {
   try {
-    const specs = await radiatorSpecs.getAll();
+    const companyId    = req.user?.companyId || null;
+    const sessionToken = req.user ? null : req.anonToken;
+    const specs = await radiatorSpecs.getAll({ companyId, sessionToken });
     res.json(specs);
   } catch (error) {
     console.error('Error fetching radiator specs:', error);
@@ -728,9 +733,22 @@ app.get('/api/radiator-specs', async (req, res) => {
   }
 });
 
+// POST /api/radiator-specs
+// Creates a new spec. Scope and ownership are set server-side from
+// the request context — the client never sets scope/companyId directly.
 app.post('/api/radiator-specs', async (req, res) => {
   try {
-    const result = await radiatorSpecs.create(req.body);
+    const isAuthenticated = !!req.user;
+    const scope        = isAuthenticated ? 'company'   : 'anonymous';
+    const companyId    = isAuthenticated ? req.user.companyId : null;
+    const sessionToken = isAuthenticated ? null : req.anonToken;
+
+    const result = await radiatorSpecs.create({
+      ...req.body,
+      scope,
+      companyId,
+      sessionToken,
+    });
     res.status(201).json({ id: result.id });
   } catch (error) {
     console.error('Error creating radiator spec:', error);
@@ -738,9 +756,40 @@ app.post('/api/radiator-specs', async (req, res) => {
   }
 });
 
+// PUT /api/radiator-specs/:id
+// Only allows updating specs owned by the caller — cannot edit global specs
+// or another company's specs.
 app.put('/api/radiator-specs/:id', async (req, res) => {
   try {
-    await radiatorSpecs.update(req.params.id, req.body);
+    const spec = await radiatorSpecs.getById(req.params.id);
+    if (!spec) return res.status(404).json({ error: 'Spec not found' });
+
+    // Block editing global specs entirely
+    if (spec.scope === 'global') {
+      return res.status(403).json({ error: 'Global radiator specs cannot be edited' });
+    }
+
+    // Registered user can only edit their own company's specs
+    if (spec.scope === 'company' && req.user) {
+      if (spec.company_id !== req.user.companyId) {
+        return res.status(403).json({ error: 'Not authorised to edit this spec' });
+      }
+    }
+
+    // Anonymous user can only edit specs from their own session
+    if (spec.scope === 'anonymous' && !req.user) {
+      if (spec.session_token !== req.anonToken) {
+        return res.status(403).json({ error: 'Not authorised to edit this spec' });
+      }
+    }
+
+    await radiatorSpecs.update(req.params.id, {
+      ...req.body,
+      // Preserve original scope/ownership — client cannot change these
+      scope:        spec.scope,
+      companyId:    spec.company_id,
+      sessionToken: spec.session_token,
+    });
     res.json({ message: 'Radiator spec updated successfully' });
   } catch (error) {
     console.error('Error updating radiator spec:', error);
@@ -748,8 +797,29 @@ app.put('/api/radiator-specs/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/radiator-specs/:id
+// Only allows deleting specs owned by the caller — cannot delete global specs.
 app.delete('/api/radiator-specs/:id', async (req, res) => {
   try {
+    const spec = await radiatorSpecs.getById(req.params.id);
+    if (!spec) return res.status(404).json({ error: 'Spec not found' });
+
+    if (spec.scope === 'global') {
+      return res.status(403).json({ error: 'Global radiator specs cannot be deleted' });
+    }
+
+    if (spec.scope === 'company' && req.user) {
+      if (spec.company_id !== req.user.companyId) {
+        return res.status(403).json({ error: 'Not authorised to delete this spec' });
+      }
+    }
+
+    if (spec.scope === 'anonymous' && !req.user) {
+      if (spec.session_token !== req.anonToken) {
+        return res.status(403).json({ error: 'Not authorised to delete this spec' });
+      }
+    }
+
     await radiatorSpecs.delete(req.params.id);
     res.json({ message: 'Radiator spec deleted successfully' });
   } catch (error) {
@@ -758,6 +828,8 @@ app.delete('/api/radiator-specs/:id', async (req, res) => {
   }
 });
 
+// GET /api/radiator-specs/:id/usage
+// Unchanged — no ownership check needed, read-only.
 app.get('/api/radiator-specs/:id/usage', async (req, res) => {
   try {
     const { rows } = await pool.query(

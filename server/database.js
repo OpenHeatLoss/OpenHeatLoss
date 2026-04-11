@@ -334,8 +334,22 @@ function cleanupAnonymousProjects() {
     if (result.rowCount > 0) {
       console.log(`Startup cleanup: removed ${result.rowCount} expired anonymous project(s)`);
     }
+    // Also remove anonymous radiator specs with no live matching project.
+    // A spec is orphaned when its session_token no longer exists in projects.
+    return pool.query(`
+      DELETE FROM radiator_specs
+      WHERE scope = 'anonymous'
+        AND session_token NOT IN (
+          SELECT session_token FROM projects
+          WHERE session_token IS NOT NULL
+        )
+    `);
+  }).then(result => {
+    if (result.rowCount > 0) {
+      console.log(`Startup cleanup: removed ${result.rowCount} orphaned anonymous radiator spec(s)`);
+    }
   }).catch(err => {
-    console.error('Anonymous project cleanup error:', err.message);
+    console.error('Anonymous cleanup error:', err.message);
   });
 }
 
@@ -570,11 +584,25 @@ const uValueLibrary = {
 
 // ---------------------------------------------------------------------------
 // RADIATOR SPECS
+// Three visibility tiers:
+//   scope = 'global'    — seeded manufacturer data, visible to everyone
+//   scope = 'company'   — engineer's own library, scoped to their company_id
+//   scope = 'anonymous' — added during an anonymous session, scoped to
+//                         session_token, cleaned up with the session
 // ---------------------------------------------------------------------------
 const radiatorSpecs = {
-  // TODO (T1): scope to company_id + global library entries once multi-tenant
-  getAll: () =>
-    allQuery('SELECT * FROM radiator_specs ORDER BY manufacturer, type, height, length'),
+  // Returns global specs + the caller's own specs (company or anonymous).
+  // companyId and sessionToken are both optional — pass whichever applies.
+  // The WHERE clause safely ignores NULL values (NULL = x is always false).
+  getAll: ({ companyId = null, sessionToken = null } = {}) =>
+    allQuery(`
+      SELECT * FROM radiator_specs
+      WHERE scope = 'global'
+         OR (scope = 'company'   AND company_id    = $1)
+         OR (scope = 'anonymous' AND session_token = $2)
+      ORDER BY manufacturer, type, height, length`,
+      [companyId, sessionToken]
+    ),
 
   getById: (id) =>
     getQuery('SELECT * FROM radiator_specs WHERE id = $1', [id]),
@@ -582,30 +610,39 @@ const radiatorSpecs = {
   create: (data) => runQuery(`
     INSERT INTO radiator_specs
       (manufacturer, model, type, height, length,
-       output_dt50, water_volume, notes, source, scope)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       output_dt50, water_volume, notes, source, scope,
+       company_id, session_token)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING id`,
     [data.manufacturer, data.model, data.type,
      data.height, data.length, data.outputDt50,
      data.waterVolume, data.notes || '',
      data.source || 'library',
-     data.scope  || 'company']
+     data.scope || 'company',
+     data.companyId    || null,
+     data.sessionToken || null]
   ),
 
   update: (id, data) => runQuery(`
     UPDATE radiator_specs SET
       manufacturer = $1, model = $2, type = $3, height = $4, length = $5,
-      output_dt50 = $6, water_volume = $7, notes = $8, source = $9, scope = $10
-    WHERE id = $11`,
+      output_dt50 = $6, water_volume = $7, notes = $8, source = $9, scope = $10,
+      company_id = $11, session_token = $12
+    WHERE id = $13`,
     [data.manufacturer, data.model, data.type,
      data.height, data.length, data.outputDt50,
      data.waterVolume, data.notes || '',
      data.source || 'library',
-     data.scope  || 'company',
+     data.scope || 'company',
+     data.companyId    || null,
+     data.sessionToken || null,
      id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM radiator_specs WHERE id = $1', [id]),
+  // Only allow deletion of non-global specs, and only by the owner.
+  // server.js enforces this at the route level — this is a belt-and-braces guard.
+  delete: (id) =>
+    runQuery(`DELETE FROM radiator_specs WHERE id = $1 AND scope != 'global'`, [id]),
 };
 
 // ---------------------------------------------------------------------------
