@@ -15,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('he
 const BCRYPT_ROUNDS = 12;
 
 const {
-  db,
+  pool,
   companies,
   addresses,
   clients,
@@ -31,7 +31,6 @@ const {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
-  waitForDb,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -219,7 +218,7 @@ app.post('/api/auth/login', async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name, companyId: user.company_id, plan: user.plan },
       projectId,
     });
-    
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
@@ -1099,15 +1098,12 @@ app.get('*', (req, res) => {
 // STARTUP
 // ============================================================
 
-// waitForDb ensures the schema and all migrations are fully complete
-// before we attempt cleanup or accept any traffic. This is critical
-// on Railway where the Volume may mount slightly after process start,
-// meaning the DB open and migration sequence must finish first.
-waitForDb(() => {
-  cleanupAnonymousProjects().then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`API available at http://localhost:${PORT}/api`);
-    });
+// Postgres connection pool handles readiness — no waitForDb needed.
+// cleanupAnonymousProjects() runs once on startup, then we listen.
+(async () => {
+  await cleanupAnonymousProjects();
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`API available at http://localhost:${PORT}/api`);
   });
-});
+})();

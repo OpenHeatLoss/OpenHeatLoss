@@ -1,928 +1,78 @@
-// server/database.js
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const fs = require('fs');
+// server/database.js  — PostgreSQL version
+// Replaces the SQLite/sqlite3 implementation.
+// Uses node-postgres (pg) connection pool.
+//
+// BOOLEAN columns: kept as SMALLINT (0/1) throughout to avoid type-coercion
+// surprises in the React frontend, which reads booleans as 0/1 integers.
+// The pg driver returns SMALLINT as JS numbers, matching prior SQLite behaviour.
+//
+// JSON columns: JSONB in Postgres. The CRUD layer serialises on write and
+// deserialises on read so server.js and the frontend see no change.
+//
+// RETURNING id: Postgres does not expose lastID. INSERT queries that need the
+// new row's id use RETURNING id and the helper extracts it.
 
-// DATABASE_PATH env var is set in Railway to point at a persistent Volume
-// (e.g. /data/heatloss.db). In local development it falls back to the
-// existing server/db/heatloss.db location so nothing changes locally.
-const dbPath = process.env.DATABASE_PATH
-  ? process.env.DATABASE_PATH
-  : path.join(__dirname, 'db', 'heatloss.db');
+const { Pool } = require('pg');
 
-// Ensure the directory exists — important when DATABASE_PATH points at a
-// freshly mounted Railway Volume whose directory hasn't been created yet.
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-  console.log('Created database directory:', dbDir);
-}
-
-console.log('===========================================');
-console.log('DATABASE PATH:', dbPath);
-console.log('===========================================');
-
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Connected to SQLite database at:', dbPath);
-    db.run('PRAGMA foreign_keys = ON');
-    initializeDatabase(_dbReadyCallback);
-  }
+// Railway injects DATABASE_URL automatically when a Postgres service is
+// attached to the project. Locally, set it in .env or export it in your shell.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Railway Postgres uses SSL; allow self-signed certs in hosted environments.
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
+    ? { rejectUnauthorized: false }
+    : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
-// _dbReadyCallback is set by waitForDb() before the db opens.
-// _dbReady tracks whether initialisation has already completed
-// (handles the case where require() is slow and DB finishes first).
-let _dbReadyCallback = null;
-let _dbReady = false;
-
-function waitForDb(fn) {
-  if (_dbReady) {
-    fn();
-  } else {
-    _dbReadyCallback = fn;
-  }
-}
-
-// Promisified helpers — all database operations use these
-// rather than raw callbacks, keeping the rest of the code clean.
-const runQuery = (sql, params = []) => new Promise((resolve, reject) => {
-  db.run(sql, params, function(err) {
-    if (err) reject(err);
-    else resolve({ id: this.lastID, changes: this.changes });
-  });
-});
-
-const getQuery = (sql, params = []) => new Promise((resolve, reject) => {
-  db.get(sql, params, (err, row) => {
-    if (err) reject(err);
-    else resolve(row);
-  });
-});
-
-const allQuery = (sql, params = []) => new Promise((resolve, reject) => {
-  db.all(sql, params, (err, rows) => {
-    if (err) reject(err);
-    else resolve(rows);
-  });
+pool.on('error', (err) => {
+  console.error('Unexpected Postgres pool error:', err.message);
 });
 
 // ---------------------------------------------------------------------------
-// SCHEMA INITIALISATION
-// Creates all tables in dependency order (parents before children).
-// Safe to call on an empty database — uses IF NOT EXISTS throughout.
+// QUERY HELPERS
+// All CRUD functions use these three wrappers. Signatures mirror the old
+// SQLite helpers so the rest of the file needs minimal changes.
 // ---------------------------------------------------------------------------
-function initializeDatabase(onReady) {
-  db.serialize(() => {
 
-    // -- TIER 1: no foreign key dependencies ----------------------------------
+// For INSERT/UPDATE/DELETE. Returns { id, changes } where id is the RETURNING
+// id value (if the query has RETURNING id) and changes is the row count.
+const runQuery = async (sql, params = []) => {
+  const result = await pool.query(sql, params);
+  return {
+    id:      result.rows[0]?.id ?? null,
+    changes: result.rowCount,
+  };
+};
 
-    db.run(`
-      CREATE TABLE IF NOT EXISTS companies (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        name              TEXT NOT NULL,
-        mcs_number        TEXT,
-        recc_number       TEXT,
-        address           TEXT,
-        postcode          TEXT,
-        email             TEXT,
-        phone             TEXT,
-        website           TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+// For SELECT that returns a single row (or null).
+const getQuery = async (sql, params = []) => {
+  const result = await pool.query(sql, params);
+  return result.rows[0] ?? null;
+};
 
-    db.run(`
-      CREATE TABLE IF NOT EXISTS addresses (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id        INTEGER REFERENCES companies(id) ON DELETE SET NULL,
-        address_line_1    TEXT,
-        address_line_2    TEXT,
-        town              TEXT,
-        county            TEXT,
-        postcode          TEXT,
-        what3words        TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS radiator_specs (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        manufacturer      TEXT NOT NULL,
-        model             TEXT NOT NULL,
-        type              TEXT NOT NULL,
-        height            INTEGER NOT NULL,
-        length            INTEGER NOT NULL,
-        output_dt50       REAL NOT NULL,
-        water_volume      REAL NOT NULL,
-        notes             TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // -- TIER 2: depend on companies or addresses ----------------------------
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id        INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        email             TEXT NOT NULL UNIQUE,
-        name              TEXT NOT NULL,
-        role              TEXT DEFAULT 'engineer',
-        password_hash     TEXT,
-        is_active         INTEGER DEFAULT 1,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS clients (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id        INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        title             TEXT,
-        first_name        TEXT NOT NULL DEFAULT '',
-        surname           TEXT NOT NULL DEFAULT '',
-        email             TEXT,
-        telephone         TEXT,
-        mobile            TEXT,
-        notes             TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // -- TIER 3: junction tables for addresses --------------------------------
-    // client_addresses and project_addresses are created after their
-    // parent tables. address_type values: 'contact' | 'billing' | 'other'
-    // for clients; 'installation' | 'billing' | 'other' for projects.
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS client_addresses (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        client_id         INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-        address_id        INTEGER NOT NULL REFERENCES addresses(id) ON DELETE CASCADE,
-        address_type      TEXT DEFAULT 'contact',
-        is_primary        INTEGER DEFAULT 0,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // -- TIER 4: projects (depends on companies + clients) -------------------
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS projects (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id        INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        client_id         INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-        name              TEXT NOT NULL,
-        status            TEXT DEFAULT 'enquiry',
-        designer          TEXT,
-        brief_notes       TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS project_addresses (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        address_id        INTEGER NOT NULL REFERENCES addresses(id) ON DELETE CASCADE,
-        address_type      TEXT DEFAULT 'installation',
-        is_primary        INTEGER DEFAULT 1,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // -- TIER 5: everything that hangs off projects --------------------------
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS rooms (
-        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id                INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        name                      TEXT NOT NULL,
-        internal_temp             REAL DEFAULT 21,
-        volume                    REAL DEFAULT 0,
-        floor_area                REAL DEFAULT 0,
-        room_length               REAL DEFAULT 0,
-        room_width                REAL DEFAULT 0,
-        room_height               REAL DEFAULT 0,
-        room_type                 TEXT DEFAULT 'living_room',
-        has_manual_ach_override   INTEGER DEFAULT 0,
-        manual_ach                REAL DEFAULT 0,
-        extract_fan_flow_rate     REAL DEFAULT 0,
-        has_open_fire             INTEGER DEFAULT 0,
-        min_air_flow              REAL DEFAULT 0,
-        infiltration_rate         REAL DEFAULT 0.5,
-        mechanical_supply         REAL DEFAULT 0,
-        mechanical_extract        REAL DEFAULT 0,
-        radiator_schedule_complete INTEGER DEFAULT 0,
-        design_connection_type    TEXT DEFAULT 'BOE',
-        thermal_bridging_addition REAL NOT NULL DEFAULT 0.10,
-        exposed_envelope_m2       REAL DEFAULT 0,
-        has_suspended_floor       INTEGER DEFAULT 0,
-        is_top_storey             INTEGER DEFAULT 0,
-        bg_vent_count             INTEGER DEFAULT 0,
-        bg_fan_count              INTEGER DEFAULT 0,
-        bg_flue_small_count       INTEGER DEFAULT 0,
-        bg_flue_large_count       INTEGER DEFAULT 0,
-        bg_open_fire_count        INTEGER DEFAULT 0,
-        continuous_vent_type      TEXT DEFAULT 'none',
-        continuous_vent_rate_m3h  REAL DEFAULT 0,
-        mvhr_efficiency           REAL DEFAULT 0
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS elements (
-        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id                   INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        element_type              TEXT NOT NULL,
-        description               TEXT,
-        length                    REAL DEFAULT 0,
-        height                    REAL DEFAULT 0,
-        area                      REAL DEFAULT 0,
-        u_value                   REAL DEFAULT 0,
-        temp_factor               REAL DEFAULT 1.0,
-        custom_delta_t            REAL DEFAULT NULL,
-        subtract_from_element_id  INTEGER DEFAULT NULL
-          REFERENCES elements(id) ON DELETE SET NULL,
-        include_in_envelope       INTEGER DEFAULT 0
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS u_value_library (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        element_category  TEXT NOT NULL,
-        name              TEXT NOT NULL,
-        u_value           REAL NOT NULL,
-        notes             TEXT
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS room_emitters (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id           INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        emitter_type      TEXT NOT NULL,
-        radiator_spec_id  INTEGER REFERENCES radiator_specs(id) ON DELETE SET NULL,
-        connection_type   TEXT,
-        quantity          INTEGER DEFAULT 1,
-        notes             TEXT
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS radiator_schedule (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id           INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        radiator_spec_id  INTEGER REFERENCES radiator_specs(id) ON DELETE CASCADE,
-        connection_type   TEXT DEFAULT 'BOE',
-        quantity          INTEGER DEFAULT 1,
-        notes             TEXT,
-        is_existing       INTEGER DEFAULT 0,
-        display_order     INTEGER DEFAULT 0,
-        no_trv            INTEGER DEFAULT 0,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS room_ufh_specs (
-        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_id                   INTEGER NOT NULL UNIQUE
-                                    REFERENCES rooms(id) ON DELETE CASCADE,
-        floor_construction        TEXT    DEFAULT 'screed',
-        pipe_spacing_mm           INTEGER DEFAULT 150,
-        pipe_od_m                 REAL    DEFAULT 0.016,
-        screed_depth_above_pipe_m REAL    DEFAULT 0.045,
-        lambda_screed             REAL    DEFAULT 1.2,
-        floor_covering            TEXT    DEFAULT 'tiles',
-        r_lambda                  REAL    DEFAULT 0.00,
-        active_area_factor        REAL    DEFAULT 1.00,
-        zone_type                 TEXT    DEFAULT 'occupied',
-        notes                     TEXT,
-        ufh_flow_temp             REAL    DEFAULT 45,
-        ufh_return_temp           REAL    DEFAULT 40,
-        has_actuator              INTEGER DEFAULT 0,
-        created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at                DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS design_params (
-        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id                  INTEGER NOT NULL UNIQUE
-                                      REFERENCES projects(id) ON DELETE CASCADE,
-        external_temp               REAL DEFAULT -3,
-        annual_avg_temp             REAL DEFAULT 7,
-        design_flow_temp            REAL DEFAULT 50,
-        design_return_temp          REAL DEFAULT 40,
-        air_density                 REAL DEFAULT 1.2,
-        specific_heat               REAL DEFAULT 0.34,
-        mcs_postcode_prefix         TEXT,
-        mcs_degree_days             REAL DEFAULT 0,
-        mcs_outdoor_low_temp        REAL DEFAULT 0,
-        use_sap_ventilation         INTEGER DEFAULT 0,
-        building_category           TEXT DEFAULT 'B',
-        dwelling_type               TEXT DEFAULT 'semi_detached',
-        number_of_storeys           INTEGER DEFAULT 2,
-        shelter_factor              TEXT DEFAULT 'normal',
-        number_of_bedrooms          INTEGER DEFAULT 0,
-        has_blower_test             INTEGER DEFAULT 0,
-        sap_age_band                TEXT DEFAULT 'H',
-        air_permeability_q50        REAL DEFAULT 10,
-        number_of_chimneys          INTEGER DEFAULT 0,
-        number_of_open_flues        INTEGER DEFAULT 0,
-        number_of_intermittent_fans INTEGER DEFAULT 0,
-        number_of_passive_vents     INTEGER DEFAULT 0,
-        ventilation_system_type     TEXT DEFAULT 'natural',
-        mvhr_efficiency             INTEGER DEFAULT 0,
-        heat_pump_manufacturer      TEXT,
-        heat_pump_model             TEXT,
-        heat_pump_rated_output      REAL DEFAULT 0,
-        heat_pump_min_modulation    REAL DEFAULT 0,
-        heat_pump_flow_temp         REAL DEFAULT 50,
-        heat_pump_return_temp       REAL DEFAULT 40,
-        mcs_heat_pump_type          TEXT DEFAULT 'ASHP',
-        mcs_emitter_type            TEXT DEFAULT 'existing_radiators',
-        mcs_ufh_type                TEXT DEFAULT 'screed',
-        mcs_system_provides         TEXT DEFAULT 'space_and_hw',
-        mcs_bedrooms                INTEGER DEFAULT 0,
-        mcs_occupants               INTEGER DEFAULT 0,
-        mcs_cylinder_volume         REAL DEFAULT 0,
-        mcs_pasteurization_freq     INTEGER DEFAULT 0,
-        mcs_heat_pump_sound_power   REAL DEFAULT 0,
-        mcs_sound_assessments       TEXT DEFAULT NULL,
-        mcs_sound_snapshot          TEXT DEFAULT NULL,
-        mcs_calculation_snapshot    TEXT DEFAULT NULL,
-        circuits                    TEXT DEFAULT NULL,
-        pipe_sections               TEXT DEFAULT NULL,
-        epc_space_heating_demand    REAL DEFAULT 0,
-        epc_hot_water_demand        REAL DEFAULT 0,
-        epc_total_floor_area        REAL DEFAULT 0,
-        heat_pump_internal_volume   REAL DEFAULT 0,
-        buffer_vessel_volume        REAL DEFAULT 0,
-        en14511_test_points         TEXT DEFAULT NULL,
-        defrost_pct                 REAL DEFAULT 5,
-        -- EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields (migration 010)
-        ventilation_method          TEXT DEFAULT 'en12831_cibse2026',
-        air_permeability_method     TEXT DEFAULT 'estimated',
-        q50                         REAL DEFAULT 12.0,
-        sap_structural              TEXT DEFAULT 'masonry',
-        sap_floor                   TEXT DEFAULT 'other',
-        sap_window_draught_pct      INTEGER DEFAULT 100,
-        sap_draught_lobby           INTEGER DEFAULT 0,
-        building_storeys            INTEGER DEFAULT 2,
-        building_shielding          TEXT DEFAULT 'normal',
-        reference_temp              REAL DEFAULT 10.6,
-        created_at                  DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at                  DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS quotes (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        reference         TEXT,
-        version           INTEGER DEFAULT 1,
-        status            TEXT DEFAULT 'draft',
-        survey_basis      TEXT,
-        total_ex_vat      REAL DEFAULT 0,
-        vat_amount        REAL DEFAULT 0,
-        total_inc_vat     REAL DEFAULT 0,
-        bus_grant         REAL DEFAULT 0,
-        client_pays       REAL DEFAULT 0,
-        deposit_amount    REAL DEFAULT 0,
-        hourly_rate       REAL DEFAULT 0,
-        valid_days        INTEGER DEFAULT 30,
-        issued_at         DATETIME,
-        expires_at        DATETIME,
-        accepted_at       DATETIME,
-        prepared_by       TEXT,
-        notes             TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS quote_items (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        quote_id          INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-        item_type         TEXT DEFAULT 'labour',
-        description       TEXT NOT NULL,
-        quantity          REAL DEFAULT 1,
-        unit_price        REAL DEFAULT 0,
-        total_price       REAL DEFAULT 0,
-        is_optional       INTEGER DEFAULT 0,
-        display_order     INTEGER DEFAULT 0,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        doc_type          TEXT NOT NULL,
-        filename          TEXT,
-        status            TEXT DEFAULT 'pending',
-        sent_at           DATETIME,
-        signed_at         DATETIME,
-        notes             TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS project_notes (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        note              TEXT NOT NULL,
-        created_by        TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS commissioning (
-        id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id              INTEGER NOT NULL UNIQUE
-                                  REFERENCES projects(id) ON DELETE CASCADE,
-        mcs_certificate_number  TEXT,
-        commissioned_at         DATETIME,
-        engineer_name           TEXT,
-        engineer_signed_at      DATETIME,
-        client_signed_at        DATETIME,
-        notes                   TEXT,
-        created_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at              DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS survey_checklists (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id        INTEGER NOT NULL UNIQUE
-                                  REFERENCES projects(id) ON DELETE CASCADE,
-        data              TEXT,
-        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        version     TEXT NOT NULL UNIQUE,
-        description TEXT,
-        applied_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // -- VIEWS ---------------------------------------------------------------
-    // Dropped and recreated so they always reflect the current schema.
-
-    db.run(`DROP VIEW IF EXISTS v_project_dashboard`);
-    db.run(`
-      CREATE VIEW v_project_dashboard AS
-      SELECT
-        p.id                                          AS project_id,
-        p.name                                        AS project_name,
-        p.status,
-        p.company_id,
-        p.client_id,
-        p.created_at,
-        p.updated_at,
-        c.first_name || ' ' || c.surname              AS client_name,
-        c.email,
-        c.telephone,
-        a.postcode,
-        a.address_line_1,
-        a.town,
-        dp.heat_pump_manufacturer || ' ' ||
-          COALESCE(dp.heat_pump_model, '')             AS heat_pump,
-        dp.design_flow_temp,
-        dp.heat_pump_rated_output,
-        (SELECT COUNT(*) FROM rooms r
-         WHERE r.project_id = p.id)                   AS room_count,
-        (SELECT q.reference FROM quotes q
-         WHERE q.project_id = p.id
-         ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_ref,
-        (SELECT q.status FROM quotes q
-         WHERE q.project_id = p.id
-         ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_status,
-        (SELECT q.client_pays FROM quotes q
-         WHERE q.project_id = p.id
-         ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_value,
-        CASE WHEN com.id IS NOT NULL THEN 1 ELSE 0
-        END                                           AS is_commissioned,
-        com.mcs_certificate_number
-      FROM projects p
-      LEFT JOIN clients c         ON c.id = p.client_id
-      LEFT JOIN client_addresses  ca ON ca.client_id = c.id
-                                     AND ca.is_primary = 1
-      LEFT JOIN addresses a        ON a.id = ca.address_id
-      LEFT JOIN design_params dp   ON dp.project_id = p.id
-      LEFT JOIN commissioning com  ON com.project_id = p.id
-      ORDER BY p.updated_at DESC
-    `);
-
-    db.run(`DROP VIEW IF EXISTS v_quote_summary`);
-    db.run(`
-      CREATE VIEW v_quote_summary AS
-      SELECT
-        q.id                AS quote_id,
-        q.project_id,
-        p.name              AS project_name,
-        c.first_name || ' ' || c.surname AS client_name,
-        a.postcode,
-        q.reference,
-        q.version,
-        q.status,
-        q.total_ex_vat,
-        q.vat_amount,
-        q.total_inc_vat,
-        q.bus_grant,
-        q.client_pays,
-        q.deposit_amount,
-        q.issued_at,
-        q.expires_at,
-        q.accepted_at,
-        q.prepared_by,
-        COUNT(qi.id)        AS line_item_count
-      FROM quotes q
-      LEFT JOIN projects p     ON p.id = q.project_id
-      LEFT JOIN clients c      ON c.id = p.client_id
-      LEFT JOIN client_addresses ca ON ca.client_id = c.id AND ca.is_primary = 1
-      LEFT JOIN addresses a    ON a.id = ca.address_id
-      LEFT JOIN quote_items qi ON qi.quote_id = q.id
-      GROUP BY q.id
-    `);
-
-    // Seed company record (Mysa Heating Ltd = company_id 1).
-    // INSERT OR IGNORE means this only runs once even if server restarts.
-    db.run(`
-      INSERT OR IGNORE INTO companies (id, name, mcs_number, recc_number)
-      VALUES (1, 'Mysa Heating Ltd', 'OFT-502073', '00080008')
-    `);
-
-    // Seed schema_migrations record for the clean-slate build.
-    db.run(`
-      INSERT OR IGNORE INTO schema_migrations (version, description)
-      VALUES ('002', 'Clean-slate schema with companies, users, addresses, junction tables')
-    `);
-
-    // -- MIGRATION 012 --------------------------------------------------------
-    // Add EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields to design_params
-    // and all migration 010/011 room fields to rooms.
-    // These were added to live DBs via prior migration runs but were missing from
-    // the CREATE TABLE definition and from designParams.update(), causing all
-    // ventilation settings (storeys, draught pct, shielding, q50, etc.) to
-    // revert to JS defaults on every project reload.
-    // ALTER TABLE ADD COLUMN is idempotent here — duplicate column errors are
-    // silently ignored so re-running on an already-migrated DB is safe.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '012'", (err, row) => {
-      if (row && row.count > 0) return; // already applied
-
-      const alterColumns = [
-        // design_params — EN 12831 ventilation fields (migration 010)
-        `ALTER TABLE design_params ADD COLUMN ventilation_method       TEXT    DEFAULT 'en12831_cibse2026'`,
-        `ALTER TABLE design_params ADD COLUMN air_permeability_method  TEXT    DEFAULT 'estimated'`,
-        `ALTER TABLE design_params ADD COLUMN q50                      REAL    DEFAULT 12.0`,
-        `ALTER TABLE design_params ADD COLUMN sap_structural           TEXT    DEFAULT 'masonry'`,
-        `ALTER TABLE design_params ADD COLUMN sap_floor                TEXT    DEFAULT 'other'`,
-        `ALTER TABLE design_params ADD COLUMN sap_window_draught_pct   INTEGER DEFAULT 100`,
-        `ALTER TABLE design_params ADD COLUMN sap_draught_lobby        INTEGER DEFAULT 0`,
-        `ALTER TABLE design_params ADD COLUMN building_storeys         INTEGER DEFAULT 2`,
-        `ALTER TABLE design_params ADD COLUMN building_shielding       TEXT    DEFAULT 'normal'`,
-        `ALTER TABLE design_params ADD COLUMN reference_temp           REAL    DEFAULT 10.6`,
-        // rooms — thermal bridging (migration 011)
-        `ALTER TABLE rooms ADD COLUMN thermal_bridging_addition        REAL    NOT NULL DEFAULT 0.10`,
-        // rooms — EN 12831 ventilation fields (migration 010)
-        `ALTER TABLE rooms ADD COLUMN exposed_envelope_m2              REAL    DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN has_suspended_floor              INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN is_top_storey                    INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN bg_vent_count                    INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN bg_fan_count                     INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN bg_flue_small_count              INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN bg_flue_large_count              INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN bg_open_fire_count               INTEGER DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN continuous_vent_type             TEXT    DEFAULT 'none'`,
-        `ALTER TABLE rooms ADD COLUMN continuous_vent_rate_m3h         REAL    DEFAULT 0`,
-        `ALTER TABLE rooms ADD COLUMN mvhr_efficiency                  REAL    DEFAULT 0`,
-      ];
-
-      let completed = 0;
-      alterColumns.forEach(sql => {
-        db.run(sql, (alterErr) => {
-          // Ignore "duplicate column name" — column already exists from a prior run
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 012 error:', alterErr.message, '\n  SQL:', sql);
-          }
-          completed++;
-          if (completed === alterColumns.length) {
-            db.run(`
-              INSERT OR IGNORE INTO schema_migrations (version, description)
-              VALUES ('012', 'Add EN 12831-1 ventilation and thermal bridging fields')
-            `);
-            console.log('Migration 012 complete — EN 12831 fields added to design_params and rooms');
-          }
-        });
-      });
-    });
-
-    // -- MIGRATION 013 --------------------------------------------------------
-    // Add include_in_envelope to elements.
-    // When ticked on an element row, that element's area is automatically summed
-    // to compute exposedEnvelopeM2 — replacing the manual entry and the broken
-    // hasSuspendedFloor / isTopStorey checkboxes.
-    // Back-fills External Wall, Ground Floor (Suspended) and Roof to 1 so
-    // existing projects get sensible defaults without manual re-entry.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '013'", (err, row) => {
-      if (row && row.count > 0) return;
-
-      db.run(
-        `ALTER TABLE elements ADD COLUMN include_in_envelope INTEGER DEFAULT 0`,
-        (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 013 error:', alterErr.message);
-            return;
-          }
-          // Back-fill sensible defaults for element types that are almost always exposed
-          db.run(`
-            UPDATE elements
-            SET include_in_envelope = 1
-            WHERE element_type IN ('External Wall', 'Ground Floor (Suspended)', 'Roof')
-          `, (updateErr) => {
-            if (updateErr) console.error('Migration 013 back-fill error:', updateErr.message);
-            db.run(`
-              INSERT OR IGNORE INTO schema_migrations (version, description)
-              VALUES ('013', 'Add include_in_envelope to elements')
-            `);
-            console.log('Migration 013 complete — include_in_envelope added to elements');
-          });
-        }
-      );
-    });
-
-    // -- MIGRATION 014 --------------------------------------------------------
-    // Add heat_pump_min_modulation to design_params.
-    // Stores the heat pump's minimum modulation output (kW) from the datasheet.
-    // Used in the Summary to calculate the outdoor temperature at which minimum
-    // modulation is reached, giving an early warning of short-cycling risk.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '014'", (err, row) => {
-      if (row && row.count > 0) return;
-
-      db.run(
-        `ALTER TABLE design_params ADD COLUMN heat_pump_min_modulation REAL DEFAULT 0`,
-        (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 014 error:', alterErr.message);
-            return;
-          }
-          db.run(`
-            INSERT OR IGNORE INTO schema_migrations (version, description)
-            VALUES ('014', 'Add heat_pump_min_modulation to design_params')
-          `);
-          console.log('Migration 014 complete — heat_pump_min_modulation added to design_params');
-        }
-      );
-    });
-
-    // -- MIGRATION 015 --------------------------------------------------------
-    // Add system volume inputs to design_params.
-    // heat_pump_internal_volume: from heat pump datasheet (L)
-    // buffer_vessel_volume: 0 if no buffer, otherwise vessel size (L)
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '015'", (err, row) => {
-      if (row && row.count > 0) return;
-
-      const cols = [
-        `ALTER TABLE design_params ADD COLUMN heat_pump_internal_volume REAL DEFAULT 0`,
-        `ALTER TABLE design_params ADD COLUMN buffer_vessel_volume REAL DEFAULT 0`,
-      ];
-      let done = 0;
-      cols.forEach(sql => {
-        db.run(sql, (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 015 error:', alterErr.message);
-          }
-          done++;
-          if (done === cols.length) {
-            db.run(`
-              INSERT OR IGNORE INTO schema_migrations (version, description)
-              VALUES ('015', 'Add system volume fields to design_params')
-            `);
-            console.log('Migration 015 complete — system volume fields added to design_params');
-          }
-        });
-      });
-    });
-
-    // -- MIGRATION 016 --------------------------------------------------------
-    // Add no_trv to radiator_schedule.
-    // Marks a radiator as having no TRV (always open). Used to calculate the
-    // minimum effective system volume for the 20 L/kW modulation check.
-    // Default 0 (has TRV) is safe — existing radiators keep current behaviour.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '016'", (err, row) => {
-      if (row && row.count > 0) return;
-      db.run(`ALTER TABLE radiator_schedule ADD COLUMN no_trv INTEGER DEFAULT 0`, (alterErr) => {
-        if (alterErr && !alterErr.message.includes('duplicate column name')) {
-          console.error('Migration 016 error:', alterErr.message);
-          return;
-        }
-        db.run(`
-          INSERT OR IGNORE INTO schema_migrations (version, description)
-          VALUES ('016', 'Add no_trv to radiator_schedule')
-        `);
-        console.log('Migration 016 complete — no_trv added to radiator_schedule');
-      });
-    });
-
-    // -- MIGRATION 017 --------------------------------------------------------
-    // Add has_actuator to room_ufh_specs.
-    // NOTE: room_ufh_specs is now in the baseline CREATE TABLE above with
-    // has_actuator included. On a fresh DB this migration is a no-op.
-    // On existing DBs that have the table but lack the column, the ALTER runs.
-    // On existing DBs where the table was missing entirely (e.g. Railway fresh
-    // deploy before this fix), the CREATE TABLE IF NOT EXISTS above handles it.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '017'", (err, row) => {
-      if (row && row.count > 0) return;
-      // Try ALTER — safe to ignore "duplicate column" and "no such table" errors
-      // since the baseline schema now creates the table with has_actuator included.
-      db.run(`ALTER TABLE room_ufh_specs ADD COLUMN has_actuator INTEGER DEFAULT 0`, (alterErr) => {
-        if (alterErr &&
-            !alterErr.message.includes('duplicate column name') &&
-            !alterErr.message.includes('no such table')) {
-          console.error('Migration 017 error:', alterErr.message);
-          return;
-        }
-        db.run(`
-          INSERT OR IGNORE INTO schema_migrations (version, description)
-          VALUES ('017', 'Add has_actuator to room_ufh_specs')
-        `);
-        console.log('Migration 017 complete — has_actuator added to room_ufh_specs');
-      });
-    });
-
-    // -- MIGRATION 018 --------------------------------------------------------
-    // Add EN 14511 test points and defrost penalty to design_params.
-    // en14511_test_points: JSON array of {tAir, tFlow, cop} from datasheet
-    // defrost_pct: nominal defrost penalty % (default 5%)
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '018'", (err, row) => {
-      if (row && row.count > 0) return;
-      const cols = [
-        `ALTER TABLE design_params ADD COLUMN en14511_test_points TEXT DEFAULT NULL`,
-        `ALTER TABLE design_params ADD COLUMN defrost_pct REAL DEFAULT 5`,
-      ];
-      let done = 0;
-      cols.forEach(sql => {
-        db.run(sql, (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 018 error:', alterErr.message);
-          }
-          done++;
-          if (done === cols.length) {
-            db.run(`
-              INSERT OR IGNORE INTO schema_migrations (version, description)
-              VALUES ('018', 'Add EN 14511 test points and defrost_pct to design_params')
-            `);
-            console.log('Migration 018 complete — SCOP estimator fields added');
-          }
-        });
-      });
-    });
-
-    // -- MIGRATION 019 --------------------------------------------------------
-    // Add anonymous session support to projects.
-    // session_token: a UUID set when an anonymous user first visits. Used to
-    //   look up their ephemeral project on return visits (same browser/cookie).
-    // expires_at: projects with a session_token are deleted after 48 h of
-    //   inactivity. Cleaned up on server startup. NULL for registered projects.
-    // On registration the session_token and expires_at are both set to NULL and
-    // a user_id / company_id are attached — the project becomes permanent.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '019'", (err, row) => {
-      if (row && row.count > 0) return;
-      const cols = [
-        `ALTER TABLE projects ADD COLUMN session_token TEXT    DEFAULT NULL`,
-        `ALTER TABLE projects ADD COLUMN expires_at    DATETIME DEFAULT NULL`,
-      ];
-      let done = 0;
-      cols.forEach(sql => {
-        db.run(sql, (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 019 error:', alterErr.message);
-          }
-          done++;
-          if (done === cols.length) {
-            db.run(`
-              INSERT OR IGNORE INTO schema_migrations (version, description)
-              VALUES ('019', 'Add session_token and expires_at to projects for anonymous sessions')
-            `);
-            console.log('Migration 019 complete — anonymous session columns added to projects');
-          }
-        });
-      });
-    });
-
-    // -- MIGRATION 020 --------------------------------------------------------
-    // Add user_id to projects so registered users own their projects.
-    // Anonymous projects have user_id = NULL (and session_token set).
-    // Registered projects have user_id set (and session_token = NULL).
-    // On registration the anonymous project is claimed: session_token and
-    // expires_at are cleared, user_id and company_id are set in one UPDATE.
-    // -------------------------------------------------------------------------
-    db.get("SELECT COUNT(*) as count FROM schema_migrations WHERE version = '020'", (err, row) => {
-      if (row && row.count > 0) return;
-      db.run(
-        `ALTER TABLE projects ADD COLUMN user_id INTEGER DEFAULT NULL
-         REFERENCES users(id) ON DELETE SET NULL`,
-        (alterErr) => {
-          if (alterErr && !alterErr.message.includes('duplicate column name')) {
-            console.error('Migration 020 error:', alterErr.message);
-            return;
-          }
-          db.run(`
-            INSERT OR IGNORE INTO schema_migrations (version, description)
-            VALUES ('020', 'Add user_id to projects for registered user ownership')
-          `);
-          console.log('Migration 020 complete — user_id added to projects');
-        }
-      );
-    });
-
-    // Migration 021 — add missing design_connection_type column to rooms
-    db.get(`SELECT COUNT(*) as count FROM schema_migrations WHERE version = '021'`, (err, row) => {
-      if (row && row.count > 0) return;
-      db.run(`ALTER TABLE rooms ADD COLUMN design_connection_type TEXT DEFAULT 'BOE'`, (alterErr) => {
-        if (alterErr && !alterErr.message.includes('duplicate column')) {
-          console.error('Migration 021 error:', alterErr);
-          return;
-        }
-        db.run(`INSERT OR IGNORE INTO schema_migrations (version, description) VALUES ('021', 'Add missing design_connection_type to rooms')`);
-        console.log('Migration 021 complete — design_connection_type added to rooms');
-      });
-    });
-
-    // Migration 022 - add plan column to users
-    db.get(`SELECT COUNT(*) as count FROM schema_migrations WHERE version = '022'`, (err, row) => {
-      if (row && row.count > 0) return;
-      db.run(`ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'`, (alterErr) => {
-        if (alterErr && !alterErr.message.includes('duplicate column')) {
-          console.error('Migration 022 error:', alterErr);
-          return;
-        }
-        db.run(`INSERT OR IGNORE INTO schema_migrations (version, description) VALUES ('022', 'Add plan column to users')`);
-        console.log('Migration 022 complete — plan column added to users');
-      });
-    });
-
-    console.log('Database schema initialised');
-
-    // This fires last in the serialize queue — after all CREATE TABLE and
-    // migration statements. SQLite processes the queue in order, so by the
-    // time this callback runs the schema is complete and ready for use.
-    db.run('SELECT 1', (err) => {
-      if (err) console.error('Database readiness check failed:', err.message);
-      _dbReady = true;
-      if (typeof onReady === 'function') onReady();
-    });
-  });
-}
+// For SELECT that returns multiple rows.
+const allQuery = async (sql, params = []) => {
+  const result = await pool.query(sql, params);
+  return result.rows;
+};
 
 // ---------------------------------------------------------------------------
 // USERS
 // ---------------------------------------------------------------------------
 const users = {
   getById: (id) =>
-    getQuery('SELECT * FROM users WHERE id = ?', [id]),
+    getQuery('SELECT * FROM users WHERE id = $1', [id]),
 
   getByEmail: (email) =>
-    getQuery('SELECT * FROM users WHERE email = ?', [email]),
+    getQuery('SELECT * FROM users WHERE email = $1', [email]),
 
   create: (data) => runQuery(`
     INSERT INTO users (company_id, email, name, password_hash, role)
-    VALUES (?, ?, ?, ?, 'engineer')`,
+    VALUES ($1, $2, $3, $4, 'engineer')
+    RETURNING id`,
     [data.companyId, data.email, data.name, data.passwordHash]
   ),
 };
@@ -931,14 +81,14 @@ const users = {
 // COMPANIES
 // ---------------------------------------------------------------------------
 const companies = {
-  getById: (id) => getQuery('SELECT * FROM companies WHERE id = ?', [id]),
+  getById: (id) => getQuery('SELECT * FROM companies WHERE id = $1', [id]),
 
   update: (id, data) => runQuery(`
     UPDATE companies
-    SET name = ?, mcs_number = ?, recc_number = ?,
-        address = ?, postcode = ?, email = ?, phone = ?, website = ?,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`,
+    SET name = $1, mcs_number = $2, recc_number = $3,
+        address = $4, postcode = $5, email = $6, phone = $7, website = $8,
+        updated_at = NOW()
+    WHERE id = $9`,
     [data.name, data.mcsNumber, data.reccNumber,
      data.address, data.postcode, data.email, data.phone, data.website, id]
   ),
@@ -949,13 +99,13 @@ const companies = {
 // ---------------------------------------------------------------------------
 const addresses = {
   getById: (id) =>
-    getQuery('SELECT * FROM addresses WHERE id = ?', [id]),
+    getQuery('SELECT * FROM addresses WHERE id = $1', [id]),
 
   getByClientId: (clientId) => allQuery(`
     SELECT a.*, ca.address_type, ca.is_primary
     FROM addresses a
     JOIN client_addresses ca ON ca.address_id = a.id
-    WHERE ca.client_id = ?
+    WHERE ca.client_id = $1
     ORDER BY ca.is_primary DESC, a.id ASC`, [clientId]
   ),
 
@@ -963,63 +113,60 @@ const addresses = {
     SELECT a.*, pa.address_type, pa.is_primary
     FROM addresses a
     JOIN project_addresses pa ON pa.address_id = a.id
-    WHERE pa.project_id = ?
+    WHERE pa.project_id = $1
     ORDER BY pa.is_primary DESC, a.id ASC`, [projectId]
   ),
 
   create: (data) => runQuery(`
     INSERT INTO addresses
       (company_id, address_line_1, address_line_2, town, county, postcode, what3words)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id`,
     [data.companyId || 1, data.addressLine1, data.addressLine2,
      data.town, data.county, data.postcode, data.what3words]
   ),
 
   update: (id, data) => runQuery(`
     UPDATE addresses
-    SET address_line_1 = ?, address_line_2 = ?, town = ?, county = ?,
-        postcode = ?, what3words = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`,
+    SET address_line_1 = $1, address_line_2 = $2, town = $3, county = $4,
+        postcode = $5, what3words = $6, updated_at = NOW()
+    WHERE id = $7`,
     [data.addressLine1, data.addressLine2, data.town,
      data.county, data.postcode, data.what3words, id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM addresses WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM addresses WHERE id = $1', [id]),
 
-  // Link an address to a client
   linkToClient: (clientId, addressId, addressType = 'contact', isPrimary = 0) =>
     runQuery(`
       INSERT INTO client_addresses (client_id, address_id, address_type, is_primary)
-      VALUES (?, ?, ?, ?)`,
+      VALUES ($1, $2, $3, $4)`,
       [clientId, addressId, addressType, isPrimary ? 1 : 0]
     ),
 
-  // Link an address to a project
   linkToProject: (projectId, addressId, addressType = 'installation', isPrimary = 1) =>
     runQuery(`
       INSERT INTO project_addresses (project_id, address_id, address_type, is_primary)
-      VALUES (?, ?, ?, ?)`,
+      VALUES ($1, $2, $3, $4)`,
       [projectId, addressId, addressType, isPrimary ? 1 : 0]
     ),
 
-  // Set a different address as primary for a client (clears existing primary first)
   setClientPrimary: async (clientId, addressId) => {
     await runQuery(
-      'UPDATE client_addresses SET is_primary = 0 WHERE client_id = ?', [clientId]
+      'UPDATE client_addresses SET is_primary = 0 WHERE client_id = $1', [clientId]
     );
     return runQuery(
-      'UPDATE client_addresses SET is_primary = 1 WHERE client_id = ? AND address_id = ?',
+      'UPDATE client_addresses SET is_primary = 1 WHERE client_id = $1 AND address_id = $2',
       [clientId, addressId]
     );
   },
 
-  // Set a different address as primary for a project
   setProjectPrimary: async (projectId, addressId) => {
     await runQuery(
-      'UPDATE project_addresses SET is_primary = 0 WHERE project_id = ?', [projectId]
+      'UPDATE project_addresses SET is_primary = 0 WHERE project_id = $1', [projectId]
     );
     return runQuery(
-      'UPDATE project_addresses SET is_primary = 1 WHERE project_id = ? AND address_id = ?',
+      'UPDATE project_addresses SET is_primary = 1 WHERE project_id = $1 AND address_id = $2',
       [projectId, addressId]
     );
   },
@@ -1029,6 +176,7 @@ const addresses = {
 // CLIENTS
 // ---------------------------------------------------------------------------
 const clients = {
+  // TODO (B1 / T1): scope to the logged-in user's company_id, not hardcoded 1
   getAll: (companyId = 1) =>
     allQuery(`
       SELECT c.*,
@@ -1037,7 +185,7 @@ const clients = {
       FROM clients c
       LEFT JOIN client_addresses ca ON ca.client_id = c.id AND ca.is_primary = 1
       LEFT JOIN addresses a ON a.id = ca.address_id
-      WHERE c.company_id = ?
+      WHERE c.company_id = $1
       ORDER BY c.surname, c.first_name`, [companyId]
     ),
 
@@ -1050,10 +198,9 @@ const clients = {
       FROM clients c
       LEFT JOIN client_addresses ca ON ca.client_id = c.id AND ca.is_primary = 1
       LEFT JOIN addresses a ON a.id = ca.address_id
-      WHERE c.id = ?`, [id]
+      WHERE c.id = $1`, [id]
     ),
 
-  // Search by name or postcode — used by the new project modal
   search: (query, companyId = 1) => {
     const term = `%${query}%`;
     return allQuery(`
@@ -1062,12 +209,12 @@ const clients = {
       FROM clients c
       LEFT JOIN client_addresses ca ON ca.client_id = c.id AND ca.is_primary = 1
       LEFT JOIN addresses a ON a.id = ca.address_id
-      WHERE c.company_id = ?
+      WHERE c.company_id = $1
         AND (
-          c.first_name LIKE ?
-          OR c.surname LIKE ?
-          OR a.postcode LIKE ?
-          OR (c.first_name || ' ' || c.surname) LIKE ?
+          c.first_name ILIKE $2
+          OR c.surname ILIKE $3
+          OR a.postcode ILIKE $4
+          OR (c.first_name || ' ' || c.surname) ILIKE $5
         )
       ORDER BY c.surname, c.first_name
       LIMIT 10`, [companyId, term, term, term, term]
@@ -1077,118 +224,115 @@ const clients = {
   create: (data) => runQuery(`
     INSERT INTO clients
       (company_id, title, first_name, surname, email, telephone, mobile, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING id`,
     [data.companyId || 1, data.title, data.firstName, data.surname,
      data.email, data.telephone, data.mobile, data.notes]
   ),
 
   update: (id, data) => runQuery(`
     UPDATE clients
-    SET title = ?, first_name = ?, surname = ?, email = ?,
-        telephone = ?, mobile = ?, notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`,
+    SET title = $1, first_name = $2, surname = $3, email = $4,
+        telephone = $5, mobile = $6, notes = $7,
+        updated_at = NOW()
+    WHERE id = $8`,
     [data.title, data.firstName, data.surname, data.email,
      data.telephone, data.mobile, data.notes, id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM clients WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM clients WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
 // PROJECTS
 // ---------------------------------------------------------------------------
 const projects = {
+  // TODO (B1 / T1): scope to company_id from logged-in user JWT, not hardcoded
   getAll: (companyId = 1) =>
-    allQuery('SELECT * FROM projects WHERE company_id = ? ORDER BY updated_at DESC', [companyId]),
+    allQuery('SELECT * FROM projects WHERE company_id = $1 ORDER BY updated_at DESC', [companyId]),
 
   getById: (id) =>
-    getQuery('SELECT * FROM projects WHERE id = ?', [id]),
+    getQuery('SELECT * FROM projects WHERE id = $1', [id]),
 
   create: (data) => runQuery(`
     INSERT INTO projects (company_id, client_id, name, status, designer, brief_notes)
-    VALUES (?, ?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id`,
     [data.companyId || 1, data.clientId || null,
      data.name, data.status || 'enquiry', data.designer || '', data.briefNotes || '']
   ),
 
-  // Create an anonymous project scoped to a session token.
-  // company_id is NULL — anonymous projects are not owned by any company.
-  // expires_at is 48 hours from now. Cleaned up on server startup.
+  // Anonymous project — company_id NULL, expires 48 hours from now.
   createAnonymous: (sessionToken) => runQuery(`
     INSERT INTO projects
       (company_id, client_id, name, status, session_token, expires_at)
-    VALUES (NULL, NULL, 'My Project', 'enquiry', ?,
-            datetime('now', '+48 hours'))`,
+    VALUES (NULL, NULL, 'My Project', 'enquiry', $1, NOW() + INTERVAL '48 hours')
+    RETURNING id`,
     [sessionToken]
   ),
 
-  // Find an anonymous project by session token that hasn't expired yet.
+  // Find a live anonymous project by session token.
   getBySessionToken: (sessionToken) =>
     getQuery(`
       SELECT * FROM projects
-      WHERE session_token = ?
-        AND expires_at > datetime('now')`,
+      WHERE session_token = $1
+        AND expires_at > NOW()`,
       [sessionToken]
     ),
 
-  // Touch expires_at to reset the 48-hour window on active anonymous sessions.
+  // Extend the 48-hour window on activity.
   refreshAnonymousExpiry: (sessionToken) =>
     runQuery(`
       UPDATE projects
-      SET expires_at = datetime('now', '+48 hours')
-      WHERE session_token = ?`,
+      SET expires_at = NOW() + INTERVAL '48 hours'
+      WHERE session_token = $1`,
       [sessionToken]
     ),
 
-  // Get all projects belonging to a registered user
   getByUserId: (userId) =>
     allQuery(`
       SELECT * FROM projects
-      WHERE user_id = ?
+      WHERE user_id = $1
       ORDER BY updated_at DESC`,
       [userId]
     ),
 
   // Claim an anonymous project for a newly registered user.
-  // Clears the session fields, sets ownership. One atomic UPDATE.
   claimForUser: (sessionToken, userId, companyId) =>
     runQuery(`
       UPDATE projects
-      SET user_id       = ?,
-          company_id    = ?,
+      SET user_id       = $1,
+          company_id    = $2,
           session_token = NULL,
           expires_at    = NULL,
-          updated_at    = CURRENT_TIMESTAMP
-      WHERE session_token = ?`,
+          updated_at    = NOW()
+      WHERE session_token = $3`,
       [userId, companyId, sessionToken]
     ),
 
   update: (id, data) => runQuery(`
     UPDATE projects
-    SET name = ?, status = ?, designer = ?, brief_notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`,
+    SET name = $1, status = $2, designer = $3, brief_notes = $4,
+        updated_at = NOW()
+    WHERE id = $5`,
     [data.name, data.status, data.designer, data.briefNotes, id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM projects WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM projects WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
 // ANONYMOUS SESSION CLEANUP
-// Deletes all anonymous projects (session_token IS NOT NULL) whose expires_at
-// has passed. Called once on server startup — keeps the DB clean without
-// needing a separate cron job.
+// Deletes expired anonymous projects. Called once at server startup.
 // ---------------------------------------------------------------------------
 function cleanupAnonymousProjects() {
-  return runQuery(`
+  return pool.query(`
     DELETE FROM projects
     WHERE session_token IS NOT NULL
-      AND expires_at < datetime('now')
+      AND expires_at < NOW()
   `).then(result => {
-    if (result.changes > 0) {
-      console.log(`Startup cleanup: removed ${result.changes} expired anonymous project(s)`);
+    if (result.rowCount > 0) {
+      console.log(`Startup cleanup: removed ${result.rowCount} expired anonymous project(s)`);
     }
   }).catch(err => {
     console.error('Anonymous project cleanup error:', err.message);
@@ -1197,84 +341,90 @@ function cleanupAnonymousProjects() {
 
 // ---------------------------------------------------------------------------
 // DESIGN PARAMS
-// One row per project. Created automatically when a project is created.
+// One row per project. Created automatically when a project is first saved.
 // ---------------------------------------------------------------------------
 const designParams = {
   getByProjectId: (projectId) =>
-    getQuery('SELECT * FROM design_params WHERE project_id = ?', [projectId]),
+    getQuery('SELECT * FROM design_params WHERE project_id = $1', [projectId]),
 
-  // Called immediately after project creation to seed the defaults row
+  // Seed the defaults row immediately after project creation.
   createForProject: (projectId) => runQuery(`
-    INSERT OR IGNORE INTO design_params (project_id) VALUES (?)`, [projectId]
+    INSERT INTO design_params (project_id) VALUES ($1)
+    ON CONFLICT (project_id) DO NOTHING`,
+    [projectId]
   ),
 
   update: (projectId, data) => runQuery(`
     UPDATE design_params SET
-      external_temp = ?, annual_avg_temp = ?, design_flow_temp = ?,
-      design_return_temp = ?, air_density = ?, specific_heat = ?,
-      mcs_postcode_prefix = ?, mcs_degree_days = ?, mcs_outdoor_low_temp = ?,
-      use_sap_ventilation = ?, building_category = ?, dwelling_type = ?,
-      number_of_storeys = ?, shelter_factor = ?, number_of_bedrooms = ?,
-      has_blower_test = ?, sap_age_band = ?, air_permeability_q50 = ?,
-      number_of_chimneys = ?, number_of_open_flues = ?,
-      number_of_intermittent_fans = ?, number_of_passive_vents = ?,
-      ventilation_system_type = ?, mvhr_efficiency = ?,
-      heat_pump_manufacturer = ?, heat_pump_model = ?,
-      heat_pump_rated_output = ?, heat_pump_min_modulation = ?, heat_pump_flow_temp = ?, heat_pump_return_temp = ?,
-      mcs_heat_pump_type = ?, mcs_emitter_type = ?, mcs_ufh_type = ?,
-      mcs_system_provides = ?, mcs_bedrooms = ?, mcs_occupants = ?,
-      mcs_cylinder_volume = ?, mcs_pasteurization_freq = ?,
-      mcs_heat_pump_sound_power = ?,
-      mcs_sound_assessments = ?, mcs_sound_snapshot = ?,
-      mcs_calculation_snapshot = ?,
-      circuits = ?, pipe_sections = ?,
-      epc_space_heating_demand = ?, epc_hot_water_demand = ?, epc_total_floor_area = ?,
-      heat_pump_internal_volume = ?, buffer_vessel_volume = ?,
-      en14511_test_points = ?, defrost_pct = ?,
-      ventilation_method = ?, air_permeability_method = ?,
-      q50 = ?, sap_structural = ?, sap_floor = ?,
-      sap_window_draught_pct = ?, sap_draught_lobby = ?,
-      building_storeys = ?, building_shielding = ?, reference_temp = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE project_id = ?`,
+      external_temp = $1, annual_avg_temp = $2, design_flow_temp = $3,
+      design_return_temp = $4, air_density = $5, specific_heat = $6,
+      mcs_postcode_prefix = $7, mcs_degree_days = $8, mcs_outdoor_low_temp = $9,
+      use_sap_ventilation = $10, building_category = $11, dwelling_type = $12,
+      number_of_storeys = $13, shelter_factor = $14, number_of_bedrooms = $15,
+      has_blower_test = $16, sap_age_band = $17, air_permeability_q50 = $18,
+      number_of_chimneys = $19, number_of_open_flues = $20,
+      number_of_intermittent_fans = $21, number_of_passive_vents = $22,
+      ventilation_system_type = $23, mvhr_efficiency = $24,
+      heat_pump_manufacturer = $25, heat_pump_model = $26,
+      heat_pump_rated_output = $27, heat_pump_min_modulation = $28,
+      heat_pump_flow_temp = $29, heat_pump_return_temp = $30,
+      mcs_heat_pump_type = $31, mcs_emitter_type = $32, mcs_ufh_type = $33,
+      mcs_system_provides = $34, mcs_bedrooms = $35, mcs_occupants = $36,
+      mcs_cylinder_volume = $37, mcs_pasteurization_freq = $38,
+      mcs_heat_pump_sound_power = $39,
+      mcs_sound_assessments = $40, mcs_sound_snapshot = $41,
+      mcs_calculation_snapshot = $42,
+      circuits = $43, pipe_sections = $44,
+      epc_space_heating_demand = $45, epc_hot_water_demand = $46,
+      epc_total_floor_area = $47,
+      heat_pump_internal_volume = $48, buffer_vessel_volume = $49,
+      en14511_test_points = $50, defrost_pct = $51,
+      ventilation_method = $52, air_permeability_method = $53,
+      q50 = $54, sap_structural = $55, sap_floor = $56,
+      sap_window_draught_pct = $57, sap_draught_lobby = $58,
+      building_storeys = $59, building_shielding = $60, reference_temp = $61,
+      updated_at = NOW()
+    WHERE project_id = $62`,
     [
-      data.externalTemp, data.annualAvgTemp, data.designFlowTemp,
-      data.designReturnTemp, data.airDensity, data.specificHeat,
-      data.mcsPostcodePrefix, data.mcsDegreeDays, data.mcsOutdoorLowTemp,
-      data.useSAPVentilation ? 1 : 0, data.buildingCategory, data.dwellingType,
-      data.numberOfStoreys, data.shelterFactor, data.numberOfBedrooms,
-      data.hasBlowerTest ? 1 : 0, data.sapAgeBand, data.airPermeabilityQ50,
-      data.numberOfChimneys, data.numberOfOpenFlues,
+      data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
+      data.designReturnTemp,      data.airDensity,            data.specificHeat,
+      data.mcsPostcodePrefix,     data.mcsDegreeDays,         data.mcsOutdoorLowTemp,
+      data.useSAPVentilation ? 1 : 0,
+      data.buildingCategory,      data.dwellingType,
+      data.numberOfStoreys,       data.shelterFactor,         data.numberOfBedrooms,
+      data.hasBlowerTest ? 1 : 0, data.sapAgeBand,            data.airPermeabilityQ50,
+      data.numberOfChimneys,      data.numberOfOpenFlues,
       data.numberOfIntermittentFans, data.numberOfPassiveVents,
       data.ventilationSystemType, data.mvhrEfficiency,
-      data.heatPumpManufacturer, data.heatPumpModel,
-      data.heatPumpRatedOutput, data.heatPumpMinModulation ?? 0, data.heatPumpFlowTemp, data.heatPumpReturnTemp,
-      data.mcsHeatPumpType, data.mcsEmitterType, data.mcsUFHType,
-      data.mcsSystemProvides, data.mcsBedrooms, data.mcsOccupants,
-      data.mcsCylinderVolume, data.mcsPasteurizationFreq,
+      data.heatPumpManufacturer,  data.heatPumpModel,
+      data.heatPumpRatedOutput,   data.heatPumpMinModulation ?? 0,
+      data.heatPumpFlowTemp,      data.heatPumpReturnTemp,
+      data.mcsHeatPumpType,       data.mcsEmitterType,        data.mcsUFHType,
+      data.mcsSystemProvides,     data.mcsBedrooms,           data.mcsOccupants,
+      data.mcsCylinderVolume,     data.mcsPasteurizationFreq,
       data.mcsHeatPumpSoundPower,
+      // JSONB columns — serialise on write; pg will deserialise on read
       JSON.stringify(data.mcsSoundAssessments || []),
-      data.mcsSoundSnapshot ? JSON.stringify(data.mcsSoundSnapshot) : null,
+      data.mcsSoundSnapshot      ? JSON.stringify(data.mcsSoundSnapshot)      : null,
       data.mcsCalculationSnapshot ? JSON.stringify(data.mcsCalculationSnapshot) : null,
-      data.circuits ? JSON.stringify(data.circuits) : null,
-      data.pipeSections ? JSON.stringify(data.pipeSections) : null,
-      data.epcSpaceHeatingDemand, data.epcHotWaterDemand, data.epcTotalFloorArea,
+      data.circuits              ? JSON.stringify(data.circuits)              : null,
+      data.pipeSections          ? JSON.stringify(data.pipeSections)          : null,
+      data.epcSpaceHeatingDemand, data.epcHotWaterDemand,     data.epcTotalFloorArea,
       data.heatPumpInternalVolume ?? 0,
       data.bufferVesselVolume     ?? 0,
-      data.en14511TestPoints ? JSON.stringify(data.en14511TestPoints) : null,
-      data.defrostPct             ?? 5,
-      // EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields (migration 010/012)
-      data.ventilationMethod      || 'en12831_cibse2026',
-      data.airPermeabilityMethod  || 'estimated',
-      data.q50                    ?? 12.0,
-      data.sapStructural          || 'masonry',
-      data.sapFloor               || 'other',
-      data.sapWindowDraughtPct    ?? 100,
-      data.sapDraughtLobby        ?? 0,
-      data.buildingStoreys        ?? 2,
-      data.buildingShielding      || 'normal',
-      data.referenceTemp          ?? 10.6,
-      projectId
+      data.en14511TestPoints     ? JSON.stringify(data.en14511TestPoints)     : null,
+      data.defrostPct            ?? 5,
+      data.ventilationMethod     || 'en12831_cibse2026',
+      data.airPermeabilityMethod || 'estimated',
+      data.q50                   ?? 12.0,
+      data.sapStructural         || 'masonry',
+      data.sapFloor              || 'other',
+      data.sapWindowDraughtPct   ?? 100,
+      data.sapDraughtLobby       ?? 0,
+      data.buildingStoreys       ?? 2,
+      data.buildingShielding     || 'normal',
+      data.referenceTemp         ?? 10.6,
+      projectId,
     ]
   ),
 };
@@ -1284,72 +434,72 @@ const designParams = {
 // ---------------------------------------------------------------------------
 const rooms = {
   getByProjectId: (projectId) =>
-    allQuery('SELECT * FROM rooms WHERE project_id = ? ORDER BY id', [projectId]),
+    allQuery('SELECT * FROM rooms WHERE project_id = $1 ORDER BY id', [projectId]),
 
   getById: (id) =>
-    getQuery('SELECT * FROM rooms WHERE id = ?', [id]),
+    getQuery('SELECT * FROM rooms WHERE id = $1', [id]),
 
   create: (data) => runQuery(`
     INSERT INTO rooms
       (project_id, name, internal_temp, volume, floor_area,
-      room_length, room_width, room_height,
-      room_type, has_manual_ach_override, manual_ach,
-      extract_fan_flow_rate, has_open_fire,
-      min_air_flow, infiltration_rate, mechanical_supply, mechanical_extract,
-      design_connection_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       room_length, room_width, room_height,
+       room_type, has_manual_ach_override, manual_ach,
+       extract_fan_flow_rate, has_open_fire,
+       min_air_flow, infiltration_rate, mechanical_supply, mechanical_extract,
+       design_connection_type)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14, $15, $16, $17, $18)
+    RETURNING id`,
     [data.projectId, data.name, data.internalTemp || 21,
-    data.volume || 0, data.floorArea || 0,
-    data.roomLength || 0, data.roomWidth || 0, data.roomHeight || 0,
-    data.roomType || 'living_room',
-    data.hasManualACHOverride ? 1 : 0, data.manualACH || 0,
-    data.extractFanFlowRate || 0, data.hasOpenFire ? 1 : 0,
-    data.minAirFlow || 0, data.infiltrationRate || 0.5,
-    data.mechanicalSupply || 0, data.mechanicalExtract || 0,
-    data.designConnectionType || 'BOE']
+     data.volume || 0, data.floorArea || 0,
+     data.roomLength || 0, data.roomWidth || 0, data.roomHeight || 0,
+     data.roomType || 'living_room',
+     data.hasManualACHOverride ? 1 : 0, data.manualACH || 0,
+     data.extractFanFlowRate || 0, data.hasOpenFire ? 1 : 0,
+     data.minAirFlow || 0, data.infiltrationRate || 0.5,
+     data.mechanicalSupply || 0, data.mechanicalExtract || 0,
+     data.designConnectionType || 'BOE']
   ),
 
   update: (id, data) => runQuery(`
-  UPDATE rooms SET
-    name = ?, internal_temp = ?, volume = ?, floor_area = ?,
-    room_length = ?, room_width = ?, room_height = ?,
-    room_type = ?, has_manual_ach_override = ?, manual_ach = ?,
-    extract_fan_flow_rate = ?, has_open_fire = ?,
-    min_air_flow = ?, infiltration_rate = ?,
-    mechanical_supply = ?, mechanical_extract = ?,
-    design_connection_type = ?,
-    thermal_bridging_addition = ?,
-    exposed_envelope_m2 = ?, has_suspended_floor = ?, is_top_storey = ?,
-    bg_vent_count = ?, bg_fan_count = ?,
-    bg_flue_small_count = ?, bg_flue_large_count = ?, bg_open_fire_count = ?,
-    continuous_vent_type = ?, continuous_vent_rate_m3h = ?, mvhr_efficiency = ?
-  WHERE id = ?`,
-  [data.name, data.internalTemp, data.volume, data.floorArea,
-   data.roomLength, data.roomWidth, data.roomHeight,
-   data.roomType || 'living_room',
-   data.hasManualACHOverride ? 1 : 0, data.manualACH || 0,
-   data.extractFanFlowRate || 0, data.hasOpenFire ? 1 : 0,
-   data.minAirFlow, data.infiltrationRate,
-   data.mechanicalSupply, data.mechanicalExtract,
-   data.designConnectionType || 'BOE',
-   // Thermal bridging addition (CIBSE DHDG 2026 Table 2-9, migration 011)
-   data.thermalBridgingAddition ?? 0.10,
-   // EN 12831-1:2017 ventilation fields (migration 010)
-   data.exposedEnvelopeM2     ?? 0,
-   data.hasSuspendedFloor     ?? 0,
-   data.isTopStorey           ?? 0,
-   data.bgVentCount           ?? 0,
-   data.bgFanCount            ?? 0,
-   data.bgFlueSmallCount      ?? 0,
-   data.bgFlueLargeCount      ?? 0,
-   data.bgOpenFireCount       ?? 0,
-   data.continuousVentType    || 'none',
-   data.continuousVentRateM3h ?? 0,
-   data.mvhrEfficiency        ?? 0,
-   id]
-),
+    UPDATE rooms SET
+      name = $1, internal_temp = $2, volume = $3, floor_area = $4,
+      room_length = $5, room_width = $6, room_height = $7,
+      room_type = $8, has_manual_ach_override = $9, manual_ach = $10,
+      extract_fan_flow_rate = $11, has_open_fire = $12,
+      min_air_flow = $13, infiltration_rate = $14,
+      mechanical_supply = $15, mechanical_extract = $16,
+      design_connection_type = $17,
+      thermal_bridging_addition = $18,
+      exposed_envelope_m2 = $19, has_suspended_floor = $20, is_top_storey = $21,
+      bg_vent_count = $22, bg_fan_count = $23,
+      bg_flue_small_count = $24, bg_flue_large_count = $25, bg_open_fire_count = $26,
+      continuous_vent_type = $27, continuous_vent_rate_m3h = $28, mvhr_efficiency = $29
+    WHERE id = $30`,
+    [data.name, data.internalTemp, data.volume, data.floorArea,
+     data.roomLength, data.roomWidth, data.roomHeight,
+     data.roomType || 'living_room',
+     data.hasManualACHOverride ? 1 : 0, data.manualACH || 0,
+     data.extractFanFlowRate || 0, data.hasOpenFire ? 1 : 0,
+     data.minAirFlow, data.infiltrationRate,
+     data.mechanicalSupply, data.mechanicalExtract,
+     data.designConnectionType || 'BOE',
+     data.thermalBridgingAddition ?? 0.10,
+     data.exposedEnvelopeM2      ?? 0,
+     data.hasSuspendedFloor      ?? 0,
+     data.isTopStorey            ?? 0,
+     data.bgVentCount            ?? 0,
+     data.bgFanCount             ?? 0,
+     data.bgFlueSmallCount       ?? 0,
+     data.bgFlueLargeCount       ?? 0,
+     data.bgOpenFireCount        ?? 0,
+     data.continuousVentType     || 'none',
+     data.continuousVentRateM3h  ?? 0,
+     data.mvhrEfficiency         ?? 0,
+     id]
+  ),
 
-  delete: (id) => runQuery('DELETE FROM rooms WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM rooms WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
@@ -1357,17 +507,18 @@ const rooms = {
 // ---------------------------------------------------------------------------
 const elements = {
   getByRoomId: (roomId) =>
-    allQuery('SELECT * FROM elements WHERE room_id = ? ORDER BY id', [roomId]),
+    allQuery('SELECT * FROM elements WHERE room_id = $1 ORDER BY id', [roomId]),
 
   getById: (id) =>
-    getQuery('SELECT * FROM elements WHERE id = ?', [id]),
+    getQuery('SELECT * FROM elements WHERE id = $1', [id]),
 
   create: (data) => runQuery(`
     INSERT INTO elements
       (room_id, element_type, description, length, height, area,
        u_value, temp_factor, custom_delta_t, subtract_from_element_id,
        include_in_envelope)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    RETURNING id`,
     [data.roomId, data.elementType, data.description,
      data.length, data.height, data.area, data.uValue, data.tempFactor,
      data.customDeltaT ?? null, data.subtractFromElementId ?? null,
@@ -1376,10 +527,10 @@ const elements = {
 
   update: (id, data) => runQuery(`
     UPDATE elements SET
-      element_type = ?, description = ?, length = ?, height = ?, area = ?,
-      u_value = ?, temp_factor = ?, custom_delta_t = ?, subtract_from_element_id = ?,
-      include_in_envelope = ?
-    WHERE id = ?`,
+      element_type = $1, description = $2, length = $3, height = $4, area = $5,
+      u_value = $6, temp_factor = $7, custom_delta_t = $8,
+      subtract_from_element_id = $9, include_in_envelope = $10
+    WHERE id = $11`,
     [data.elementType, data.description, data.length, data.height, data.area,
      data.uValue, data.tempFactor, data.customDeltaT ?? null,
      data.subtractFromElementId || null,
@@ -1387,7 +538,7 @@ const elements = {
      id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM elements WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM elements WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
@@ -1396,62 +547,65 @@ const elements = {
 const uValueLibrary = {
   getByProjectId: (projectId) =>
     allQuery(
-      'SELECT * FROM u_value_library WHERE project_id = ? ORDER BY element_category, name',
+      'SELECT * FROM u_value_library WHERE project_id = $1 ORDER BY element_category, name',
       [projectId]
     ),
 
   create: (data) => runQuery(`
     INSERT INTO u_value_library (project_id, element_category, name, u_value, notes)
-    VALUES (?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id`,
     [data.projectId, data.elementCategory, data.name, data.uValue, data.notes || '']
   ),
 
   update: (id, data) => runQuery(`
     UPDATE u_value_library
-    SET element_category = ?, name = ?, u_value = ?, notes = ?
-    WHERE id = ?`,
+    SET element_category = $1, name = $2, u_value = $3, notes = $4
+    WHERE id = $5`,
     [data.elementCategory, data.name, data.uValue, data.notes || '', id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM u_value_library WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM u_value_library WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
 // RADIATOR SPECS
 // ---------------------------------------------------------------------------
 const radiatorSpecs = {
+  // TODO (T1): scope to company_id + global library entries once multi-tenant
   getAll: () =>
     allQuery('SELECT * FROM radiator_specs ORDER BY manufacturer, type, height, length'),
 
   getById: (id) =>
-    getQuery('SELECT * FROM radiator_specs WHERE id = ?', [id]),
+    getQuery('SELECT * FROM radiator_specs WHERE id = $1', [id]),
 
   create: (data) => runQuery(`
     INSERT INTO radiator_specs
       (manufacturer, model, type, height, length,
-      output_dt50, water_volume, notes, source, scope)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       output_dt50, water_volume, notes, source, scope)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id`,
     [data.manufacturer, data.model, data.type,
-    data.height, data.length, data.outputDt50,
-    data.waterVolume, data.notes || '',
-    data.source || 'library',
-    data.scope  || 'company']
+     data.height, data.length, data.outputDt50,
+     data.waterVolume, data.notes || '',
+     data.source || 'library',
+     data.scope  || 'company']
   ),
 
   update: (id, data) => runQuery(`
     UPDATE radiator_specs SET
-      manufacturer = ?, model = ?, type = ?, height = ?, length = ?,
-      output_dt50 = ?, water_volume = ?, notes = ?, source = ?, scope = ?
-    WHERE id = ?`,
+      manufacturer = $1, model = $2, type = $3, height = $4, length = $5,
+      output_dt50 = $6, water_volume = $7, notes = $8, source = $9, scope = $10
+    WHERE id = $11`,
     [data.manufacturer, data.model, data.type,
-    data.height, data.length, data.outputDt50,
-    data.waterVolume, data.notes || '',
-    data.source || 'library',
-    data.scope  || 'company',
-    id]
+     data.height, data.length, data.outputDt50,
+     data.waterVolume, data.notes || '',
+     data.source || 'library',
+     data.scope  || 'company',
+     id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM radiator_specs WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM radiator_specs WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
@@ -1459,79 +613,80 @@ const radiatorSpecs = {
 // ---------------------------------------------------------------------------
 const roomEmitters = {
   getByRoomId: (roomId) =>
-    allQuery('SELECT * FROM room_emitters WHERE room_id = ?', [roomId]),
+    allQuery('SELECT * FROM room_emitters WHERE room_id = $1', [roomId]),
 
   getById: (id) =>
-    getQuery('SELECT * FROM room_emitters WHERE id = ?', [id]),
+    getQuery('SELECT * FROM room_emitters WHERE id = $1', [id]),
 
   create: (data) => runQuery(`
     INSERT INTO room_emitters
       (room_id, emitter_type, radiator_spec_id, connection_type, quantity, notes)
-    VALUES (?, ?, ?, ?, ?, ?)`,
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id`,
     [data.roomId, data.emitterType, data.radiatorSpecId || null,
      data.connectionType || null, data.quantity || 1, data.notes || '']
   ),
 
   update: (id, data) => runQuery(`
     UPDATE room_emitters SET
-      emitter_type = ?, radiator_spec_id = ?, connection_type = ?,
-      quantity = ?, notes = ?
-    WHERE id = ?`,
+      emitter_type = $1, radiator_spec_id = $2, connection_type = $3,
+      quantity = $4, notes = $5
+    WHERE id = $6`,
     [data.emitterType, data.radiatorSpecId || null, data.connectionType || null,
      data.quantity || 1, data.notes || '', id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM room_emitters WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM room_emitters WHERE id = $1', [id]),
 };
 
 // ---------------------------------------------------------------------------
-// UFH SPECS — per room, created when UFH emitter is first added
+// UFH SPECS — per room, one row per room (UNIQUE constraint on room_id)
 // ---------------------------------------------------------------------------
 const ufhSpecs = {
   getByRoomId: (roomId) =>
-    getQuery('SELECT * FROM room_ufh_specs WHERE room_id = ?', [roomId])
-      .catch(() => null),  // return null if table doesn't exist yet
+    getQuery('SELECT * FROM room_ufh_specs WHERE room_id = $1', [roomId])
+      .catch(() => null),
 
   upsert: (roomId, data) => runQuery(`
-  INSERT INTO room_ufh_specs
-    (room_id, floor_construction, pipe_spacing_mm, pipe_od_m,
-     screed_depth_above_pipe_m, lambda_screed,
-     floor_covering, r_lambda, active_area_factor,
-     zone_type, notes, ufh_flow_temp, ufh_return_temp, has_actuator, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-  ON CONFLICT(room_id) DO UPDATE SET
-    floor_construction          = excluded.floor_construction,
-    pipe_spacing_mm             = excluded.pipe_spacing_mm,
-    pipe_od_m                   = excluded.pipe_od_m,
-    screed_depth_above_pipe_m   = excluded.screed_depth_above_pipe_m,
-    lambda_screed               = excluded.lambda_screed,
-    floor_covering              = excluded.floor_covering,
-    r_lambda                    = excluded.r_lambda,
-    active_area_factor          = excluded.active_area_factor,
-    zone_type                   = excluded.zone_type,
-    notes                       = excluded.notes,
-    ufh_flow_temp               = excluded.ufh_flow_temp,
-    ufh_return_temp             = excluded.ufh_return_temp,
-    has_actuator                = excluded.has_actuator,
-    updated_at                  = CURRENT_TIMESTAMP`,
-  [roomId,
-   data.floorConstruction    || 'screed',
-   data.pipeSpacingMm        || 150,
-   data.pipeOdM              ?? 0.016,
-   data.screedDepthAbovePipeM ?? 0.045,
-   data.lambdaScreed         ?? 1.2,
-   data.floorCovering        || 'tiles',
-   data.rLambda              ?? 0.00,
-   data.activeAreaFactor     ?? 1.00,
-   data.zoneType             || 'occupied',
-   data.notes                || '',
-   data.ufhFlowTemp          ?? 45,
-   data.ufhReturnTemp        ?? 40,
-   data.hasActuator          ? 1 : 0]
-),
+    INSERT INTO room_ufh_specs
+      (room_id, floor_construction, pipe_spacing_mm, pipe_od_m,
+       screed_depth_above_pipe_m, lambda_screed,
+       floor_covering, r_lambda, active_area_factor,
+       zone_type, notes, ufh_flow_temp, ufh_return_temp, has_actuator, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+    ON CONFLICT (room_id) DO UPDATE SET
+      floor_construction          = EXCLUDED.floor_construction,
+      pipe_spacing_mm             = EXCLUDED.pipe_spacing_mm,
+      pipe_od_m                   = EXCLUDED.pipe_od_m,
+      screed_depth_above_pipe_m   = EXCLUDED.screed_depth_above_pipe_m,
+      lambda_screed               = EXCLUDED.lambda_screed,
+      floor_covering              = EXCLUDED.floor_covering,
+      r_lambda                    = EXCLUDED.r_lambda,
+      active_area_factor          = EXCLUDED.active_area_factor,
+      zone_type                   = EXCLUDED.zone_type,
+      notes                       = EXCLUDED.notes,
+      ufh_flow_temp               = EXCLUDED.ufh_flow_temp,
+      ufh_return_temp             = EXCLUDED.ufh_return_temp,
+      has_actuator                = EXCLUDED.has_actuator,
+      updated_at                  = NOW()`,
+    [roomId,
+     data.floorConstruction    || 'screed',
+     data.pipeSpacingMm        || 150,
+     data.pipeOdM              ?? 0.016,
+     data.screedDepthAbovePipeM ?? 0.045,
+     data.lambdaScreed         ?? 1.2,
+     data.floorCovering        || 'tiles',
+     data.rLambda              ?? 0.00,
+     data.activeAreaFactor     ?? 1.00,
+     data.zoneType             || 'occupied',
+     data.notes                || '',
+     data.ufhFlowTemp          ?? 45,
+     data.ufhReturnTemp        ?? 40,
+     data.hasActuator          ? 1 : 0]
+  ),
 
   delete: (roomId) =>
-    runQuery('DELETE FROM room_ufh_specs WHERE room_id = ?', [roomId]),
+    runQuery('DELETE FROM room_ufh_specs WHERE room_id = $1', [roomId]),
 };
 
 // ---------------------------------------------------------------------------
@@ -1540,63 +695,61 @@ const ufhSpecs = {
 const radiatorSchedule = {
   getByRoomId: (roomId) =>
     allQuery(
-      'SELECT * FROM radiator_schedule WHERE room_id = ? ORDER BY display_order, id',
+      'SELECT * FROM radiator_schedule WHERE room_id = $1 ORDER BY display_order, id',
       [roomId]
     ),
 
   create: (data) => runQuery(`
     INSERT INTO radiator_schedule
       (room_id, radiator_spec_id, connection_type, quantity,
-      notes, is_existing, emitter_status, display_order,
-      enclosure_factor, finish_factor, no_trv)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       notes, is_existing, emitter_status, display_order,
+       enclosure_factor, finish_factor, no_trv)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    RETURNING id`,
     [data.roomId, data.radiatorSpecId, data.connectionType || 'BOE',
-    data.quantity || 1, data.notes || '',
-    data.isExisting ? 1 : 0,
-    data.emitterStatus || 'new',
-    data.displayOrder || 0,
-    data.enclosureFactor ?? 1.00,
-    data.finishFactor   ?? 1.00,
-    data.noTrv ? 1 : 0]
+     data.quantity || 1, data.notes || '',
+     data.isExisting  ? 1 : 0,
+     data.emitterStatus || 'new',
+     data.displayOrder || 0,
+     data.enclosureFactor ?? 1.00,
+     data.finishFactor    ?? 1.00,
+     data.noTrv ? 1 : 0]
   ),
 
   update: (id, data) => runQuery(`
     UPDATE radiator_schedule SET
-      radiator_spec_id = ?, connection_type = ?, quantity = ?,
-      notes = ?, is_existing = ?, emitter_status = ?, display_order = ?,
-      enclosure_factor = ?, finish_factor = ?, no_trv = ?
-    WHERE id = ?`,
+      radiator_spec_id = $1, connection_type = $2, quantity = $3,
+      notes = $4, is_existing = $5, emitter_status = $6, display_order = $7,
+      enclosure_factor = $8, finish_factor = $9, no_trv = $10
+    WHERE id = $11`,
     [data.radiatorSpecId, data.connectionType || 'BOE', data.quantity || 1,
-    data.notes || '',
-    data.isExisting ? 1 : 0,
-    data.emitterStatus || 'new',
-    data.displayOrder || 0,
-    data.enclosureFactor ?? 1.00,
-    data.finishFactor   ?? 1.00,
-    data.noTrv ? 1 : 0,
-    id]
+     data.notes || '',
+     data.isExisting  ? 1 : 0,
+     data.emitterStatus || 'new',
+     data.displayOrder || 0,
+     data.enclosureFactor ?? 1.00,
+     data.finishFactor    ?? 1.00,
+     data.noTrv ? 1 : 0,
+     id]
   ),
 
-  delete: (id) => runQuery('DELETE FROM radiator_schedule WHERE id = ?', [id]),
+  delete: (id) => runQuery('DELETE FROM radiator_schedule WHERE id = $1', [id]),
 
   markRoomComplete: (roomId, isComplete) =>
     runQuery(
-      'UPDATE rooms SET radiator_schedule_complete = ? WHERE id = ?',
+      'UPDATE rooms SET radiator_schedule_complete = $1 WHERE id = $2',
       [isComplete ? 1 : 0, roomId]
     ),
 };
 
 // ---------------------------------------------------------------------------
 // GET COMPLETE PROJECT
-// Single function that assembles everything the frontend needs for the
-// project editor. Returns project + client + addresses + design_params
-// + rooms (with elements, emitters, schedule) + library data.
+// Assembles everything the frontend needs in a single async call.
 // ---------------------------------------------------------------------------
 async function getCompleteProject(projectId) {
   const project = await projects.getById(projectId);
   if (!project) return null;
 
-  // Client and their addresses
   const client = project.client_id
     ? await clients.getById(project.client_id)
     : null;
@@ -1604,24 +757,19 @@ async function getCompleteProject(projectId) {
     ? await addresses.getByClientId(project.client_id)
     : [];
 
-  // Installation address for this project
   const projectAddressList = await addresses.getByProjectId(projectId);
-
-  // Design params (may not exist yet for brand new projects)
   const dp = await designParams.getByProjectId(projectId);
 
-  // Rooms with all their children
   const projectRooms = await rooms.getByProjectId(projectId);
   for (const room of projectRooms) {
-    room.elements        = await elements.getByRoomId(room.id);
-    room.emitters        = await roomEmitters.getByRoomId(room.id);
+    room.elements         = await elements.getByRoomId(room.id);
+    room.emitters         = await roomEmitters.getByRoomId(room.id);
     room.radiatorSchedule = await radiatorSchedule.getByRoomId(room.id);
     room.ufhSpecs         = await ufhSpecs.getByRoomId(room.id) || null;
   }
 
-  // Library data
-  const uValues      = await uValueLibrary.getByProjectId(projectId);
-  const radSpecs     = await radiatorSpecs.getAll();
+  const uValues  = await uValueLibrary.getByProjectId(projectId);
+  const radSpecs = await radiatorSpecs.getAll();
 
   return {
     ...project,
@@ -1639,7 +787,7 @@ async function getCompleteProject(projectId) {
 // EXPORTS
 // ---------------------------------------------------------------------------
 module.exports = {
-  db,
+  pool,            // exported so server.js can call pool.end() on shutdown if needed
   companies,
   addresses,
   clients,
@@ -1655,5 +803,6 @@ module.exports = {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
-  waitForDb,
+  // waitForDb is gone — no longer needed with Postgres connection pool.
+  // server.js startup sequence is now a simple async IIFE (see migrate.js notes).
 };

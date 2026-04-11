@@ -4,7 +4,9 @@
   "description": "Heat loss calculator backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate": "node migrate.js",
+    "deploy": "node migrate.js && node server.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
@@ -13,6 +15,6 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
-    "sqlite3": "^5.1.6"
+    "pg": "^8.11.3"
   }
 }
