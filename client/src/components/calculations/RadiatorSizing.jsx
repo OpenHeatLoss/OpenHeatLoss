@@ -321,6 +321,7 @@ export default function RadiatorSizing({
   onUpdateUFHSpecs,
   onAddUFHEmitter,
   onRemoveUFH,
+  onSaveFlowTemps,
 }) {
   const [expandedRooms, setExpandedRooms] = useState(new Set());
   const [showAddRadiator, setShowAddRadiator] = useState(false);
@@ -331,9 +332,17 @@ export default function RadiatorSizing({
   });
   const [exporting, setExporting] = useState(false);
 
+
+  // Local state for flow/return temp inputs — initialised once from project on
+  // mount. No useEffect sync: loadProject in other tabs must not overwrite what
+  // the user just typed. Values are saved to the server on every change so that
+  // when loadProject does fire it gets the current value back.
+  const [localFlowTemp,   setLocalFlowTemp]   = useState(project.designFlowTemp   ?? 50);
+  const [localReturnTemp, setLocalReturnTemp] = useState(project.designReturnTemp ?? 40);
+
   const systemSettings = {
-    flowTemp:   project.designFlowTemp   || 50,
-    returnTemp: project.designReturnTemp || 40,
+    flowTemp:   localFlowTemp,
+    returnTemp: localReturnTemp,
   };
   const flowReturnDelta = systemSettings.flowTemp - systemSettings.returnTemp;
 
@@ -561,14 +570,26 @@ export default function RadiatorSizing({
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-semibold mb-1">Flow Temperature (°C)</label>
-            <input type="number" step="0.1" value={systemSettings.flowTemp}
-              onChange={e => onUpdateProject('designFlowTemp', parseFloat(e.target.value))}
+            <input type="number" step="0.1" value={localFlowTemp}
+              onChange={e => {
+                const v = parseFloat(e.target.value);
+                if (isNaN(v)) return;
+                setLocalFlowTemp(v);
+                onUpdateProject('designFlowTemp', v);
+                onSaveFlowTemps?.(v, localReturnTemp);
+              }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-sm font-semibold mb-1">Return Temperature (°C)</label>
-            <input type="number" step="0.1" value={systemSettings.returnTemp}
-              onChange={e => onUpdateProject('designReturnTemp', parseFloat(e.target.value))}
+            <input type="number" step="0.1" value={localReturnTemp}
+              onChange={e => {
+                const v = parseFloat(e.target.value);
+                if (isNaN(v)) return;
+                setLocalReturnTemp(v);
+                onUpdateProject('designReturnTemp', v);
+                onSaveFlowTemps?.(localFlowTemp, v);
+              }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
