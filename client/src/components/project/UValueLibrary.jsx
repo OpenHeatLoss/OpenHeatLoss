@@ -103,6 +103,20 @@ function UValueRow({ uVal, onUpdate, onDelete }) {
 // UValueLibrary — renders the list and delegates each row to UValueRow
 // ---------------------------------------------------------------------------
 export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onUpdate, onDelete }) {
+  const [sortOrder, setSortOrder] = useState('default');
+
+  const sortedLibrary = (() => {
+    const lib = project.uValueLibrary || [];
+    if (sortOrder === 'alpha') {
+      return [...lib].sort((a, b) => {
+        const catCmp = (a.element_category || '').localeCompare(b.element_category || '');
+        if (catCmp !== 0) return catCmp;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    }
+    return lib; // default: insertion order (by id, as returned from server)
+  })();
+
   return (
     <div>
       <div className="mb-4">
@@ -110,16 +124,34 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
         <p className="text-sm text-gray-600 mb-4">
           Create a library of U-values for different construction types. You can then quickly apply these to elements in your rooms.
         </p>
-        <button
-          onClick={onAdd}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2 transition"
-        >
-          <PlusIcon />
-          Add U-Value
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onAdd}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2 transition"
+          >
+            <PlusIcon />
+            Add U-Value
+          </button>
+          {sortedLibrary.length > 1 && (
+            <div className="flex items-center gap-1 border border-gray-300 rounded overflow-hidden text-sm">
+              <button
+                onClick={() => setSortOrder('default')}
+                className={`px-3 py-1.5 transition ${sortOrder === 'default' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                Default order
+              </button>
+              <button
+                onClick={() => setSortOrder('alpha')}
+                className={`px-3 py-1.5 transition ${sortOrder === 'alpha' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                A–Z
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {project.uValueLibrary && project.uValueLibrary.length > 0 ? (
+      {sortedLibrary.length > 0 ? (
         <div className="space-y-2">
           <div className="grid grid-cols-5 gap-2 text-xs font-semibold text-gray-600 px-2 mb-2">
             <div>Category</div>
@@ -128,7 +160,7 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
             <div>Notes</div>
             <div></div>
           </div>
-          {project.uValueLibrary.map(uVal => (
+          {sortedLibrary.map(uVal => (
             <UValueRow
               key={uVal.id}
               uVal={uVal}

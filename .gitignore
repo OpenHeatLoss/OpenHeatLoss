@@ -24,3 +24,4 @@ client/.vite/
 client/src/App(b).jsx
 server/database(a).js
 server/server(a).js
+client/src/components/project/UValueLibrary(b).jsx
