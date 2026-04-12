@@ -801,10 +801,13 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
 
   if (!project) return null;
 
-  // Ownership check — registered user must own this project,
-  // anonymous user must match by session token.
+  // Ownership check:
+  // - Registered user (companyId set): project must belong to their company.
+  // - Anonymous user (companyId null, sessionToken set): project session_token
+  //   must match. Only applies to anonymous projects (session_token NOT NULL) —
+  //   claimed/registered projects have session_token NULL and are skipped.
   if (companyId !== null && project.company_id !== companyId) return null;
-  if (companyId === null && sessionToken !== null && project.session_token !== sessionToken) return null;
+  if (companyId === null && sessionToken !== null && project.session_token !== null && project.session_token !== sessionToken) return null;
 
   const roomIds = projectRooms.map(r => r.id);
 

@@ -513,9 +513,9 @@ app.get('/api/projects', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/projects/:id', async (req, res) => {
+app.get('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
   try {
-    const companyId    = req.user?.companyId || null;
+    const companyId    = req.user?.companyId ?? null;
     const sessionToken = req.user ? null : req.anonToken;
     const project = await getCompleteProject(req.params.id, { companyId, sessionToken });
     if (!project) return res.status(404).json({ error: 'Project not found' });
