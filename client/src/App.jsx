@@ -1059,18 +1059,16 @@ const deleteProject = async (id) => {
     }
   };
 
-  // Persists flow/return temp immediately so loadProject calls triggered by
-  // other tabs don't reset values the user has set. No loadProject call here —
-  // local state in RadiatorSizing is already correct.
-  const saveFlowTemps = async (flowTemp, returnTemp) => {
+  // Persists pipeSections immediately so loadProject calls from other tabs
+  // don't reset sections the user has just added or edited.
+  const savePipeSections = async (pipeSections) => {
     try {
       await api.updateDesignParams(currentProject.id, {
         ...currentProject,
-        designFlowTemp:   flowTemp,
-        designReturnTemp: returnTemp,
+        pipeSections,
       });
     } catch (error) {
-      console.error('Error saving flow temps:', error);
+      console.error('Error saving pipe sections:', error);
     }
   };
 
@@ -1428,11 +1426,10 @@ const deleteProject = async (id) => {
                 onUpdateUFHSpecs={updateUFHSpecs}
                 onAddUFHEmitter={addUFHEmitter}
                 onRemoveUFH={removeUFHSpecs}
-                onSaveFlowTemps={saveFlowTemps}
               />
             )}
             {activeTab === 'pipe-sizing' && (
-              <PipeSizing project={currentProject} onUpdate={updateProject} />
+              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSections={savePipeSections} />
             )}
             {activeTab === 'quote' && (
               <QuoteBuilder project={currentProject} />

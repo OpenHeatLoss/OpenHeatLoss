@@ -4,7 +4,7 @@ import PipeSectionEditor from './PipeSectionEditor';
 import { PIPE_MATERIALS } from '../../utils/pipeMaterialData';
 import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
 
-export default function PipeSizing({ project, onUpdate }) {
+export default function PipeSizing({ project, onUpdate, onSavePipeSections }) {
   const [sections, setSections] = useState(() => {
     if (!project.pipeSections) return [];
     if (Array.isArray(project.pipeSections)) return project.pipeSections;
@@ -72,6 +72,7 @@ export default function PipeSizing({ project, onUpdate }) {
     
     setSections(updatedSections);
     onUpdate('pipeSections', updatedSections);
+    onSavePipeSections?.(updatedSections);
     setShowSectionEditor(false);
     setEditingSection(null);
     setEditingSectionIndex(null);
@@ -88,6 +89,7 @@ export default function PipeSizing({ project, onUpdate }) {
       const updatedSections = sections.filter((_, i) => i !== index);
       setSections(updatedSections);
       onUpdate('pipeSections', updatedSections);
+      onSavePipeSections?.(updatedSections);
     }
   };
 
@@ -100,6 +102,7 @@ export default function PipeSizing({ project, onUpdate }) {
     };
     setSections(updatedSections);
     onUpdate('pipeSections', updatedSections);
+    onSavePipeSections?.(updatedSections);
   };
 
   // Export pipe sizing report as PDF
