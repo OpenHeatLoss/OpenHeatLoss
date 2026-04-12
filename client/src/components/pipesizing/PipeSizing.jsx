@@ -4,7 +4,7 @@ import PipeSectionEditor from './PipeSectionEditor';
 import { PIPE_MATERIALS } from '../../utils/pipeMaterialData';
 import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
 
-export default function PipeSizing({ project, onUpdate, onSavePipeSections }) {
+export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSave }) {
   const [sections, setSections] = useState(() => {
     if (!project.pipeSections) return [];
     if (Array.isArray(project.pipeSections)) return project.pipeSections;
@@ -538,6 +538,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections }) {
                       type="number" step="0.1" min="0"
                       value={project.heatPumpInternalVolume ?? 0}
                       onChange={e => onUpdate('heatPumpInternalVolume', parseFloat(e.target.value) || 0)}
+                      onBlur={e => onSave?.({ heatPumpInternalVolume: parseFloat(e.target.value) || 0 })}
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-gray-500 mt-1">From heat pump datasheet</p>
@@ -550,6 +551,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections }) {
                       type="number" step="1" min="0"
                       value={project.bufferVesselVolume ?? 0}
                       onChange={e => onUpdate('bufferVesselVolume', parseFloat(e.target.value) || 0)}
+                      onBlur={e => onSave?.({ bufferVesselVolume: parseFloat(e.target.value) || 0 })}
                       className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-gray-500 mt-1">0 if no buffer vessel</p>

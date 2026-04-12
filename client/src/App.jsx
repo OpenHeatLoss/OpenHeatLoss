@@ -1072,6 +1072,21 @@ const deleteProject = async (id) => {
     }
   };
 
+  // Generic handler to persist any design_params fields immediately.
+  // Called from MCS/pipe-sizing components on blur or action, so that
+  // loadProject triggered by other tabs never resets unsaved values.
+  // Pass a partial object — it is merged with currentProject before saving.
+  const saveDesignParams = async (fields) => {
+    try {
+      await api.updateDesignParams(currentProject.id, {
+        ...currentProject,
+        ...fields,
+      });
+    } catch (error) {
+      console.error('Error saving design params:', error);
+    }
+  };
+
   // Radiator Schedule handlers
   const updateRadiatorSchedule = async (roomId, action, data) => {
     try {
@@ -1379,10 +1394,10 @@ const deleteProject = async (id) => {
               />
             )}
             {activeTab === 'mcs031' && (
-              <MCS031PerformanceEstimator project={currentProject} onUpdate={updateProject} />
+              <MCS031PerformanceEstimator project={currentProject} onUpdate={updateProject} onSave={saveDesignParams} />
             )}
             {activeTab === 'mcs020' && (
-              <MCS020SoundCalculator project={currentProject} onUpdate={updateProject} />
+              <MCS020SoundCalculator project={currentProject} onUpdate={updateProject} onSave={saveDesignParams} />
             )}
             {activeTab === 'u-values' && (
               <UValueLibrary
@@ -1429,7 +1444,7 @@ const deleteProject = async (id) => {
               />
             )}
             {activeTab === 'pipe-sizing' && (
-              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSections={savePipeSections} />
+              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSections={savePipeSections} onSave={saveDesignParams} />
             )}
             {activeTab === 'quote' && (
               <QuoteBuilder project={currentProject} />

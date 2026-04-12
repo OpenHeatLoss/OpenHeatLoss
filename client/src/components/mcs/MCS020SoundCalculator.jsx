@@ -1,7 +1,7 @@
 // client/src/components/project/MCS020SoundCalculator.jsx
 import { useState, useEffect } from 'react';
 
-export default function MCS020SoundCalculator({ project, onUpdate }) {
+export default function MCS020SoundCalculator({ project, onUpdate, onSave }) {
   // Snapshot: stores calculatedAt timestamp + input fingerprint
   const snapshot = project.mcsSoundSnapshot || null;
 
@@ -118,11 +118,13 @@ export default function MCS020SoundCalculator({ project, onUpdate }) {
         distance: p.distance, barrierType: p.barrierType, lineOfSight: p.lineOfSight
       }))
     });
-    onUpdate('mcsSoundSnapshot', {
+    const newSnapshot = {
       calculatedAt: new Date().toISOString(),
       inputFingerprint: newFingerprint,
       allPositionsPass: updated.every(p => p.passes)
-    });
+    };
+    onUpdate('mcsSoundSnapshot', newSnapshot);
+    onSave?.({ mcsSoundAssessments: updated, mcsSoundSnapshot: newSnapshot });
   };
 
   const handleExportPDF = async () => {
@@ -216,6 +218,7 @@ export default function MCS020SoundCalculator({ project, onUpdate }) {
     ];
     setAssessmentPositions(newPositions);
     onUpdate('mcsSoundAssessments', newPositions);
+    onSave?.({ mcsSoundAssessments: newPositions });
   };
 
   const removeAssessmentPosition = (id) => {
@@ -223,6 +226,7 @@ export default function MCS020SoundCalculator({ project, onUpdate }) {
       const newPositions = assessmentPositions.filter(pos => pos.id !== id);
       setAssessmentPositions(newPositions);
       onUpdate('mcsSoundAssessments', newPositions);
+      onSave?.({ mcsSoundAssessments: newPositions });
     }
   };
 
@@ -232,6 +236,7 @@ export default function MCS020SoundCalculator({ project, onUpdate }) {
     );
     setAssessmentPositions(newPositions);
     onUpdate('mcsSoundAssessments', newPositions);
+    onSave?.({ mcsSoundAssessments: newPositions });
   };
 
   const allPositionsPass = assessmentPositions.every(pos => pos.passes);
@@ -269,6 +274,10 @@ export default function MCS020SoundCalculator({ project, onUpdate }) {
                 }));
                 setAssessmentPositions(newPositions);
                 onUpdate('mcsSoundAssessments', newPositions);
+              }}
+              onBlur={(e) => {
+                const value = parseFloat(e.target.value) || 0;
+                onSave?.({ mcsHeatPumpSoundPower: value });
               }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />

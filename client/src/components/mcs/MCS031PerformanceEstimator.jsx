@@ -4,7 +4,7 @@ import { getMCSDataFromPostcode } from '../../utils/mcsData';
 import { getSPFAndStars, renderStars, getFlowTempRanges } from '../../utils/mcsSPFLookup';
 import { getWarningNotes } from '../../utils/mcsWarningNotes';
 
-export default function MCSPerformanceEstimator({ project, onUpdate }) {
+export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   const [showGraph, setShowGraph] = useState(false);
 
   // Snapshot stored on project — persists across sessions
@@ -111,6 +111,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
       specificHeatLoss,
     };
     onUpdate('mcsCalculationSnapshot', newSnapshot);
+    onSave?.({ mcsCalculationSnapshot: newSnapshot });
   };
 
   const handleExportPDF = async () => {
@@ -196,6 +197,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               type="number"
               value={project.epcSpaceHeatingDemand || ''}
               onChange={(e) => onUpdate('epcSpaceHeatingDemand', parseFloat(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ epcSpaceHeatingDemand: parseFloat(e.target.value) || 0 })}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -207,6 +209,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               type="number"
               value={project.epcHotWaterDemand || ''}
               onChange={(e) => onUpdate('epcHotWaterDemand', parseFloat(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ epcHotWaterDemand: parseFloat(e.target.value) || 0 })}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -218,6 +221,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               type="number"
               value={project.epcTotalFloorArea || ''}
               onChange={(e) => onUpdate('epcTotalFloorArea', parseFloat(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ epcTotalFloorArea: parseFloat(e.target.value) || 0 })}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
             <div className="text-xs text-gray-500 mt-1">
@@ -235,7 +239,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
             <label className="block text-sm font-semibold mb-1">Heat Pump Type</label>
             <select
               value={project.mcsHeatPumpType || 'ASHP'}
-              onChange={(e) => onUpdate('mcsHeatPumpType', e.target.value)}
+              onChange={(e) => { onUpdate('mcsHeatPumpType', e.target.value); onSave?.({ mcsHeatPumpType: e.target.value }); }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ASHP">Air Source Heat Pump (ASHP)</option>
@@ -249,7 +253,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
             <label className="block text-sm font-semibold mb-1">Proposed Emitters</label>
             <select
               value={project.mcsEmitterType || 'existing_radiators'}
-              onChange={(e) => onUpdate('mcsEmitterType', e.target.value)}
+              onChange={(e) => { onUpdate('mcsEmitterType', e.target.value); onSave?.({ mcsEmitterType: e.target.value }); }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             >
               <option value="existing_radiators">Your existing radiators (none upgraded)</option>
@@ -264,7 +268,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               <label className="block text-sm font-semibold mb-1">UFH Construction Type</label>
               <select
                 value={project.mcsUFHType || 'screed'}
-                onChange={(e) => onUpdate('mcsUFHType', e.target.value)}
+                onChange={(e) => { onUpdate('mcsUFHType', e.target.value); onSave?.({ mcsUFHType: e.target.value }); }}
                 className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
               >
                 <option value="screed">Flooring on Screed</option>
@@ -278,7 +282,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
             <label className="block text-sm font-semibold mb-1">System Provides</label>
             <select
               value={project.mcsSystemProvides || 'space_and_hw'}
-              onChange={(e) => onUpdate('mcsSystemProvides', e.target.value)}
+              onChange={(e) => { onUpdate('mcsSystemProvides', e.target.value); onSave?.({ mcsSystemProvides: e.target.value }); }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             >
               <option value="space_and_hw">Space heat and hot water</option>
@@ -295,6 +299,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               type="number"
               value={project.designFlowTemp || 50}
               onChange={(e) => onUpdate('designFlowTemp', parseFloat(e.target.value))}
+              onBlur={(e) => onSave?.({ designFlowTemp: parseFloat(e.target.value) })}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
             <div className="text-xs text-gray-500 mt-1">
@@ -322,6 +327,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
                 min="0"
                 value={project.mcsBedrooms || ''}
                 onChange={(e) => onUpdate('mcsBedrooms', parseInt(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ mcsBedrooms: parseInt(e.target.value) || 0 })}
                 className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -332,6 +338,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
                 min="0"
                 value={project.mcsOccupants || ''}
                 onChange={(e) => onUpdate('mcsOccupants', parseInt(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ mcsOccupants: parseInt(e.target.value) || 0 })}
                 className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -357,6 +364,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
               type="number"
               value={project.mcsCylinderVolume || ''}
               onChange={(e) => onUpdate('mcsCylinderVolume', parseFloat(e.target.value) || 0)}
+              onBlur={(e) => onSave?.({ mcsCylinderVolume: parseFloat(e.target.value) || 0 })}
               placeholder="e.g. 210"
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
@@ -368,7 +376,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate }) {
             <label className="block text-sm font-semibold mb-1">Pasteurization Strategy</label>
             <select
               value={project.mcsPasteurizationFreq || 0}
-              onChange={(e) => onUpdate('mcsPasteurizationFreq', parseInt(e.target.value))}
+              onChange={(e) => { const v = parseInt(e.target.value); onUpdate('mcsPasteurizationFreq', v); onSave?.({ mcsPasteurizationFreq: v }); }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
             >
               <option value={0}>None (heat pump provides)</option>
