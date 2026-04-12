@@ -1313,12 +1313,12 @@ const deleteProject = async (id) => {
               <div>
                 <h3 className="font-bold text-gray-900 mb-1">From self-builder to heating engineer</h3>
                 <p>
-                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a>
-                  and kept using the spreadsheed for system designs through the business. As we moved to focus
+                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a> 
+                  and kept using the spreadsheet for system designs through the business. As we moved to focus
                   on heat pumps and became MCS certified, the spreadsheet still worked — but it was slow, 
                   cumbersome, and not built for managing multiple projects. When MCS introduced the requirement
-                  for designs to comply with BS EN 12831:2017, I knew it was time to do something more robust 
-                  and comprehensive.
+                  for designs to comply with BS EN 12831:2017, I knew it was time to build something more robust 
+                  and comprehensive, and which helped me comply more easily with MCS design requirements.
                 </p>
               </div>
 
@@ -1329,7 +1329,7 @@ const deleteProject = async (id) => {
                   to draw the property, which created its own limitations and workarounds for anything that
                   wasn't a simple box. More importantly, I got different results between tools for the same
                   property and couldn't dig into the assumptions to understand why. That lack of transparency, 
-                  high subsciption costs, my proejct data locked into a platform which could be difficult if 
+                  high subscription costs, my project data locked into a platform which could be difficult if 
                   not impossible to extract if I moved on, were key deciding factors.
                 </p>
               </div>
@@ -1350,7 +1350,7 @@ const deleteProject = async (id) => {
                 <h3 className="font-bold text-gray-900 mb-1">Early access</h3>
                 <p>
                   In building this tool, I've tried to make the workflow follow the logical steps a heating system 
-                  designer needs to follow in logical and natural steps. This is an early release. The core calculations — heat loss per EN 12831-1, emitter sizing,
+                  designer naturally needs to follow to produce a good design. This is an early release. The core calculations — heat loss per EN 12831-1, emitter sizing,
                   pipe sizing, MCS MIS 3005-D documentation — are implemented and validated against real
                   projects. There is more to build. If you find something that doesn't look right, or a
                   workflow that doesn't fit how you work, please say so.
