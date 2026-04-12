@@ -107,6 +107,7 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
 
   const sortedLibrary = (() => {
     const lib = project.uValueLibrary || [];
+    console.log('sort:', sortOrder, lib.length, lib.map(u => u.element_category));
     if (sortOrder === 'alpha') {
       return [...lib].sort((a, b) => {
         const catCmp = (a.element_category || '').localeCompare(b.element_category || '');
