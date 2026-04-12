@@ -73,6 +73,8 @@ app.use((req, res, next) => {
 // = { id, email, companyId }. Routes that call requireAuth
 // will return 401 if the cookie is missing or invalid.
 // ------------------------------------------------------------
+// requireAuth — registered users only. Used for dashboard/company/client routes
+// that have no meaning for anonymous users.
 function requireAuth(req, res, next) {
   const token = req.cookies.auth_token;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
@@ -82,6 +84,25 @@ function requireAuth(req, res, next) {
   } catch {
     res.status(401).json({ error: 'Session expired — please log in again' });
   }
+}
+
+// requireAuthOrAnon — accepts either a valid JWT (registered user) or an
+// anon_token cookie (anonymous user). Used on all data routes so that both
+// user types can work, while still blocking completely unauthenticated calls.
+// Sets req.user (registered) or leaves it undefined (anonymous, uses req.anonToken).
+function requireAuthOrAnon(req, res, next) {
+  const token = req.cookies.auth_token;
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'Session expired — please log in again' });
+    }
+  }
+  // No auth token — allow if they have an anon_token (set by the anon middleware above)
+  if (req.anonToken) return next();
+  res.status(401).json({ error: 'Not authenticated' });
 }
 
 // ============================================================
@@ -270,9 +291,12 @@ app.post('/api/anonymous/project', async (req, res) => {
 // DASHBOARD
 // ============================================================
 
-app.get('/api/dashboard', async (req, res) => {
+app.get('/api/dashboard', requireAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM v_project_dashboard');
+    const { rows } = await pool.query(
+      'SELECT * FROM v_project_dashboard WHERE company_id = $1',
+      [req.user.companyId]
+    );
     res.json(rows);
   } catch (error) {
     console.error('Error fetching dashboard:', error);
@@ -284,9 +308,9 @@ app.get('/api/dashboard', async (req, res) => {
 // COMPANIES
 // ============================================================
 
-app.get('/api/company', async (req, res) => {
+app.get('/api/company', requireAuth, async (req, res) => {
   try {
-    const company = await companies.getById(1);
+    const company = await companies.getById(req.user.companyId);
     res.json(company);
   } catch (error) {
     console.error('Error fetching company:', error);
@@ -294,10 +318,10 @@ app.get('/api/company', async (req, res) => {
   }
 });
 
-app.put('/api/company', async (req, res) => {
+app.put('/api/company', requireAuth, async (req, res) => {
   try {
-    await companies.update(1, req.body);
-    const updated = await companies.getById(1);
+    await companies.update(req.user.companyId, req.body);
+    const updated = await companies.getById(req.user.companyId);
     res.json(updated);
   } catch (error) {
     console.error('Error updating company:', error);
@@ -311,13 +335,13 @@ app.put('/api/company', async (req, res) => {
 
 // Search clients — used by the new project modal
 // GET /api/clients/search?q=williams  or  ?q=BA2
-app.get('/api/clients/search', async (req, res) => {
+app.get('/api/clients/search', requireAuth, async (req, res) => {
   try {
     const q = req.query.q || '';
     if (q.trim().length < 2) {
       return res.json([]);
     }
-    const results = await clients.search(q);
+    const results = await clients.search(q, req.user.companyId);
     res.json(results);
   } catch (error) {
     console.error('Error searching clients:', error);
@@ -326,9 +350,9 @@ app.get('/api/clients/search', async (req, res) => {
 });
 
 // Get all clients
-app.get('/api/clients', async (req, res) => {
+app.get('/api/clients', requireAuth, async (req, res) => {
   try {
-    const all = await clients.getAll();
+    const all = await clients.getAll(req.user.companyId);
     res.json(all);
   } catch (error) {
     console.error('Error fetching clients:', error);
@@ -337,10 +361,13 @@ app.get('/api/clients', async (req, res) => {
 });
 
 // Get single client
-app.get('/api/clients/:id', async (req, res) => {
+app.get('/api/clients/:id', requireAuth, async (req, res) => {
   try {
     const client = await clients.getById(req.params.id);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (client.company_id !== req.user.companyId) {
+      return res.status(403).json({ error: 'Not authorised' });
+    }
     const clientAddresses = await addresses.getByClientId(req.params.id);
     res.json({ ...client, addresses: clientAddresses });
   } catch (error) {
@@ -350,19 +377,19 @@ app.get('/api/clients/:id', async (req, res) => {
 });
 
 // Create client (optionally with an address in the same request)
-app.post('/api/clients', async (req, res) => {
+app.post('/api/clients', requireAuth, async (req, res) => {
   try {
     const { address: addressData, ...clientData } = req.body;
 
-    // Create the client record
-    const result = await clients.create(clientData);
+    // Create the client record scoped to this user's company
+    const result = await clients.create({ ...clientData, companyId: req.user.companyId });
     const clientId = result.id;
 
     // If address data was supplied, create the address and link it
     if (addressData && (addressData.addressLine1 || addressData.postcode)) {
       const addrResult = await addresses.create({
         ...addressData,
-        companyId: 1,
+        companyId: req.user.companyId,
       });
       await addresses.linkToClient(clientId, addrResult.id, 'contact', 1);
     }
@@ -377,8 +404,13 @@ app.post('/api/clients', async (req, res) => {
 });
 
 // Update client details
-app.put('/api/clients/:id', async (req, res) => {
+app.put('/api/clients/:id', requireAuth, async (req, res) => {
   try {
+    const client = await clients.getById(req.params.id);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (client.company_id !== req.user.companyId) {
+      return res.status(403).json({ error: 'Not authorised' });
+    }
     await clients.update(req.params.id, req.body);
     const updated = await clients.getById(req.params.id);
     const clientAddresses = await addresses.getByClientId(req.params.id);
@@ -394,10 +426,10 @@ app.put('/api/clients/:id', async (req, res) => {
 // ============================================================
 
 // Add a new address and link it to a client
-app.post('/api/clients/:clientId/addresses', async (req, res) => {
+app.post('/api/clients/:clientId/addresses', requireAuth, async (req, res) => {
   try {
     const { addressType = 'contact', isPrimary = false, ...addressData } = req.body;
-    const addrResult = await addresses.create({ ...addressData, companyId: 1 });
+    const addrResult = await addresses.create({ ...addressData, companyId: req.user.companyId });
     await addresses.linkToClient(
       req.params.clientId, addrResult.id, addressType, isPrimary
     );
@@ -413,10 +445,10 @@ app.post('/api/clients/:clientId/addresses', async (req, res) => {
 });
 
 // Add a new address and link it to a project
-app.post('/api/projects/:projectId/addresses', async (req, res) => {
+app.post('/api/projects/:projectId/addresses', requireAuthOrAnon, async (req, res) => {
   try {
     const { addressType = 'installation', isPrimary = true, ...addressData } = req.body;
-    const addrResult = await addresses.create({ ...addressData, companyId: 1 });
+    const addrResult = await addresses.create({ ...addressData, companyId: req.user?.companyId || null });
     await addresses.linkToProject(
       req.params.projectId, addrResult.id, addressType, isPrimary
     );
@@ -432,7 +464,7 @@ app.post('/api/projects/:projectId/addresses', async (req, res) => {
 });
 
 // Update an address record directly
-app.put('/api/addresses/:id', async (req, res) => {
+app.put('/api/addresses/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await addresses.update(req.params.id, req.body);
     const updated = await addresses.getById(req.params.id);
@@ -445,7 +477,7 @@ app.put('/api/addresses/:id', async (req, res) => {
 
 // Link an existing address to a project
 // (used when "use client's address" is selected at project creation)
-app.post('/api/projects/:projectId/addresses/link', async (req, res) => {
+app.post('/api/projects/:projectId/addresses/link', requireAuthOrAnon, async (req, res) => {
   try {
     const { addressId, addressType = 'installation', isPrimary = true } = req.body;
     await addresses.linkToProject(
@@ -466,9 +498,9 @@ app.post('/api/projects/:projectId/addresses/link', async (req, res) => {
 // PROJECTS
 // ============================================================
 
-app.get('/api/projects', async (req, res) => {
+app.get('/api/projects', requireAuth, async (req, res) => {
   try {
-    const allProjects = await projects.getAll();
+    const allProjects = await projects.getAll(req.user.companyId);
     res.json(allProjects);
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -493,11 +525,12 @@ app.get('/api/projects/:id', async (req, res) => {
 // Expected body: { clientId, name, status, designer, installationAddressId? }
 // installationAddressId: pass the client's address id to reuse it,
 // or omit and add an address separately afterwards.
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', requireAuthOrAnon, async (req, res) => {
   try {
     const { installationAddressId, ...projectData } = req.body;
 
-    // 1. Create the project row
+    // 1. Create the project row — always scope companyId from server context
+    if (req.user) projectData.companyId = req.user.companyId;
     const result = await projects.create(projectData);
     const projectId = result.id;
 
@@ -520,7 +553,7 @@ app.post('/api/projects', async (req, res) => {
 });
 
 // Update project core fields (name, status, designer, brief_notes)
-app.put('/api/projects/:id', async (req, res) => {
+app.put('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await projects.update(req.params.id, req.body);
     const updatedProject = await projects.getById(req.params.id);
@@ -532,7 +565,7 @@ app.put('/api/projects/:id', async (req, res) => {
 });
 
 // Lightweight status-only update (used by dashboard cards)
-app.patch('/api/projects/:id/status', async (req, res) => {
+app.patch('/api/projects/:id/status', requireAuth, async (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = [
@@ -555,7 +588,7 @@ app.patch('/api/projects/:id/status', async (req, res) => {
   }
 });
 
-app.delete('/api/projects/:id', async (req, res) => {
+app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     await projects.delete(req.params.id);
     res.json({ message: 'Project deleted successfully' });
@@ -571,7 +604,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 // project core fields above.
 // ============================================================
 
-app.put('/api/projects/:id/design-params', async (req, res) => {
+app.put('/api/projects/:id/design-params', requireAuthOrAnon, async (req, res) => {
   try {
     await designParams.update(req.params.id, req.body);
     const updated = await designParams.getByProjectId(req.params.id);
@@ -586,7 +619,7 @@ app.put('/api/projects/:id/design-params', async (req, res) => {
 // ROOMS
 // ============================================================
 
-app.get('/api/projects/:projectId/rooms', async (req, res) => {
+app.get('/api/projects/:projectId/rooms', requireAuthOrAnon, async (req, res) => {
   try {
     const projectRooms = await rooms.getByProjectId(req.params.projectId);
     res.json(projectRooms);
@@ -596,7 +629,7 @@ app.get('/api/projects/:projectId/rooms', async (req, res) => {
   }
 });
 
-app.post('/api/rooms', async (req, res) => {
+app.post('/api/rooms', requireAuthOrAnon, async (req, res) => {
   try {
     const result = await rooms.create(req.body);
     const newRoom = await rooms.getById(result.id);
@@ -607,7 +640,7 @@ app.post('/api/rooms', async (req, res) => {
   }
 });
 
-app.put('/api/rooms/:id', async (req, res) => {
+app.put('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await rooms.update(req.params.id, req.body);
     const updatedRoom = await rooms.getById(req.params.id);
@@ -618,7 +651,7 @@ app.put('/api/rooms/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/rooms/:id', async (req, res) => {
+app.delete('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await rooms.delete(req.params.id);
     res.json({ message: 'Room deleted successfully' });
@@ -632,7 +665,7 @@ app.delete('/api/rooms/:id', async (req, res) => {
 // ELEMENTS
 // ============================================================
 
-app.get('/api/rooms/:roomId/elements', async (req, res) => {
+app.get('/api/rooms/:roomId/elements', requireAuthOrAnon, async (req, res) => {
   try {
     const roomElements = await elements.getByRoomId(req.params.roomId);
     res.json(roomElements);
@@ -642,7 +675,7 @@ app.get('/api/rooms/:roomId/elements', async (req, res) => {
   }
 });
 
-app.post('/api/elements', async (req, res) => {
+app.post('/api/elements', requireAuthOrAnon, async (req, res) => {
   try {
     const result = await elements.create(req.body);
     const newElement = await elements.getById(result.id);
@@ -653,7 +686,7 @@ app.post('/api/elements', async (req, res) => {
   }
 });
 
-app.put('/api/elements/:id', async (req, res) => {
+app.put('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await elements.update(req.params.id, req.body);
     const updatedElement = await elements.getById(req.params.id);
@@ -664,7 +697,7 @@ app.put('/api/elements/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/elements/:id', async (req, res) => {
+app.delete('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await elements.delete(req.params.id);
     res.json({ message: 'Element deleted successfully' });
@@ -678,7 +711,7 @@ app.delete('/api/elements/:id', async (req, res) => {
 // U-VALUE LIBRARY
 // ============================================================
 
-app.get('/api/projects/:projectId/u-values', async (req, res) => {
+app.get('/api/projects/:projectId/u-values', requireAuthOrAnon, async (req, res) => {
   try {
     const library = await uValueLibrary.getByProjectId(req.params.projectId);
     res.json(library);
@@ -688,7 +721,7 @@ app.get('/api/projects/:projectId/u-values', async (req, res) => {
   }
 });
 
-app.post('/api/u-values', async (req, res) => {
+app.post('/api/u-values', requireAuthOrAnon, async (req, res) => {
   try {
     const result = await uValueLibrary.create(req.body);
     res.status(201).json({ id: result.id });
@@ -698,7 +731,7 @@ app.post('/api/u-values', async (req, res) => {
   }
 });
 
-app.put('/api/u-values/:id', async (req, res) => {
+app.put('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await uValueLibrary.update(req.params.id, req.body);
     res.json({ message: 'U-value updated successfully' });
@@ -708,7 +741,7 @@ app.put('/api/u-values/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/u-values/:id', async (req, res) => {
+app.delete('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await uValueLibrary.delete(req.params.id);
     res.json({ message: 'U-value deleted successfully' });
@@ -851,7 +884,7 @@ app.get('/api/radiator-specs/:id/usage', async (req, res) => {
 // ROOM EMITTERS
 // ============================================================
 
-app.post('/api/room-emitters', async (req, res) => {
+app.post('/api/room-emitters', requireAuthOrAnon, async (req, res) => {
   try {
     const result = await roomEmitters.create(req.body);
     res.status(201).json({ id: result.id });
@@ -861,7 +894,7 @@ app.post('/api/room-emitters', async (req, res) => {
   }
 });
 
-app.put('/api/room-emitters/:id', async (req, res) => {
+app.put('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await roomEmitters.update(req.params.id, req.body);
     res.json({ message: 'Room emitter updated successfully' });
@@ -871,7 +904,7 @@ app.put('/api/room-emitters/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/room-emitters/:id', async (req, res) => {
+app.delete('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await roomEmitters.delete(req.params.id);
     res.json({ message: 'Room emitter deleted successfully' });
@@ -886,7 +919,7 @@ app.delete('/api/room-emitters/:id', async (req, res) => {
 // ============================================================
 
 // Get UFH spec for a room
-app.get('/api/rooms/:roomId/ufh-specs', async (req, res) => {
+app.get('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
     const spec = await ufhSpecs.getByRoomId(req.params.roomId);
     res.json(spec || null);
@@ -897,7 +930,7 @@ app.get('/api/rooms/:roomId/ufh-specs', async (req, res) => {
 });
 
 // Create or update UFH spec for a room (upsert)
-app.put('/api/rooms/:roomId/ufh-specs', async (req, res) => {
+app.put('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
     await ufhSpecs.upsert(req.params.roomId, req.body);
     const updated = await ufhSpecs.getByRoomId(req.params.roomId);
@@ -908,7 +941,7 @@ app.put('/api/rooms/:roomId/ufh-specs', async (req, res) => {
   }
 });
 
-app.delete('/api/rooms/:roomId/ufh-specs', async (req, res) => {
+app.delete('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
     await ufhSpecs.delete(req.params.roomId);
     res.json({ success: true });
@@ -923,7 +956,7 @@ app.delete('/api/rooms/:roomId/ufh-specs', async (req, res) => {
 // ============================================================
 
 // Get saved survey for a project (returns null if none saved yet)
-app.get('/api/projects/:id/survey', async (req, res) => {
+app.get('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT data FROM survey_checklists WHERE project_id = $1',
@@ -938,7 +971,7 @@ app.get('/api/projects/:id/survey', async (req, res) => {
 });
 
 // Save (upsert) survey data for a project
-app.post('/api/projects/:id/survey', async (req, res) => {
+app.post('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
   try {
     await pool.query(
       `INSERT INTO survey_checklists (project_id, data, updated_at)
@@ -960,7 +993,7 @@ app.post('/api/projects/:id/survey', async (req, res) => {
 // ============================================================
 
 // Get the most recent quote for a project, with its line items
-app.get('/api/projects/:id/quotes', async (req, res) => {
+app.get('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
   try {
     const quoteRes = await pool.query(
       'SELECT * FROM quotes WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
@@ -990,7 +1023,7 @@ app.get('/api/projects/:id/quotes', async (req, res) => {
 
 // Create a new quote for a project
 // Auto-generates the reference: YYYY-NNN (sequential across all quotes)
-app.post('/api/projects/:id/quotes', async (req, res) => {
+app.post('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
   try {
     const year = new Date().getFullYear();
 
@@ -1023,7 +1056,7 @@ app.post('/api/projects/:id/quotes', async (req, res) => {
 });
 
 // Update quote header fields
-app.put('/api/quotes/:id', async (req, res) => {
+app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
   try {
     const d = req.body;
     await pool.query(
@@ -1061,7 +1094,7 @@ app.put('/api/quotes/:id', async (req, res) => {
 // Replace all line items for a quote in one call.
 // Simpler than individual item CRUD for this UI — we just
 // delete all existing items and insert the current set.
-app.put('/api/quotes/:id/items', async (req, res) => {
+app.put('/api/quotes/:id/items', requireAuthOrAnon, async (req, res) => {
   try {
     const items = req.body.items || [];
 

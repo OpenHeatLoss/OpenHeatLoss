@@ -689,13 +689,29 @@ const deleteProject = async (id) => {
     const uVal = currentProject.uValueLibrary.find(u => u.id === id);
     if (!uVal) return;
     try {
-      await api.updateUValue(id, {
+      // Build the updated record for both the API call and local state patch
+      const updated = {
         elementCategory: field === 'elementCategory' ? value : uVal.element_category,
         name:    field === 'name'    ? value : uVal.name,
         uValue:  field === 'uValue'  ? value : uVal.u_value,
-        notes:   field === 'notes'   ? value : uVal.notes
-      });
-      await loadProject(currentProject.id, true);
+        notes:   field === 'notes'   ? value : uVal.notes,
+      };
+      await api.updateUValue(id, updated);
+      // Patch local state directly — no loadProject, so the list never reorders
+      // mid-edit. The category select was the main trigger: it fired onUpdate
+      // immediately, loadProject re-sorted the list, disrupting the editing row.
+      setCurrentProject(prev => ({
+        ...prev,
+        uValueLibrary: prev.uValueLibrary.map(u =>
+          u.id !== id ? u : {
+            ...u,
+            element_category: updated.elementCategory,
+            name:             updated.name,
+            u_value:          updated.uValue,
+            notes:            updated.notes,
+          }
+        ),
+      }));
     } catch (error) {
       console.error('Error updating U-value:', error);
     }

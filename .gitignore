@@ -21,3 +21,6 @@ Thumbs.db
 
 # Vite cache
 client/.vite/
+client/src/App(b).jsx
+server/database(a).js
+server/server(a).js

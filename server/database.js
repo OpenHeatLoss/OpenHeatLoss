@@ -122,7 +122,7 @@ const addresses = {
       (company_id, address_line_1, address_line_2, town, county, postcode, what3words)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING id`,
-    [data.companyId || 1, data.addressLine1, data.addressLine2,
+    [data.companyId || null, data.addressLine1, data.addressLine2,
      data.town, data.county, data.postcode, data.what3words]
   ),
 
@@ -176,8 +176,7 @@ const addresses = {
 // CLIENTS
 // ---------------------------------------------------------------------------
 const clients = {
-  // TODO (B1 / T1): scope to the logged-in user's company_id, not hardcoded 1
-  getAll: (companyId = 1) =>
+  getAll: (companyId) =>
     allQuery(`
       SELECT c.*,
         a.address_line_1, a.address_line_2, a.town, a.county,
@@ -201,7 +200,7 @@ const clients = {
       WHERE c.id = $1`, [id]
     ),
 
-  search: (query, companyId = 1) => {
+  search: (query, companyId) => {
     const term = `%${query}%`;
     return allQuery(`
       SELECT c.*,
@@ -226,7 +225,7 @@ const clients = {
       (company_id, title, first_name, surname, email, telephone, mobile, notes)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING id`,
-    [data.companyId || 1, data.title, data.firstName, data.surname,
+    [data.companyId, data.title, data.firstName, data.surname,
      data.email, data.telephone, data.mobile, data.notes]
   ),
 
@@ -247,8 +246,7 @@ const clients = {
 // PROJECTS
 // ---------------------------------------------------------------------------
 const projects = {
-  // TODO (B1 / T1): scope to company_id from logged-in user JWT, not hardcoded
-  getAll: (companyId = 1) =>
+  getAll: (companyId) =>
     allQuery('SELECT * FROM projects WHERE company_id = $1 ORDER BY updated_at DESC', [companyId]),
 
   getById: (id) =>
@@ -258,7 +256,7 @@ const projects = {
     INSERT INTO projects (company_id, client_id, name, status, designer, brief_notes)
     VALUES ($1, $2, $3, $4, $5, $6)
     RETURNING id`,
-    [data.companyId || 1, data.clientId || null,
+    [data.companyId || null, data.clientId || null,
      data.name, data.status || 'enquiry', data.designer || '', data.briefNotes || '']
   ),
 
