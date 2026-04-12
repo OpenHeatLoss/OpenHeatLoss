@@ -160,9 +160,9 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
             <div>Notes</div>
             <div></div>
           </div>
-          {sortedLibrary.map(uVal => (
+          {sortedLibrary.map((uVal, idx) => (
             <UValueRow
-              key={uVal.id}
+              key={`${sortOrder}-${idx}`}
               uVal={uVal}
               onUpdate={onUpdate}
               onDelete={onDelete}
