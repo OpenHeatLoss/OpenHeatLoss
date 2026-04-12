@@ -31,3 +31,6 @@ client/src/App(c).jsx
 client/src/components/rooms/VentilationEditor(a).jsx
 client/src/utils/en12831Calculations(a).js
 client/src/components/rooms/RoomEditor(a).jsx
+server/routes/radiatorSchedule(a).js
+server/database(c).js
+server/server(c).js

@@ -897,6 +897,13 @@ async function getProjectForEmitter(emitterId) {
   );
 }
 
+async function getProjectForScheduleItem(scheduleItemId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN rooms r ON r.project_id = p.id JOIN radiator_schedule s ON s.room_id = r.id WHERE s.id = $1',
+    [scheduleItemId]
+  );
+}
+
 // Returns true if the request context (registered user or anon token) owns the project.
 function ownsProject(project, req) {
   if (!project) return false;
@@ -928,6 +935,7 @@ module.exports = {
   getProjectForElement,
   getProjectForUValue,
   getProjectForEmitter,
+  getProjectForScheduleItem,
   ownsProject,
   // waitForDb is gone — no longer needed with Postgres connection pool.
   // server.js startup sequence is now a simple async IIFE (see migrate.js notes).

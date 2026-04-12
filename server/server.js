@@ -48,7 +48,7 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use('/api', radiatorScheduleRoutes);
+app.use('/api', radiatorScheduleRoutes(requireAuthOrAnon));
 app.use('/api', pdfRoutes);
 
 // ------------------------------------------------------------
@@ -636,6 +636,8 @@ app.get('/api/projects/:projectId/rooms', requireAuthOrAnon, async (req, res) =>
 
 app.post('/api/rooms', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.body.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const result = await rooms.create(req.body);
     const newRoom = await rooms.getById(result.id);
     res.status(201).json(newRoom);
@@ -686,6 +688,8 @@ app.get('/api/rooms/:roomId/elements', requireAuthOrAnon, async (req, res) => {
 
 app.post('/api/elements', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.body.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const result = await elements.create(req.body);
     const newElement = await elements.getById(result.id);
     res.status(201).json(newElement);
@@ -736,6 +740,8 @@ app.get('/api/projects/:projectId/u-values', requireAuthOrAnon, async (req, res)
 
 app.post('/api/u-values', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.body.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const result = await uValueLibrary.create(req.body);
     res.status(201).json({ id: result.id });
   } catch (error) {
@@ -903,6 +909,8 @@ app.get('/api/radiator-specs/:id/usage', async (req, res) => {
 
 app.post('/api/room-emitters', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.body.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const result = await roomEmitters.create(req.body);
     res.status(201).json({ id: result.id });
   } catch (error) {
