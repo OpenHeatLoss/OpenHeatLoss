@@ -801,6 +801,11 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
 
   if (!project) return null;
 
+  // Ownership check — registered user must own this project,
+  // anonymous user must match by session token.
+  if (companyId !== null && project.company_id !== companyId) return null;
+  if (companyId === null && sessionToken !== null && project.session_token !== sessionToken) return null;
+
   const roomIds = projectRooms.map(r => r.id);
 
   // Batch 2 — client data (needs project.client_id) + all room sub-data in
@@ -857,6 +862,46 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
 }
 
 // ---------------------------------------------------------------------------
+// OWNERSHIP HELPERS
+// Fast lookups used by server.js to verify sub-resource ownership without
+// fetching the full project. Returns the project row or null.
+// ---------------------------------------------------------------------------
+async function getProjectForRoom(roomId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN rooms r ON r.project_id = p.id WHERE r.id = $1',
+    [roomId]
+  );
+}
+
+async function getProjectForElement(elementId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN rooms r ON r.project_id = p.id JOIN elements e ON e.room_id = r.id WHERE e.id = $1',
+    [elementId]
+  );
+}
+
+async function getProjectForUValue(uValueId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN u_value_library u ON u.project_id = p.id WHERE u.id = $1',
+    [uValueId]
+  );
+}
+
+async function getProjectForEmitter(emitterId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN rooms r ON r.project_id = p.id JOIN room_emitters e ON e.room_id = r.id WHERE e.id = $1',
+    [emitterId]
+  );
+}
+
+// Returns true if the request context (registered user or anon token) owns the project.
+function ownsProject(project, req) {
+  if (!project) return false;
+  if (req.user) return project.company_id === req.user.companyId;
+  return project.session_token === req.anonToken;
+}
+
+// ---------------------------------------------------------------------------
 // EXPORTS
 // ---------------------------------------------------------------------------
 module.exports = {
@@ -876,6 +921,11 @@ module.exports = {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
+  getProjectForRoom,
+  getProjectForElement,
+  getProjectForUValue,
+  getProjectForEmitter,
+  ownsProject,
   // waitForDb is gone — no longer needed with Postgres connection pool.
   // server.js startup sequence is now a simple async IIFE (see migrate.js notes).
 };

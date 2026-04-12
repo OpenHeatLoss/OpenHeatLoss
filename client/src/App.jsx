@@ -72,12 +72,12 @@ function App() {
         if (projectId) {
           setIsAnonymous(true);
           await loadProject(projectId);
-        } else {
-          loadProjects();
         }
+        // If projectId is null the anonymous project creation failed —
+        // leave currentProject null; the UI handles this gracefully.
       } catch (err) {
-        console.error('Anonymous boot error — falling back to dashboard:', err);
-        loadProjects();
+        console.error('Anonymous boot error:', err);
+        // No fallback for anonymous users — loadProjects() requires auth.
       }
     };
 

@@ -31,6 +31,11 @@ const {
   ufhSpecs,
   getCompleteProject,
   cleanupAnonymousProjects,
+  getProjectForRoom,
+  getProjectForElement,
+  getProjectForUValue,
+  getProjectForEmitter,
+  ownsProject,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -642,6 +647,8 @@ app.post('/api/rooms', requireAuthOrAnon, async (req, res) => {
 
 app.put('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await rooms.update(req.params.id, req.body);
     const updatedRoom = await rooms.getById(req.params.id);
     res.json(updatedRoom);
@@ -653,6 +660,8 @@ app.put('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
 
 app.delete('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await rooms.delete(req.params.id);
     res.json({ message: 'Room deleted successfully' });
   } catch (error) {
@@ -688,6 +697,8 @@ app.post('/api/elements', requireAuthOrAnon, async (req, res) => {
 
 app.put('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForElement(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await elements.update(req.params.id, req.body);
     const updatedElement = await elements.getById(req.params.id);
     res.json(updatedElement);
@@ -699,6 +710,8 @@ app.put('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
 
 app.delete('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForElement(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await elements.delete(req.params.id);
     res.json({ message: 'Element deleted successfully' });
   } catch (error) {
@@ -733,6 +746,8 @@ app.post('/api/u-values', requireAuthOrAnon, async (req, res) => {
 
 app.put('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForUValue(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await uValueLibrary.update(req.params.id, req.body);
     res.json({ message: 'U-value updated successfully' });
   } catch (error) {
@@ -743,6 +758,8 @@ app.put('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
 
 app.delete('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForUValue(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await uValueLibrary.delete(req.params.id);
     res.json({ message: 'U-value deleted successfully' });
   } catch (error) {
@@ -896,6 +913,8 @@ app.post('/api/room-emitters', requireAuthOrAnon, async (req, res) => {
 
 app.put('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForEmitter(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await roomEmitters.update(req.params.id, req.body);
     res.json({ message: 'Room emitter updated successfully' });
   } catch (error) {
@@ -906,6 +925,8 @@ app.put('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
 
 app.delete('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForEmitter(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await roomEmitters.delete(req.params.id);
     res.json({ message: 'Room emitter deleted successfully' });
   } catch (error) {
