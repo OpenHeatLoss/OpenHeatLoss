@@ -1315,6 +1315,20 @@ const deleteProject = async (id) => {
                 .join(', ') || 'No address set'}
             </p>
           </div>
+
+          {/* Feedback — centre of header */}
+          <div className="text-center text-sm text-blue-100 hidden md:block">
+            <p className="font-semibold text-white mb-0.5">🧪 Early access — your feedback shapes this tool</p>
+            <p>
+              Found a bug or have a suggestion?{' '}
+              <a
+                href="mailto:heatloss@openheatloss.com"
+                className="underline hover:text-white transition"
+              >
+                heatloss@openheatloss.com
+              </a>
+             </p>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => {

@@ -34,3 +34,5 @@ client/src/components/rooms/RoomEditor(a).jsx
 server/routes/radiatorSchedule(a).js
 server/database(c).js
 server/server(c).js
+client/src/App(d).jsx
+client/index(a).html
