@@ -28,3 +28,6 @@ client/src/components/project/UValueLibrary(b).jsx
 server/server(b).js
 server/database(b).js
 client/src/App(c).jsx
+client/src/components/rooms/VentilationEditor(a).jsx
+client/src/utils/en12831Calculations(a).js
+client/src/components/rooms/RoomEditor(a).jsx

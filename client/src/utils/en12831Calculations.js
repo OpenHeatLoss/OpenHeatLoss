@@ -166,7 +166,13 @@ export const calculateRoomLeakageRate = (room, q50, shielding, storeys) => {
   const volume             = room.volume ?? 0;
   const minimumRoomLeakageRate = minACH * volume;
 
-  const belowMinimum = approximateRoomLeakageRate < minimumRoomLeakageRate && minimumRoomLeakageRate > 0;
+  // Suppress the minimum leakage rate warning when MVHR is providing controlled
+  // fresh air — the EN 12831-1 minimum infiltration check is intended to flag
+  // rooms with inadequate uncontrolled ventilation. With active MVHR, adequate
+  // ventilation is provided mechanically; the envelope leakage figure alone
+  // understates total fresh air delivery and the warning is misleading.
+  const hasMVHR = (room.continuousVentType === 'mvhr') && ((room.continuousVentRateM3h ?? 0) > 0);
+  const belowMinimum = !hasMVHR && approximateRoomLeakageRate < minimumRoomLeakageRate && minimumRoomLeakageRate > 0;
 
   return {
     approximateRoomLeakageRate,
