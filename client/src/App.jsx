@@ -25,6 +25,7 @@ function App() {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan }
@@ -1277,6 +1278,99 @@ const deleteProject = async (id) => {
   return (
     <div className="min-h-screen bg-gray-50">
 
+      {/* About modal */}
+      {showAbout && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setShowAbout(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-screen overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="bg-blue-600 text-white px-6 py-4 rounded-t-xl flex justify-between items-start">
+              <div>
+                <h2 className="text-xl font-bold">About OpenHeatLoss</h2>
+                <p className="text-blue-200 text-sm mt-0.5">openheatloss.com</p>
+              </div>
+              <button onClick={() => setShowAbout(false)} className="text-blue-200 hover:text-white text-2xl leading-none ml-4">×</button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5 text-gray-700 text-sm leading-relaxed">
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Why this tool exists</h3>
+                <p>
+                  OpenHeatLoss started with a self-build. When I built my own house I needed a heating system
+                  design and couldn't find a local engineer to take on the job to design a low temperature heating system. So I designed and
+                  installed the heating system myself. At the time there was no accessible software for someone in my position,
+                  so I bought a copy of the CIBSE Domestic Heating Design Guide and built a design tool in
+                  a spreadsheet.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">From self-builder to heating engineer</h3>
+                <p>
+                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a>
+                  and kept using the spreadsheed for system designs through the business. As we moved to focus
+                  on heat pumps and became MCS certified, the spreadsheet still worked — but it was slow, 
+                  cumbersome, and not built for managing multiple projects. When MCS introduced the requirement
+                  for designs to comply with BS EN 12831:2017, I knew it was time to do something more robust 
+                  and comprehensive.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Why not use existing tools?</h3>
+                <p>
+                  I tried six different heat loss tools on the market. Several were drawing-based — you had
+                  to draw the property, which created its own limitations and workarounds for anything that
+                  wasn't a simple box. More importantly, I got different results between tools for the same
+                  property and couldn't dig into the assumptions to understand why. That lack of transparency, 
+                  high subsciption costs, my proejct data locked into a platform which could be difficult if 
+                  not impossible to extract if I moved on, were key deciding factors.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Open source and auditable by design</h3>
+                <p>
+                  OpenHeatLoss is open source (AGPL v3). Every calculation is visible, every assumption is
+                  documented, and anyone can verify what the tool is doing and why. That's deliberate. The
+                  calculation method follows CIBSE Domestic Heating Design Guide 2026 rather than the raw
+                  BS EN 12831:2017 standard — partly because the CIBSE guide is the accepted UK
+                  implementation, and partly because verifying it only requires a copy of the CIBSE guide
+                  rather than paying several hundred pounds for the EN standard itself. Accessibility matters.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Early access</h3>
+                <p>
+                  In building this tool, I've tried to make the workflow follow the logical steps a heating system 
+                  designer needs to follow in logical and natural steps. This is an early release. The core calculations — heat loss per EN 12831-1, emitter sizing,
+                  pipe sizing, MCS MIS 3005-D documentation — are implemented and validated against real
+                  projects. There is more to build. If you find something that doesn't look right, or a
+                  workflow that doesn't fit how you work, please say so.
+                </p>
+                <p className="mt-2">
+                  <a href="mailto:heatloss@openheatloss.com" className="text-blue-600 hover:text-blue-800 underline font-medium">
+                    heatloss@openheatloss.com
+                  </a>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <a href="https://mysaheating.uk" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                    mysaheating.uk
+                  </a>
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Anonymous session banner */}
       {isAnonymous && (
         <div className="bg-amber-50 border-b border-amber-300 px-4 py-3">
@@ -1321,14 +1415,16 @@ const deleteProject = async (id) => {
             <p className="font-semibold text-white mb-0.5">🧪 Early access — your feedback shapes this tool</p>
             <p>
               Found a bug or have a suggestion?{' '}
-              <a
-                href="mailto:heatloss@openheatloss.com"
-                className="underline hover:text-white transition"
-              >
+              <a href="mailto:heatloss@openheatloss.com" className="underline hover:text-white transition">
                 heatloss@openheatloss.com
               </a>
-             </p>
+              {' · '}
+              <button onClick={() => setShowAbout(true)} className="underline hover:text-white transition">
+                About this tool
+              </button>
+            </p>
           </div>
+
           <div className="flex gap-2">
             <button
               onClick={() => {

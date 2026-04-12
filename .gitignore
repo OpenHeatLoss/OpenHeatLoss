@@ -36,3 +36,5 @@ server/database(c).js
 server/server(c).js
 client/src/App(d).jsx
 client/index(a).html
+client/index(b).html
+client/src/App(e).jsx
