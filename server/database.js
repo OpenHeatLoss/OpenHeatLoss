@@ -296,17 +296,47 @@ const projects = {
     ),
 
   // Claim an anonymous project for a newly registered user.
-  claimForUser: (sessionToken, userId, companyId) =>
-    runQuery(`
-      UPDATE projects
-      SET user_id       = $1,
-          company_id    = $2,
-          session_token = NULL,
-          expires_at    = NULL,
-          updated_at    = NOW()
-      WHERE session_token = $3`,
-      [userId, companyId, sessionToken]
-    ),
+  // Also migrates any radiator specs added during the anonymous session so
+  // the user doesn't lose library entries they created before registering.
+  // Both updates run in a single transaction — either both commit or neither does.
+  claimForUser: async (sessionToken, userId, companyId) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const projectResult = await client.query(`
+        UPDATE projects
+        SET user_id       = $1,
+            company_id    = $2,
+            session_token = NULL,
+            expires_at    = NULL,
+            updated_at    = NOW()
+        WHERE session_token = $3`,
+        [userId, companyId, sessionToken]
+      );
+
+      // Migrate any radiator specs created during this anonymous session.
+      // Moves them from scope='anonymous'/session_token to scope='company'/company_id
+      // so they appear in the user's library immediately after registration.
+      await client.query(`
+        UPDATE radiator_specs
+        SET scope         = 'company',
+            company_id    = $1,
+            session_token = NULL
+        WHERE scope         = 'anonymous'
+          AND session_token = $2`,
+        [companyId, sessionToken]
+      );
+
+      await client.query('COMMIT');
+      return { id: null, changes: projectResult.rowCount };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
 
   update: (id, data) => runQuery(`
     UPDATE projects
