@@ -781,9 +781,9 @@ app.delete('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
 // GET /api/radiator-specs
 // Returns global specs + caller's own (company or anonymous).
 // No auth required — anonymous users get global + their session specs.
-app.get('/api/radiator-specs', async (req, res) => {
+app.get('/api/radiator-specs', requireAuthOrAnon, async (req, res) => {
   try {
-    const companyId    = req.user?.companyId || null;
+    const companyId    = req.user?.companyId ?? null;
     const sessionToken = req.user ? null : req.anonToken;
     const specs = await radiatorSpecs.getAll({ companyId, sessionToken });
     res.json(specs);
