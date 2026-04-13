@@ -29,6 +29,7 @@ function App() {
 
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan }
+  const [currentCompany, setCurrentCompany] = useState(null); // { id, name, mcs_number, ... }
   const [showAuthModal, setShowAuthModal] = useState(null);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -50,6 +51,11 @@ function App() {
           const { user } = await meRes.json();
           setCurrentUser(user);
           setIsAnonymous(false);
+          // Load company details for dashboard header
+          try {
+            const companyRes = await fetch('/api/company');
+            if (companyRes.ok) setCurrentCompany(await companyRes.json());
+          } catch { /* non-fatal */ }
           // Load their most recent project
           const projectsRes = await fetch('/api/projects');
           const userProjects = await projectsRes.json();
@@ -114,6 +120,10 @@ function App() {
       setCurrentUser(data.user);
       setIsAnonymous(false);
       setShowAuthModal(null);
+      try {
+        const companyRes = await fetch('/api/company');
+        if (companyRes.ok) setCurrentCompany(await companyRes.json());
+      } catch { /* non-fatal */ }
       if (data.projectId) {
         await loadProject(data.projectId);
       }
@@ -141,6 +151,10 @@ function App() {
       setCurrentUser(data.user);
       setIsAnonymous(false);
       setShowAuthModal(null);
+      try {
+        const companyRes = await fetch('/api/company');
+        if (companyRes.ok) setCurrentCompany(await companyRes.json());
+      } catch { /* non-fatal */ }
       if (data.projectId) {
         await loadProject(data.projectId);
       }
@@ -154,6 +168,7 @@ function App() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setCurrentUser(null);
+    setCurrentCompany(null);
     setCurrentProject(null);
     setIsAnonymous(false);
     // Reload page so a fresh anonymous session is created
@@ -1205,8 +1220,15 @@ const deleteProject = async (id) => {
               <div className="flex items-center gap-3">
                 <HomeIcon />
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-800">Mysa Heating Platform</h1>
-                  <p className="text-sm text-gray-500">Mysa Heating Ltd · MCS: OFT-502073</p>
+                  <h1 className="text-2xl font-bold text-gray-800">
+                    {currentCompany?.name || 'OpenHeatLoss'}
+                  </h1>
+                  <p className="text-sm text-gray-500">
+                    {[
+                      currentCompany?.name,
+                      currentCompany?.mcs_number ? `MCS: ${currentCompany.mcs_number}` : null,
+                    ].filter(Boolean).join(' · ') || 'Heat loss calculation & system design'}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3 items-center">
