@@ -1336,8 +1336,8 @@ const deleteProject = async (id) => {
               <div>
                 <h3 className="font-bold text-gray-900 mb-1">From self-builder to heating engineer</h3>
                 <p>
-                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a> 
-                  and kept using the spreadsheet for system designs through the business. As we moved to focus
+                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a>  
+                   and kept using the spreadsheet for system designs through the business. As we moved to focus
                   on heat pumps and became MCS certified, the spreadsheet still worked — but it was slow, 
                   cumbersome, and not built for managing multiple projects. When MCS introduced the requirement
                   for designs to comply with BS EN 12831:2017, I knew it was time to build something more robust 
