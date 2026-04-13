@@ -796,7 +796,9 @@ app.get('/api/radiator-specs', async (req, res) => {
 // POST /api/radiator-specs
 // Creates a new spec. Scope and ownership are set server-side from
 // the request context — the client never sets scope/companyId directly.
-app.post('/api/radiator-specs', async (req, res) => {
+// requireAuthOrAnon ensures req.user is populated for registered users
+// so scope is correctly set to 'company' rather than 'anonymous'.
+app.post('/api/radiator-specs', requireAuthOrAnon, async (req, res) => {
   try {
     const isAuthenticated = !!req.user;
     const scope        = isAuthenticated ? 'company'   : 'anonymous';

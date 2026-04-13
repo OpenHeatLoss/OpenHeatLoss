@@ -41,3 +41,5 @@ client/src/App(e).jsx
 client/src/App(f).jsx
 server/database(d).js
 client/src/App(g).jsx
+client/src/components/settings/SettingsPage(a).jsx
+server/server(d).js

@@ -32,8 +32,9 @@ const SOURCE_LABELS = {
 };
 
 const SCOPE_LABELS = {
-  global:  { label: 'Global',  colour: 'bg-purple-100 text-purple-700' },
-  company: { label: 'Company', colour: 'bg-gray-100 text-gray-600' },
+  global:    { label: 'Global',    colour: 'bg-purple-100 text-purple-700' },
+  company:   { label: 'Company',   colour: 'bg-gray-100 text-gray-600' },
+  anonymous: { label: 'Anonymous', colour: 'bg-amber-100 text-amber-700' },
 };
 
 // ---------------------------------------------------------------------------
@@ -616,7 +617,7 @@ export default function SettingsPage({ onBack, onDeleteProject }) {
           <div className="bg-gray-800 text-white px-8 py-5 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold">Settings</h1>
-              <p className="text-gray-400 text-sm mt-0.5">Mysa Heating Ltd</p>
+              <p className="text-gray-400 text-sm mt-0.5">Settings</p>
             </div>
             <button
               onClick={onBack}
