@@ -17,7 +17,7 @@ Live at [openheatloss.com](https://openheatloss.com)
 - **SCOP estimator** — Carnot η from EN 14511 test points, W/K-derived weather compensation curve (LMTD exponent method), per-bin COP, EN 14825 UK bin hours, defrost penalty, DHW SCOP (daily reheat + pasteurisation).
 - **PDF outputs** — Heat loss report, radiator schedule, pipe sizing schedule. MCS MIS 3005-D terminology throughout.
 - **Project dashboard** — Client and project management for registered engineers. Quotation builder included.
-- **Survey tool** — On-site survey checklist with QR code access for tablet/phone completion.
+- **Survey tool** — On-site survey checklist (QR code access for tablet/phone completion to come).
 
 ---
 
