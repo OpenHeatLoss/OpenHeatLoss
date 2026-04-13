@@ -485,7 +485,7 @@ async function baseline() {
   // INSERT ... ON CONFLICT DO NOTHING is idempotent.
   await query(`
     INSERT INTO companies (id, name, mcs_number, recc_number)
-    VALUES (1, 'Mysa Heating Ltd', 'OFT-502073', '00080008')
+    VALUES (1, 'My Company Name', Null, Null)
     ON CONFLICT (id) DO NOTHING
   `);
 
