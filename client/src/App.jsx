@@ -33,8 +33,9 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Derived: only pro users can access the project dashboard
-  const canSeeDashboard = currentUser?.plan === 'pro';
+  // Derived: pro and beta users can access the project dashboard.
+  // Set plan = 'beta' in Railway Postgres to grant early-access engineers dashboard access.
+  const canSeeDashboard = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
 
   // Boot sequence:
   // 1. Check if already logged in (auth_token cookie via /api/auth/me)
