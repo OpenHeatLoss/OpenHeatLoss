@@ -56,11 +56,15 @@ function App() {
             const companyRes = await fetch('/api/company');
             if (companyRes.ok) setCurrentCompany(await companyRes.json());
           } catch { /* non-fatal */ }
-          // Load their most recent project
-          const projectsRes = await fetch('/api/projects');
-          const userProjects = await projectsRes.json();
-          if (userProjects.length > 0) {
-            await loadProject(userProjects[0].id);
+          // Dashboard-eligible users (beta/pro) land on the dashboard by default.
+          // Free users auto-load their most recent project as before.
+          const hasDashboard = user.plan === 'pro' || user.plan === 'beta';
+          if (!hasDashboard) {
+            const projectsRes = await fetch('/api/projects');
+            const userProjects = await projectsRes.json();
+            if (userProjects.length > 0) {
+              await loadProject(userProjects[0].id);
+            }
           }
           return;
         }
