@@ -19,6 +19,7 @@
 const { Pool } = require('pg');
 const { readFileSync } = require('fs');
 const path = require('path');
+const { seedStelradClassicCompact } = require('./seedStelradClassicCompact');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -710,6 +711,16 @@ const MIGRATIONS = [
       // Seed immediately after table creation — within the same migration
       // so the table is never left empty after a successful deploy.
       await seedConstructionLibrary();
+    },
+  },
+  {
+    version: '004',
+    description: 'Seed Stelrad Classic Compact radiator library',
+    run: async () => {
+      // radiator_specs table already exists in the baseline schema.
+      // scope='library' marks these as global reference data, distinct
+      // from company-specific entries (scope='company').
+      await seedStelradClassicCompact(query);
     },
   },
 ];
