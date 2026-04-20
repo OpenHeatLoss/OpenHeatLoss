@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import FloorUValueCalculator from './FloorUValueCalculator';
+import RdSAPUValuePicker from './RdSAPUValuePicker';
 import { PlusIcon, TrashIcon } from '../common/Icons';
 import { ELEMENT_TYPES } from '../../utils/constants';
 
@@ -174,6 +175,18 @@ export default function UValueLibrary({ project, onAdd, onAddFromCalculator, onU
           <p>No U-values defined yet. Click "Add U-Value" to create your library.</p>
         </div>
       )}
+
+      <div className="mt-8 border-t pt-6">
+        <h2 className="text-xl font-bold mb-2">RdSAP10 Construction Library</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Look up standard U-values from RdSAP10 (June 2025) by construction type, age band, and region.
+          Region is auto-detected from the installation postcode — override if needed.
+        </p>
+        <RdSAPUValuePicker
+          project={project}
+          onSaveToLibrary={onAddFromCalculator}
+        />
+      </div>
 
       <div className="mt-8 border-t pt-6">
         <h2 className="text-xl font-bold mb-4">Floor U-Value Calculator</h2>
