@@ -17,6 +17,8 @@
 // migrations at the bottom of the MIGRATIONS array.
 
 const { Pool } = require('pg');
+const { readFileSync } = require('fs');
+const path = require('path');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -592,24 +594,124 @@ async function recreateViews() {
 }
 
 // ---------------------------------------------------------------------------
+// SEED — construction_library
+// Called from within migration 003. Idempotent — skips if rows exist.
+// Expands the JSON seed file's age_bands[] and regions[] arrays into
+// individual rows (one row per age_band × region combination).
+// ---------------------------------------------------------------------------
+async function seedConstructionLibrary() {
+  const { rowCount } = await query('SELECT 1 FROM construction_library LIMIT 1');
+  if (rowCount > 0) {
+    console.log('  construction_library already seeded — skipping.');
+    return;
+  }
+
+  const seedPath = path.join(__dirname, 'seeds', 'construction_library.json');
+  const data = JSON.parse(readFileSync(seedPath, 'utf8'));
+
+  const INSERT_SQL = `
+    INSERT INTO construction_library (
+      element_type, wall_type, roof_type, insulation_type, insulation_mm,
+      age_band, region, u_value, formula_type,
+      description, description_detail, source, notes
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  `;
+
+  const sections = [
+    { records: data.walls        ?? [], elementType: 'wall' },
+    { records: data.roofs        ?? [], elementType: 'roof' },
+    { records: data.floors_exposed ?? [], elementType: 'floor_exposed' },
+  ];
+
+  let inserted = 0;
+  for (const { records, elementType } of sections) {
+    for (const record of records) {
+      if ('_comment' in record) continue;
+
+      const regions  = record.regions   ?? [];
+      const ageBands = record.age_bands ?? [null];
+
+      for (const region of regions) {
+        for (const ageBand of ageBands) {
+          await query(INSERT_SQL, [
+            elementType,
+            record.wall_type          ?? null,
+            record.roof_type          ?? null,
+            record.insulation_type    ?? null,
+            record.insulation_mm      ?? null,
+            ageBand,
+            region,
+            record.u_value            ?? null,
+            record.formula_type       ?? null,
+            record.description,
+            record.description_detail ?? null,
+            record.source,
+            record.notes              ?? null,
+          ]);
+          inserted++;
+        }
+      }
+    }
+  }
+
+  console.log(`  Seeded ${inserted} rows into construction_library.`);
+}
+
+// ---------------------------------------------------------------------------
 // MIGRATIONS
 // Each entry is { version, description, run: async fn }.
 // New migrations go at the bottom. Migrations already recorded in
 // schema_migrations are skipped automatically.
 //
-// Note: the SQLite migration history (012–022) is NOT replicated here because
+// Note: the SQLite migration history (001–022) is NOT replicated here because
 // the Postgres baseline schema already incorporates all those columns.
-// Future migrations start from 023.
+// The Postgres baseline is recorded as version '002'. Future migrations
+// start from '003'.
 // ---------------------------------------------------------------------------
 const MIGRATIONS = [
-  // Example future migration:
-  // {
-  //   version: '023',
-  //   description: 'Add <something> to <table>',
-  //   run: async () => {
-  //     await addColumnIfMissing('rooms', 'new_column', 'TEXT DEFAULT NULL');
-  //   },
-  // },
+  {
+    version: '003',
+    description: 'construction_library table — RdSAP10 U-value reference data',
+    run: async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS construction_library (
+          id                 SERIAL PRIMARY KEY,
+          element_type       TEXT    NOT NULL,
+          wall_type          TEXT,
+          roof_type          TEXT,
+          insulation_type    TEXT,
+          insulation_mm      INTEGER,
+          age_band           TEXT,
+          region             TEXT    NOT NULL,
+          u_value            DOUBLE PRECISION,
+          formula_type       TEXT,
+          description        TEXT    NOT NULL,
+          description_detail TEXT,
+          source             TEXT    NOT NULL,
+          notes              TEXT
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_construction_library_lookup
+          ON construction_library (element_type, region, age_band)
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_construction_library_wall_type
+          ON construction_library (wall_type) WHERE wall_type IS NOT NULL
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_construction_library_insulation_mm
+          ON construction_library (insulation_mm) WHERE insulation_mm IS NOT NULL
+      `);
+
+      // Seed immediately after table creation — within the same migration
+      // so the table is never left empty after a successful deploy.
+      await seedConstructionLibrary();
+    },
+  },
 ];
 
 async function runMigrations() {

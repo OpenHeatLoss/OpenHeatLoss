@@ -45,3 +45,5 @@ client/src/components/settings/SettingsPage(a).jsx
 server/server(d).js
 server/server(e).js
 client/src/App(h).jsx
+server/integration_notes.js
+server/migrate(a).js
