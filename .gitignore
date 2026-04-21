@@ -59,3 +59,4 @@ client/src/components/settings/SettingsPage(b).jsx
 client/src/components/settings/SettingsPage(c).jsx
 client/src/components/calculations/RadiatorSizing(b).jsx
 client/src/components/calculations/RadiatorSizing(c).jsx
+client/src/components/rooms/EmitterEditor(b).jsx

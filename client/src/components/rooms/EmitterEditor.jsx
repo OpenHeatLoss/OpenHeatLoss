@@ -48,6 +48,45 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
   const [newRadiator, setNewRadiator] = useState(EMPTY_RADIATOR);
   const [saving, setSaving] = useState(false);
 
+  // Dimension picker state — keyed by emitter id
+  const [pickerState, setPickerState] = useState({});
+
+  const getPickerState = (emitterId) => pickerState[emitterId] ?? { height: '', length: '' };
+
+  const setPickerField = (emitterId, field, value) =>
+    setPickerState(prev => ({
+      ...prev,
+      [emitterId]: { ...getPickerState(emitterId), [field]: value },
+    }));
+
+  // Standard sizes — same logic as RadiatorSizing
+  const STANDARD_HEIGHTS = [300, 450, 600, 700];
+
+  const nearestStandardHeight = (h) => {
+    const n = parseInt(h, 10);
+    if (isNaN(n) || n <= 0) return null;
+    return STANDARD_HEIGHTS.reduce((best, s) =>
+      Math.abs(s - n) < Math.abs(best - n) ? s : best
+    );
+  };
+
+  const nearestStandardLength = (l) => {
+    const n = parseInt(l, 10);
+    if (isNaN(n) || n <= 0) return null;
+    const snapped = Math.round(n / 100) * 100;
+    return Math.max(300, Math.min(3000, snapped));
+  };
+
+  const findMatches = (rawHeight, rawLength) => {
+    const h = nearestStandardHeight(rawHeight);
+    const l = nearestStandardLength(rawLength);
+    if (!h || !l) return { h: null, l: null, matches: [] };
+    const matches = (radiatorSpecs ?? []).filter(s =>
+      s.height === h && s.length === l && s.scope !== 'anonymous'
+    );
+    return { h, l, matches };
+  };
+
   const handleAddRadiator = async () => {
     setSaving(true);
     try {
@@ -85,7 +124,7 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
         {/* Add new radiator form — shown when triggered from a specific emitter row */}
         {showAddRadiator && (
           <div className="bg-blue-50 p-3 rounded border border-blue-300 mb-3">
-            <h4 className="font-semibold text-sm mb-3">Add New Radiator to Database</h4>
+            <h4 className="font-semibold text-sm mb-3">Add your own radiator</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacturer</label>
@@ -245,50 +284,139 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
             {emitter.emitterType === 'Radiator' ? (
               <>
                 <div>
-                  <select
-                    value={emitter.radiatorSpecId || ''}
-                    onChange={(e) => onUpdate(room.id, emitter.id, 'radiatorSpecId', e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select radiator...</option>
-                    {/* Your specs — company or anonymous additions */}
-                    {radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
-                      <optgroup label="— Your specs —">
-                        {radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(spec => (
-                          <option key={spec.id} value={spec.id}>
-                            {spec.source === 'site' ? '◆ ' : ''}{spec.manufacturer} {spec.model} — {spec.type} {spec.height}×{spec.length}mm
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* Global library — grouped by manufacturer */}
-                    {(() => {
-                      const libSpecs = radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
-                      const byMfr = libSpecs.reduce((acc, s) => {
-                        const key = s.manufacturer;
-                        if (!acc[key]) acc[key] = [];
-                        acc[key].push(s);
-                        return acc;
-                      }, {});
-                      return Object.entries(byMfr).map(([mfr, specs]) => (
-                        <optgroup key={mfr} label={`— ${mfr} —`}>
-                          {specs.map(spec => (
-                            <option key={spec.id} value={spec.id}>
-                              {spec.model} — {spec.type} {spec.height}×{spec.length}mm
-                            </option>
-                          ))}
-                        </optgroup>
-                      ));
-                    })()}
-                  </select>
-                  {/* Only show the add button if the form isn't already open for another emitter */}
-                  {(!showAddRadiator || addRadiatorForEmitterId === emitter.id) && (
-                    <button
-                      onClick={() => setAddRadiatorForEmitterId(emitter.id)}
-                      className="text-xs text-green-600 hover:text-green-700 mt-1"
-                    >
-                      + Add new radiator
-                    </button>
+                  {emitter.radiatorSpecId ? (
+                    // Spec already selected — show name with a clear link
+                    (() => {
+                      const spec = radiatorSpecs?.find(s => s.id === emitter.radiatorSpecId);
+                      return (
+                        <div>
+                          <div className="text-xs text-gray-700 font-medium leading-tight">
+                            {spec
+                              ? `${spec.manufacturer} ${spec.model} — ${spec.type} ${spec.height}×${spec.length}mm`
+                              : 'Unknown radiator'}
+                          </div>
+                          <button
+                            onClick={() => onUpdate(room.id, emitter.id, 'radiatorSpecId', null)}
+                            className="text-xs text-gray-400 hover:text-red-500 mt-0.5 transition"
+                          >
+                            ✕ change
+                          </button>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    // No spec yet — dimension picker
+                    (() => {
+                      const ps = getPickerState(emitter.id);
+                      const { h, l, matches } = (ps.height && ps.length)
+                        ? findMatches(ps.height, ps.length)
+                        : { h: null, l: null, matches: [] };
+                      const hasInput = ps.height || ps.length;
+                      const snappedNote = hasInput && h && l
+                        && (parseInt(ps.height) !== h || parseInt(ps.length) !== l)
+                        ? `Nearest standard: ${h}×${l}mm`
+                        : null;
+
+                      return (
+                        <div className="space-y-1.5">
+                          <div className="text-xs font-semibold text-gray-500">Search using dimensions</div>
+                          <div className="flex gap-1 items-center">
+                            <input
+                              type="number"
+                              placeholder="H mm"
+                              value={ps.height}
+                              onChange={e => setPickerField(emitter.id, 'height', e.target.value)}
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-400 text-xs">×</span>
+                            <input
+                              type="number"
+                              placeholder="L mm"
+                              value={ps.length}
+                              onChange={e => setPickerField(emitter.id, 'length', e.target.value)}
+                              className="w-24 border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          {snappedNote && (
+                            <p className="text-xs text-amber-600 italic">{snappedNote}</p>
+                          )}
+
+                          {/* Match chips */}
+                          {hasInput && h && l && matches.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {matches.map(s => (
+                                <button
+                                  key={s.id}
+                                  onClick={() => onUpdate(room.id, emitter.id, 'radiatorSpecId', s.id)}
+                                  className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 transition text-left"
+                                >
+                                  <span className="font-semibold">{s.type.split(' ')[0]}</span>
+                                  {' '}{s.manufacturer} {s.model}
+                                  <span className="text-blue-500 ml-1">{s.output_dt50.toFixed(0)}W ΔT50</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {hasInput && h && l && matches.length === 0 && (
+                            <p className="text-xs text-gray-500 italic">No specs found for {h}×{l}mm.</p>
+                          )}
+
+                          {/* Select from list */}
+                          {(!showAddRadiator || addRadiatorForEmitterId === emitter.id) && (
+                            <details className="text-xs">
+                              <summary className="text-gray-400 cursor-pointer hover:text-gray-600 select-none">
+                                Select from list
+                              </summary>
+                              <select
+                                value=""
+                                onChange={e => e.target.value && onUpdate(room.id, emitter.id, 'radiatorSpecId', parseInt(e.target.value))}
+                                className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">Select radiator...</option>
+                                {radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
+                                  <optgroup label="— Your specs —">
+                                    {radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(s => (
+                                      <option key={s.id} value={s.id}>
+                                        {s.source === 'site' ? '◆ ' : ''}{s.manufacturer} {s.model} — {s.type} {s.height}×{s.length}mm
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {(() => {
+                                  const lib = radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
+                                  const byMfr = lib.reduce((acc, s) => {
+                                    if (!acc[s.manufacturer]) acc[s.manufacturer] = [];
+                                    acc[s.manufacturer].push(s);
+                                    return acc;
+                                  }, {});
+                                  return Object.entries(byMfr).map(([mfr, specs]) => (
+                                    <optgroup key={mfr} label={`— ${mfr} —`}>
+                                      {specs.map(s => (
+                                        <option key={s.id} value={s.id}>
+                                          {s.model} — {s.type} {s.height}×{s.length}mm
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ));
+                                })()}
+                              </select>
+                            </details>
+                          )}
+
+                          {/* Add your own radiator */}
+                          {(!showAddRadiator || addRadiatorForEmitterId === emitter.id) && (
+                            <button
+                              onClick={() => setAddRadiatorForEmitterId(emitter.id)}
+                              className="text-xs text-green-600 hover:text-green-700 transition"
+                            >
+                              + Add your own radiator
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
                 <select
