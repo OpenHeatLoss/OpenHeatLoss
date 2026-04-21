@@ -32,9 +32,10 @@ const SOURCE_LABELS = {
 };
 
 const SCOPE_LABELS = {
-  global:    { label: 'Global',    colour: 'bg-purple-100 text-purple-700' },
-  company:   { label: 'Company',   colour: 'bg-gray-100 text-gray-600' },
-  anonymous: { label: 'Anonymous', colour: 'bg-amber-100 text-amber-700' },
+  global:    { label: 'Global library', colour: 'bg-purple-100 text-purple-700' },
+  library:   { label: 'Global library', colour: 'bg-purple-100 text-purple-700' },
+  company:   { label: 'Company',        colour: 'bg-gray-100 text-gray-600' },
+  anonymous: { label: 'Anonymous',      colour: 'bg-amber-100 text-amber-700' },
 };
 
 // ---------------------------------------------------------------------------
@@ -173,7 +174,7 @@ function RadiatorLibrary() {
             >
               <option value="all">All</option>
               <option value="company">Company</option>
-              <option value="global">Global</option>
+              <option value="global">Global library</option>
             </select>
           </div>
           <span className="text-xs text-gray-400">{filtered.length} entries</span>
@@ -316,8 +317,8 @@ function RadiatorLibrary() {
             )}
             {filtered.map(spec => {
               const isEditing = editingId === spec.id;
-              const src = SOURCE_LABELS[spec.source || 'library'];
-              const scp = SCOPE_LABELS[spec.scope   || 'company'];
+              const src = SOURCE_LABELS[spec.source || 'library'] ?? { label: spec.source || '—', colour: 'bg-gray-100 text-gray-500' };
+              const scp = SCOPE_LABELS[spec.scope   || 'company'] ?? { label: spec.scope  || '—', colour: 'bg-gray-100 text-gray-500' };
 
               return (
                 <tr key={spec.id} className={`border-b border-gray-100 ${isEditing ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
