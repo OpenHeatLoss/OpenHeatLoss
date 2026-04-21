@@ -56,3 +56,4 @@ server/migrate(c).js
 server/server(f).js
 server/seedStelradClassicCompact(a).js
 client/src/components/settings/SettingsPage(b).jsx
+client/src/components/settings/SettingsPage(c).jsx

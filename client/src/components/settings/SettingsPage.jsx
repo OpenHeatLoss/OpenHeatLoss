@@ -48,7 +48,6 @@ function RadiatorLibrary() {
   const [editDraft, setEditDraft]   = useState({});
   const [saving, setSaving]         = useState(false);
   const [filterSource, setFilterSource] = useState('all');
-  const [filterScope, setFilterScope]   = useState('all');
   const [showAddForm, setShowAddForm]   = useState(false);
   const [newSpec, setNewSpec] = useState({
     manufacturer: '', model: '',
@@ -139,10 +138,15 @@ function RadiatorLibrary() {
   };
 
   const filtered = specs.filter(s => {
+    // Only show specs the engineer can actually edit — company or anonymous.
+    // Global library records are surfaced in the emitter picker, not here.
+    if (s.scope === 'global' || s.scope === 'library') return false;
     if (filterSource !== 'all' && (s.source || 'library') !== filterSource) return false;
-    if (filterScope  !== 'all' && (s.scope  || 'company') !== filterScope)  return false;
     return true;
   });
+
+  // Count of global library records (for the info note)
+  const globalCount = specs.filter(s => s.scope === 'global' || s.scope === 'library').length;
 
   if (loading) return (
     <div className="text-gray-500 text-sm py-8 text-center">Loading radiator library...</div>
@@ -150,6 +154,15 @@ function RadiatorLibrary() {
 
   return (
     <div>
+      {/* Global library info note */}
+      {globalCount > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 text-sm text-blue-800">
+          <span className="font-semibold">{globalCount} manufacturer specs</span> are available in the global library (e.g. Stelrad Classic Compact).
+          These appear in the radiator picker when sizing emitters — they can't be edited here.
+          Add your own specs below to supplement the library.
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <div className="flex gap-3 items-center">
@@ -165,19 +178,7 @@ function RadiatorLibrary() {
               <option value="site">Site-found</option>
             </select>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mr-1">Scope:</label>
-            <select
-              value={filterScope}
-              onChange={e => setFilterScope(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All</option>
-              <option value="company">Company</option>
-              <option value="global">Global library</option>
-            </select>
-          </div>
-          <span className="text-xs text-gray-400">{filtered.length} entries</span>
+          <span className="text-xs text-gray-400">{filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}</span>
         </div>
         <button
           onClick={() => setShowAddForm(v => !v)}
@@ -303,22 +304,22 @@ function RadiatorLibrary() {
               <th className="text-right p-2 border border-gray-200">L/m</th>
               <th className="text-left p-2 border border-gray-200">Notes</th>
               <th className="text-center p-2 border border-gray-200">Source</th>
-              <th className="text-center p-2 border border-gray-200">Scope</th>
               <th className="text-center p-2 border border-gray-200">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan="11" className="text-center py-8 text-gray-400">
-                  No radiators match the current filter.
+                <td colSpan="10" className="text-center py-8 text-gray-400">
+                  {specs.length === 0
+                    ? 'No custom radiators added yet. Click "+ Add Radiator" to add your own specs.'
+                    : 'No radiators match the current filter.'}
                 </td>
               </tr>
             )}
             {filtered.map(spec => {
               const isEditing = editingId === spec.id;
               const src = SOURCE_LABELS[spec.source || 'library'] ?? { label: spec.source || '—', colour: 'bg-gray-100 text-gray-500' };
-              const scp = SCOPE_LABELS[spec.scope   || 'company'] ?? { label: spec.scope  || '—', colour: 'bg-gray-100 text-gray-500' };
 
               return (
                 <tr key={spec.id} className={`border-b border-gray-100 ${isEditing ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
@@ -427,11 +428,6 @@ function RadiatorLibrary() {
                       <td className="p-2 border border-gray-200 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded font-medium ${src.colour}`}>
                           {src.label}
-                        </span>
-                      </td>
-                      <td className="p-2 border border-gray-200 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${scp.colour}`}>
-                          {scp.label}
                         </span>
                       </td>
                       <td className="p-2 border border-gray-200 text-center">
