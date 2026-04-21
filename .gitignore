@@ -58,3 +58,4 @@ server/seedStelradClassicCompact(a).js
 client/src/components/settings/SettingsPage(b).jsx
 client/src/components/settings/SettingsPage(c).jsx
 client/src/components/calculations/RadiatorSizing(b).jsx
+client/src/components/calculations/RadiatorSizing(c).jsx

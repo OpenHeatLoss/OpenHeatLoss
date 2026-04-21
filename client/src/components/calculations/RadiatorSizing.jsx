@@ -1814,6 +1814,7 @@ function RoomRadiatorSchedule({
                             return (
                               <div className="space-y-2">
                                 {/* Dimension inputs */}
+                                <div className="text-xs font-semibold text-gray-500 mb-1">Search using dimensions</div>
                                 <div className="flex gap-1 items-center">
                                   <input
                                     type="number"
@@ -1868,7 +1869,7 @@ function RoomRadiatorSchedule({
                                 {!ps.showManual && (
                                   <details className="text-xs">
                                     <summary className="text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-                                      Browse all specs
+                                      Select from list
                                     </summary>
                                     <select
                                       value=""
@@ -1914,7 +1915,7 @@ function RoomRadiatorSchedule({
                                     onClick={() => setPickerField(item.id, 'showManual', true)}
                                     className="text-xs text-green-600 hover:text-green-700 transition"
                                   >
-                                    + Not listed — add manually
+                                    + Add your own radiator
                                   </button>
                                 ) : (
                                   <div className="border border-green-300 bg-green-50 rounded p-3 mt-1 space-y-2">
