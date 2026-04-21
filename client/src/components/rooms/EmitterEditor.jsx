@@ -259,7 +259,7 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
         )}
 
         {room.emitters && room.emitters.length > 0 && (
-          <div className="mb-2 grid grid-cols-[1fr_2fr_auto_auto_1fr_auto] gap-2 text-xs font-semibold text-gray-600 px-2">
+          <div className="mb-2 grid grid-cols-[1fr_2fr_1fr_1fr_1fr_auto] gap-2 text-xs font-semibold text-gray-600 px-2">
             <div>Type</div>
             <div>Specification</div>
             <div>Connection</div>
@@ -270,7 +270,7 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
         )}
 
         {room.emitters && room.emitters.map(emitter => (
-          <div key={emitter.id} className="grid grid-cols-[1fr_2fr_auto_auto_1fr_auto] gap-2 mb-2 items-start bg-gray-50 p-2 rounded border border-gray-200">
+          <div key={emitter.id} className="grid grid-cols-[1fr_2fr_1fr_1fr_1fr_auto] gap-2 mb-2 items-start bg-gray-50 p-2 rounded border border-gray-200">
             <select
               value={emitter.emitterType}
               onChange={(e) => onUpdate(room.id, emitter.id, 'emitterType', e.target.value)}
@@ -422,7 +422,7 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
                 <select
                   value={emitter.connectionType || 'TBOE'}
                   onChange={(e) => onUpdate(room.id, emitter.id, 'connectionType', e.target.value)}
-                  className="w-20 border border-gray-300 rounded px-1 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
                 >
                   {RADIATOR_CONNECTION_TYPES.map(type => (
                     <option key={type} value={type}>{type}</option>
@@ -433,7 +433,7 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
                   min="1"
                   value={emitter.quantity || 1}
                   onChange={(e) => onUpdate(room.id, emitter.id, 'quantity', parseInt(e.target.value))}
-                  className="w-14 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
                 />
               </>
             ) : emitter.emitterType === 'UFH' ? (
