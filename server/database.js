@@ -625,10 +625,10 @@ const radiatorSpecs = {
   getAll: ({ companyId = null, sessionToken = null } = {}) =>
     allQuery(`
       SELECT * FROM radiator_specs
-      WHERE scope = 'global'
+      WHERE scope IN ('global', 'library')
          OR (scope = 'company'   AND company_id    = $1)
          OR (scope = 'anonymous' AND session_token = $2)
-      ORDER BY manufacturer, type, height, length`,
+      ORDER BY manufacturer, model, type, height, length`,
       [companyId, sessionToken]
     ),
 
@@ -670,7 +670,7 @@ const radiatorSpecs = {
   // Only allow deletion of non-global specs, and only by the owner.
   // server.js enforces this at the route level — this is a belt-and-braces guard.
   delete: (id) =>
-    runQuery(`DELETE FROM radiator_specs WHERE id = $1 AND scope != 'global'`, [id]),
+    runQuery(`DELETE FROM radiator_specs WHERE id = $1 AND scope NOT IN ('global', 'library')`, [id]),
 };
 
 // ---------------------------------------------------------------------------

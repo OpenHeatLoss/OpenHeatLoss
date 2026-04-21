@@ -723,6 +723,22 @@ const MIGRATIONS = [
       await seedStelradClassicCompact(query);
     },
   },
+  {
+    version: '005',
+    description: 'Normalise radiator_specs scope: library → global',
+    run: async () => {
+      // Migration 004 seeded Stelrad data with scope='library'.
+      // The established convention in database.js is scope='global' for
+      // manufacturer reference data visible to all users.
+      // Normalise so a single scope value covers all seeded library data.
+      await query(`
+        UPDATE radiator_specs
+        SET scope = 'global'
+        WHERE scope = 'library'
+      `);
+      console.log('  Normalised radiator_specs scope: library → global');
+    },
+  },
 ];
 
 async function runMigrations() {

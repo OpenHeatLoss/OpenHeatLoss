@@ -251,11 +251,35 @@ export default function EmitterEditor({ room, radiatorSpecs, onAdd, onUpdate, on
                     className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select radiator...</option>
-                    {radiatorSpecs && radiatorSpecs.map(spec => (
-                      <option key={spec.id} value={spec.id}>
-                        {spec.source === 'site' ? '◆ ' : ''}{spec.manufacturer} {spec.model} - {spec.type} {spec.height}x{spec.length}mm
-                      </option>
-                    ))}
+                    {/* Your specs — company or anonymous additions */}
+                    {radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
+                      <optgroup label="— Your specs —">
+                        {radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(spec => (
+                          <option key={spec.id} value={spec.id}>
+                            {spec.source === 'site' ? '◆ ' : ''}{spec.manufacturer} {spec.model} — {spec.type} {spec.height}×{spec.length}mm
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* Global library — grouped by manufacturer */}
+                    {(() => {
+                      const libSpecs = radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
+                      const byMfr = libSpecs.reduce((acc, s) => {
+                        const key = s.manufacturer;
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(s);
+                        return acc;
+                      }, {});
+                      return Object.entries(byMfr).map(([mfr, specs]) => (
+                        <optgroup key={mfr} label={`— ${mfr} —`}>
+                          {specs.map(spec => (
+                            <option key={spec.id} value={spec.id}>
+                              {spec.model} — {spec.type} {spec.height}×{spec.length}mm
+                            </option>
+                          ))}
+                        </optgroup>
+                      ));
+                    })()}
                   </select>
                   {/* Only show the add button if the form isn't already open for another emitter */}
                   {(!showAddRadiator || addRadiatorForEmitterId === emitter.id) && (

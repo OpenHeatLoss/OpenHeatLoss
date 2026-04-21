@@ -1713,13 +1713,36 @@ function RoomRadiatorSchedule({
                             className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 mb-1"
                           >
                             <option value="">Select radiator...</option>
-                            {project.radiatorSpecs?.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.source === 'site' ? '◆ ' : ''}
-                                {s.manufacturer} {s.model} — {s.type} {s.height}×{s.length}mm
-                                {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | design: {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W]
-                              </option>
-                            ))}
+                            {/* Your specs first */}
+                            {project.radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
+                              <optgroup label="— Your specs —">
+                                {project.radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(s => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.source === 'site' ? '◆ ' : ''}{s.manufacturer} {s.model} — {s.type} {s.height}×{s.length}mm
+                                    {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | design: {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W]
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {/* Global library grouped by manufacturer */}
+                            {(() => {
+                              const lib = project.radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
+                              const byMfr = lib.reduce((acc, s) => {
+                                if (!acc[s.manufacturer]) acc[s.manufacturer] = [];
+                                acc[s.manufacturer].push(s);
+                                return acc;
+                              }, {});
+                              return Object.entries(byMfr).map(([mfr, specs]) => (
+                                <optgroup key={mfr} label={`— ${mfr} —`}>
+                                  {specs.map(s => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.model} — {s.type} {s.height}×{s.length}mm
+                                      {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | design: {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W]
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ));
+                            })()}
                           </select>
                         )}
                       </td>

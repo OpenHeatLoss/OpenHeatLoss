@@ -5,7 +5,7 @@
  * Source: Stelrad Classic Compact datasheet, EN442 tested at ΔT50 (75/65/20°C).
  *
  * Idempotent — skips if Stelrad Classic Compact records already exist.
- * scope = 'library' distinguishes global library records from company-specific
+ * scope = 'global' distinguishes global library records from company-specific
  * entries (scope = 'company') added by engineers.
  */
 
@@ -17,7 +17,7 @@ async function seedStelradClassicCompact(query) {
     SELECT 1 FROM radiator_specs
     WHERE manufacturer = 'Stelrad'
       AND model = 'Classic Compact'
-      AND scope = 'library'
+      AND scope = 'global'
     LIMIT 1
   `);
 

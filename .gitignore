@@ -49,3 +49,9 @@ server/integration_notes.js
 server/migrate(a).js
 client/src/components/project/UValueLibrary(c).jsx
 server/migrate(b).js
+client/src/components/calculations/RadiatorSizing(a).jsx
+client/src/components/rooms/EmitterEditor(a).jsx
+server/database(e).js
+server/migrate(c).js
+server/server(f).js
+server/seedStelradClassicCompact(a).js

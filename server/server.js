@@ -826,8 +826,8 @@ app.put('/api/radiator-specs/:id', async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    // Block editing global specs entirely
-    if (spec.scope === 'global') {
+    // Block editing global/library specs entirely
+    if (spec.scope === 'global' || spec.scope === 'library') {
       return res.status(403).json({ error: 'Global radiator specs cannot be edited' });
     }
 
@@ -866,7 +866,7 @@ app.delete('/api/radiator-specs/:id', async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    if (spec.scope === 'global') {
+    if (spec.scope === 'global' || spec.scope === 'library') {
       return res.status(403).json({ error: 'Global radiator specs cannot be deleted' });
     }
 
