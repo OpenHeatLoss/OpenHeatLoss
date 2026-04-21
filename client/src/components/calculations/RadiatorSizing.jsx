@@ -782,6 +782,7 @@ export default function RadiatorSizing({
                     ufhOutput={checkRoomSufficiency(room).ufhOutput}
                     onUpdateRadiatorSchedule={onUpdateRadiatorSchedule}
                     onAddUFHEmitter={onAddUFHEmitter}
+                    onAddRadiatorSpec={onAddRadiatorSpec}
                   />
                 </div>
               )}
@@ -1410,6 +1411,7 @@ function RoomRadiatorSchedule({
   ufhOutput,
   onUpdateRadiatorSchedule,
   onAddUFHEmitter,
+  onAddRadiatorSpec,
 }) {
   const schedule = room.radiatorSchedule || [];
   const connectionType = room.designConnectionType || 'BOE';
@@ -1496,6 +1498,83 @@ function RoomRadiatorSchedule({
 
   const handleConnectionTypeChange = async (newType) => {
     await onUpdateRadiatorSchedule(room.id, 'connectionType', { value: newType });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Dimension picker state — keyed by schedule item id
+  // Each unresolved row gets its own picker state
+  // ---------------------------------------------------------------------------
+  const [pickerState, setPickerState] = useState({}); // { [itemId]: { height, length, showManual, manualForm, saving } }
+
+  const getPickerState = (itemId) => pickerState[itemId] ?? {
+    height: '', length: '', showManual: false,
+    manualForm: {
+      manufacturer: '', model: '', type: DEFAULT_RAD_TYPE,
+      height: 600, length: 1000, outputDt50: 0,
+      waterVolume: 0, notes: '', source: 'library',
+    },
+    saving: false,
+  };
+
+  const setPickerField = (itemId, field, value) =>
+    setPickerState(prev => ({
+      ...prev,
+      [itemId]: { ...getPickerState(itemId), [field]: value },
+    }));
+
+  const setManualField = (itemId, field, value) =>
+    setPickerState(prev => {
+      const cur = getPickerState(itemId);
+      return {
+        ...prev,
+        [itemId]: { ...cur, manualForm: { ...cur.manualForm, [field]: value } },
+      };
+    });
+
+  // Standard heights and nearest-match helper
+  const STANDARD_HEIGHTS = [300, 450, 600, 700];
+
+  const nearestStandardHeight = (h) => {
+    const n = parseInt(h, 10);
+    if (isNaN(n) || n <= 0) return null;
+    return STANDARD_HEIGHTS.reduce((best, s) =>
+      Math.abs(s - n) < Math.abs(best - n) ? s : best
+    );
+  };
+
+  const nearestStandardLength = (l) => {
+    const n = parseInt(l, 10);
+    if (isNaN(n) || n <= 0) return null;
+    // Lengths are multiples of 100 from 300–3000; snap to nearest 100
+    const snapped = Math.round(n / 100) * 100;
+    return Math.max(300, Math.min(3000, snapped));
+  };
+
+  // Find matching specs for given height + length (snapped to nearest standard)
+  const findMatches = (rawHeight, rawLength) => {
+    const h = nearestStandardHeight(rawHeight);
+    const l = nearestStandardLength(rawLength);
+    if (!h || !l) return { h: null, l: null, matches: [] };
+
+    const matches = (project.radiatorSpecs ?? []).filter(s =>
+      s.height === h && s.length === l &&
+      s.scope !== 'anonymous' // anonymous specs don't have reliable dimensions
+    );
+    return { h, l, matches };
+  };
+
+  // Add spec from manual form, then auto-select into this row
+  const handleManualAdd = async (itemId) => {
+    const ps = getPickerState(itemId);
+    setPickerState(prev => ({ ...prev, [itemId]: { ...ps, saving: true } }));
+    try {
+      const newId = await onAddRadiatorSpec(ps.manualForm);
+      if (newId) {
+        await handleUpdateScheduleItem(itemId, 'radiatorSpecId', newId);
+      }
+    } finally {
+      setPickerState(prev => ({ ...prev, [itemId]: { ...getPickerState(itemId), saving: false, showManual: false } }));
+    }
   };
 
   const existingRads = room.emitters?.filter(e => e.emitterType === 'Radiator') || [];
@@ -1706,44 +1785,226 @@ function RoomRadiatorSchedule({
                               Spec locked — delete and re-import from Rooms tab to change
                             </div>
                           </div>
+                        ) : spec ? (
+                          // Already has a spec — show name with a clear button
+                          <div>
+                            <div className="text-xs text-gray-700 font-medium leading-tight">
+                              {spec.manufacturer} {spec.model} — {spec.type} {spec.height}×{spec.length}mm
+                            </div>
+                            <button
+                              onClick={() => handleUpdateScheduleItem(item.id, 'radiatorSpecId', null)}
+                              className="text-xs text-gray-400 hover:text-red-500 mt-0.5 transition"
+                            >
+                              ✕ change
+                            </button>
+                          </div>
                         ) : (
-                          <select
-                            value={item.radiator_spec_id || ''}
-                            onChange={e => handleUpdateScheduleItem(item.id, 'radiatorSpecId', parseInt(e.target.value))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 mb-1"
-                          >
-                            <option value="">Select radiator...</option>
-                            {/* Your specs first */}
-                            {project.radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
-                              <optgroup label="— Your specs —">
-                                {project.radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(s => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.source === 'site' ? '◆ ' : ''}{s.manufacturer} {s.model} — {s.type} {s.height}×{s.length}mm
-                                    {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | design: {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W]
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                            {/* Global library grouped by manufacturer */}
-                            {(() => {
-                              const lib = project.radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
-                              const byMfr = lib.reduce((acc, s) => {
-                                if (!acc[s.manufacturer]) acc[s.manufacturer] = [];
-                                acc[s.manufacturer].push(s);
-                                return acc;
-                              }, {});
-                              return Object.entries(byMfr).map(([mfr, specs]) => (
-                                <optgroup key={mfr} label={`— ${mfr} —`}>
-                                  {specs.map(s => (
-                                    <option key={s.id} value={s.id}>
-                                      {s.model} — {s.type} {s.height}×{s.length}mm
-                                      {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | design: {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W]
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ));
-                            })()}
-                          </select>
+                          // No spec yet — show dimension picker
+                          (() => {
+                            const ps = getPickerState(item.id);
+                            const { h, l, matches } = (ps.height && ps.length)
+                              ? findMatches(ps.height, ps.length)
+                              : { h: null, l: null, matches: [] };
+                            const hasInput = ps.height || ps.length;
+                            const snappedNote = hasInput && h && l
+                              && (parseInt(ps.height) !== h || parseInt(ps.length) !== l)
+                              ? `Nearest standard: ${h}×${l}mm`
+                              : null;
+
+                            return (
+                              <div className="space-y-2">
+                                {/* Dimension inputs */}
+                                <div className="flex gap-1 items-center">
+                                  <input
+                                    type="number"
+                                    placeholder="H mm"
+                                    value={ps.height}
+                                    onChange={e => setPickerField(item.id, 'height', e.target.value)}
+                                    className="w-20 border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <span className="text-gray-400 text-xs">×</span>
+                                  <input
+                                    type="number"
+                                    placeholder="L mm"
+                                    value={ps.length}
+                                    onChange={e => setPickerField(item.id, 'length', e.target.value)}
+                                    className="w-24 border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  {snappedNote && (
+                                    <span className="text-xs text-amber-600 italic">{snappedNote}</span>
+                                  )}
+                                </div>
+
+                                {/* Matches */}
+                                {hasInput && h && l && matches.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {matches.map(s => {
+                                      const effOut = calculateOutputAtMWAT(s.output_dt50, mwat);
+                                      return (
+                                        <button
+                                          key={s.id}
+                                          onClick={() => handleUpdateScheduleItem(item.id, 'radiatorSpecId', s.id)}
+                                          className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 transition text-left"
+                                        >
+                                          <span className="font-semibold">{s.type.split(' ')[0]}</span>
+                                          {' '}{s.manufacturer} {s.model}
+                                          <span className="text-blue-500 ml-1">
+                                            {s.output_dt50.toFixed(0)}W ΔT50 / {effOut.toFixed(0)}W design
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                {/* No matches found */}
+                                {hasInput && h && l && matches.length === 0 && (
+                                  <p className="text-xs text-gray-500 italic">
+                                    No specs found for {h}×{l}mm.
+                                  </p>
+                                )}
+
+                                {/* Also show a fallback dropdown for browsing */}
+                                {!ps.showManual && (
+                                  <details className="text-xs">
+                                    <summary className="text-gray-400 cursor-pointer hover:text-gray-600 select-none">
+                                      Browse all specs
+                                    </summary>
+                                    <select
+                                      value=""
+                                      onChange={e => e.target.value && handleUpdateScheduleItem(item.id, 'radiatorSpecId', parseInt(e.target.value))}
+                                      className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value="">Select radiator...</option>
+                                      {project.radiatorSpecs?.filter(s => s.scope === 'company' || s.scope === 'anonymous').length > 0 && (
+                                        <optgroup label="— Your specs —">
+                                          {project.radiatorSpecs.filter(s => s.scope === 'company' || s.scope === 'anonymous').map(s => (
+                                            <option key={s.id} value={s.id}>
+                                              {s.source === 'site' ? '◆ ' : ''}{s.manufacturer} {s.model} — {s.type} {s.height}×{s.length}mm
+                                              {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W design]
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                      )}
+                                      {(() => {
+                                        const lib = project.radiatorSpecs?.filter(s => s.scope === 'global' || s.scope === 'library') ?? [];
+                                        const byMfr = lib.reduce((acc, s) => {
+                                          if (!acc[s.manufacturer]) acc[s.manufacturer] = [];
+                                          acc[s.manufacturer].push(s);
+                                          return acc;
+                                        }, {});
+                                        return Object.entries(byMfr).map(([mfr, specs]) => (
+                                          <optgroup key={mfr} label={`— ${mfr} —`}>
+                                            {specs.map(s => (
+                                              <option key={s.id} value={s.id}>
+                                                {s.model} — {s.type} {s.height}×{s.length}mm
+                                                {' '}[ΔT50: {s.output_dt50.toFixed(0)}W | {calculateOutputAtMWAT(s.output_dt50, mwat).toFixed(0)}W design]
+                                              </option>
+                                            ))}
+                                          </optgroup>
+                                        ));
+                                      })()}
+                                    </select>
+                                  </details>
+                                )}
+
+                                {/* Not listed — add manually */}
+                                {!ps.showManual ? (
+                                  <button
+                                    onClick={() => setPickerField(item.id, 'showManual', true)}
+                                    className="text-xs text-green-600 hover:text-green-700 transition"
+                                  >
+                                    + Not listed — add manually
+                                  </button>
+                                ) : (
+                                  <div className="border border-green-300 bg-green-50 rounded p-3 mt-1 space-y-2">
+                                    <div className="text-xs font-semibold text-green-900 mb-1">Add radiator to database &amp; select</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {[
+                                        { label: 'Manufacturer', field: 'manufacturer', type: 'text', ph: 'e.g. Stelrad' },
+                                        { label: 'Model / Series', field: 'model', type: 'text', ph: 'e.g. Compact' },
+                                        { label: 'Height (mm)', field: 'height', type: 'number', ph: '600' },
+                                        { label: 'Length (mm)', field: 'length', type: 'number', ph: '1000' },
+                                        { label: 'Output @ ΔT50 (W)', field: 'outputDt50', type: 'number', ph: '1245' },
+                                        { label: 'Water content (L/m)', field: 'waterVolume', type: 'number', ph: '1.7' },
+                                      ].map(({ label, field, type, ph }) => (
+                                        <div key={field}>
+                                          <label className="block text-xs font-semibold text-gray-600 mb-0.5">{label}</label>
+                                          <input
+                                            type={type}
+                                            step={type === 'number' ? '0.01' : undefined}
+                                            placeholder={ph}
+                                            value={ps.manualForm[field]}
+                                            onChange={e => setManualField(item.id, field, type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
+                                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                                          />
+                                        </div>
+                                      ))}
+                                      <div className="col-span-2">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-0.5">Type</label>
+                                        <select
+                                          value={ps.manualForm.type}
+                                          onChange={e => setManualField(item.id, 'type', e.target.value)}
+                                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                                        >
+                                          {Object.entries(RADIATOR_TYPES).map(([group, types]) => (
+                                            <optgroup key={group} label={group}>
+                                              {types.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </optgroup>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="col-span-2">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-0.5">Notes (optional)</label>
+                                        <input
+                                          type="text"
+                                          placeholder="e.g. low water content version"
+                                          value={ps.manualForm.notes}
+                                          onChange={e => setManualField(item.id, 'notes', e.target.value)}
+                                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                                        />
+                                      </div>
+                                      <div className="col-span-2">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1">Source</label>
+                                        <div className="flex gap-4">
+                                          {[
+                                            { value: 'library', label: 'Manufacturer spec', accent: 'accent-blue-600' },
+                                            { value: 'site', label: 'Site-found existing', accent: 'accent-amber-600' },
+                                          ].map(opt => (
+                                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-xs">
+                                              <input
+                                                type="radio"
+                                                value={opt.value}
+                                                checked={ps.manualForm.source === opt.value}
+                                                onChange={() => setManualField(item.id, 'source', opt.value)}
+                                                className={opt.accent}
+                                              />
+                                              {opt.label}
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2 mt-2">
+                                      <button
+                                        onClick={() => handleManualAdd(item.id)}
+                                        disabled={ps.saving || !ps.manualForm.manufacturer || !ps.manualForm.model || !ps.manualForm.outputDt50}
+                                        className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-50 transition"
+                                      >
+                                        {ps.saving ? 'Saving...' : 'Add & select'}
+                                      </button>
+                                      <button
+                                        onClick={() => setPickerField(item.id, 'showManual', false)}
+                                        className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()
                         )}
                       </td>
                       <td className="p-2 border">
