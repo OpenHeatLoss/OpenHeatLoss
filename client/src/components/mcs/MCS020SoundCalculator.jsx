@@ -78,8 +78,8 @@ export default function MCS020SoundCalculator({ project, onUpdate, onSave }) {
 
   // Barrier attenuation matrix (in dB)
   const barrierAttenuation = {
-    'type1': { 'no_view': -10, 'partial': -5, 'full': 0 },
-    'type2': { 'no_view': -5, 'partial': -2.5, 'full': 0 },
+    'type1': { 'no_view': 10, 'partial': 5, 'full': 0 },
+    'type2': { 'no_view': 5, 'partial': 2.5, 'full': 0 },
     'none': { 'no_view': 0, 'partial': 0, 'full': 0 }
   };
 
