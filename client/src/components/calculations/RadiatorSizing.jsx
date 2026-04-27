@@ -340,6 +340,14 @@ export default function RadiatorSizing({
   const [localFlowTemp,   setLocalFlowTemp]   = useState(project.designFlowTemp   ?? 50);
   const [localReturnTemp, setLocalReturnTemp] = useState(project.designReturnTemp ?? 40);
 
+  // Sync local state when project prop updates (e.g. after DB save reloads project,
+  // or when switching between projects). Guards against resetting mid-edit by only
+  // syncing when the value actually differs from what's in the DB.
+  useEffect(() => {
+    if (project.designFlowTemp   != null) setLocalFlowTemp(project.designFlowTemp);
+    if (project.designReturnTemp != null) setLocalReturnTemp(project.designReturnTemp);
+  }, [project.designFlowTemp, project.designReturnTemp]);
+
   const systemSettings = {
     flowTemp:   localFlowTemp,
     returnTemp: localReturnTemp,
@@ -580,7 +588,10 @@ export default function RadiatorSizing({
                 if (isNaN(v)) return;
                 setLocalFlowTemp(v);
                 onUpdateProject('designFlowTemp', v);
-                onSaveFlowTemps?.(v, localReturnTemp);
+              }}
+              onBlur={e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) onSaveFlowTemps?.(v, localReturnTemp);
               }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
           </div>
@@ -592,7 +603,10 @@ export default function RadiatorSizing({
                 if (isNaN(v)) return;
                 setLocalReturnTemp(v);
                 onUpdateProject('designReturnTemp', v);
-                onSaveFlowTemps?.(localFlowTemp, v);
+              }}
+              onBlur={e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) onSaveFlowTemps?.(localFlowTemp, v);
               }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
           </div>

@@ -1589,6 +1589,11 @@ const deleteProject = async (id) => {
               <RadiatorSizing
                 project={currentProject}
                 onUpdateProject={updateProject}
+                onSaveFlowTemps={async (flowTemp, returnTemp) => {
+                  updateProject('designFlowTemp', flowTemp);
+                  updateProject('designReturnTemp', returnTemp);
+                  await saveDesignParams();
+                }}
                 onAddRadiatorSpec={addRadiatorSpec}
                 onUpdateRadiatorSchedule={updateRadiatorSchedule}
                 onUpdateUFHSpecs={updateUFHSpecs}
