@@ -48,7 +48,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use('/api', radiatorScheduleRoutes(requireAuthOrAnon));
 app.use('/api', pdfRoutes);
 
 // ------------------------------------------------------------
@@ -71,6 +70,10 @@ app.use((req, res, next) => {
   req.anonToken = token;
   next();
 });
+
+// Schedule router mounted AFTER anon middleware so req.anonToken is
+// always set before requireAuthOrAnon runs inside the router.
+app.use('/api', radiatorScheduleRoutes(requireAuthOrAnon));
 
 // ------------------------------------------------------------
 // AUTH MIDDLEWARE
@@ -826,8 +829,8 @@ app.put('/api/radiator-specs/:id', async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    // Block editing global/library specs entirely
-    if (spec.scope === 'global' || spec.scope === 'library') {
+    // Block editing global specs entirely
+    if (spec.scope === 'global') {
       return res.status(403).json({ error: 'Global radiator specs cannot be edited' });
     }
 
@@ -866,7 +869,7 @@ app.delete('/api/radiator-specs/:id', async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    if (spec.scope === 'global' || spec.scope === 'library') {
+    if (spec.scope === 'global') {
       return res.status(403).json({ error: 'Global radiator specs cannot be deleted' });
     }
 
