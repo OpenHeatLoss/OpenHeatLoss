@@ -659,7 +659,65 @@ async function seedConstructionLibrary() {
 }
 
 // ---------------------------------------------------------------------------
-// MIGRATIONS
+// SEED — windows and doors (migration 006)
+// Reads windows_and_doors.json and inserts into construction_library.
+// Idempotent — skips if window/door rows already exist.
+// ---------------------------------------------------------------------------
+async function seedWindowsAndDoors() {
+  const { rowCount } = await query(
+    `SELECT 1 FROM construction_library WHERE element_type IN ('window', 'door') LIMIT 1`
+  );
+  if (rowCount > 0) {
+    console.log('  Windows and doors already seeded — skipping.');
+    return;
+  }
+
+  const seedPath = path.join(__dirname, 'seeds', 'windows_and_doors.json');
+  const data = JSON.parse(readFileSync(seedPath, 'utf8'));
+
+  const INSERT_SQL = `
+    INSERT INTO construction_library (
+      element_type, region, age_band, u_value, description, source, notes,
+      glazing_type, frame_type, gap_mm, is_roof_window, g_value,
+      door_type, opens_to, period
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+  `;
+
+  let inserted = 0;
+
+  // Windows — expand regions array
+  for (const record of (data.windows ?? [])) {
+    for (const region of (record.regions ?? [])) {
+      await query(INSERT_SQL, [
+        'window', region, null,
+        record.u_value, record.description, record.source, record.notes ?? null,
+        record.glazing_type, record.frame_type, record.gap_mm ?? null,
+        record.is_roof_window ?? false, record.g_value ?? null,
+        null, null, record.period,
+      ]);
+      inserted++;
+    }
+  }
+
+  // Doors — expand regions × age_bands
+  for (const record of (data.doors ?? [])) {
+    for (const region of (record.regions ?? [])) {
+      for (const ageBand of (record.age_bands ?? [null])) {
+        await query(INSERT_SQL, [
+          'door', region, ageBand,
+          record.u_value, record.description, record.source, record.notes ?? null,
+          null, null, null, false, null,
+          record.door_type, record.opens_to, null,
+        ]);
+        inserted++;
+      }
+    }
+  }
+
+  console.log(`  Seeded ${inserted} window and door rows into construction_library.`);
+}
+
+// ---------------------------------------------------------------------------
 // Each entry is { version, description, run: async fn }.
 // New migrations go at the bottom. Migrations already recorded in
 // schema_migrations are skipped automatically.
@@ -737,6 +795,25 @@ const MIGRATIONS = [
         WHERE scope = 'library'
       `);
       console.log('  Normalised radiator_specs scope: library → global');
+    },
+  },
+  {
+    version: '006',
+    description: 'Add window/door columns to construction_library and seed Table 24/26 data',
+    run: async () => {
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS glazing_type   TEXT`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS frame_type     TEXT`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS gap_mm         INTEGER`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS is_roof_window BOOLEAN DEFAULT FALSE`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS g_value        DOUBLE PRECISION`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS door_type      TEXT`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS opens_to       TEXT`);
+      await query(`ALTER TABLE construction_library ADD COLUMN IF NOT EXISTS period         TEXT`);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_construction_library_glazing
+          ON construction_library (glazing_type) WHERE glazing_type IS NOT NULL
+      `);
+      await seedWindowsAndDoors();
     },
   },
 ];

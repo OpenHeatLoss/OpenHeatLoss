@@ -65,3 +65,4 @@ client/src/components/rooms/EmitterEditor(d).jsx
 server/server(g).js
 client/src/App(i).jsx
 client/src/components/calculations/RadiatorSizing(d).jsx
+server/migrate(d).js
