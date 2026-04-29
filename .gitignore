@@ -71,3 +71,4 @@ client/src/utils/construction_library(a).json
 client/src/utils/constructionLibrary(a).js
 server/migrate(e).js
 server/seedStelradClassicCompact(b).js
+server/migrate(f).js
