@@ -816,6 +816,45 @@ const MIGRATIONS = [
       await seedWindowsAndDoors();
     },
   },
+  {
+    version: '007',
+    description: 'Seed Stelrad Classic Compact K3 radiator data',
+    run: async () => {
+      // K1/P+/K2 were seeded in migration 004.
+      // K3 is a separate datasheet and gets its own migration so
+      // existing deployments pick it up without re-seeding everything.
+      const { rowCount } = await query(`
+        SELECT 1 FROM radiator_specs
+        WHERE manufacturer = 'Stelrad' AND model = 'Classic Compact' AND type = 'K3'
+        LIMIT 1
+      `);
+      if (rowCount > 0) {
+        console.log('  K3 data already present — skipping.');
+        return;
+      }
+
+      const { readFileSync } = require('fs');
+      const path = require('path');
+      const seedPath = path.join(__dirname, 'seeds', 'stelrad_classic_compact_k3.json');
+      const { radiators } = JSON.parse(readFileSync(seedPath, 'utf8'));
+
+      const INSERT_SQL = `
+        INSERT INTO radiator_specs
+          (manufacturer, model, type, height, length, output_dt50, water_volume,
+           source, notes, scope)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'global')
+      `;
+
+      for (const r of radiators) {
+        await query(INSERT_SQL, [
+          r.manufacturer, r.model, r.type,
+          r.height, r.length, r.output_dt50,
+          r.water_volume, r.source, r.notes ?? null,
+        ]);
+      }
+      console.log(`  Seeded ${radiators.length} Stelrad Classic Compact K3 records.`);
+    },
+  },
 ];
 
 async function runMigrations() {

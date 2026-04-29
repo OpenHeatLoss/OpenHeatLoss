@@ -69,3 +69,5 @@ server/migrate(d).js
 client/src/components/project/RdSAPUValuePicker(a).jsx
 client/src/utils/construction_library(a).json
 client/src/utils/constructionLibrary(a).js
+server/migrate(e).js
+server/seedStelradClassicCompact(b).js
