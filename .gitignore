@@ -66,3 +66,6 @@ server/server(g).js
 client/src/App(i).jsx
 client/src/components/calculations/RadiatorSizing(d).jsx
 server/migrate(d).js
+client/src/components/project/RdSAPUValuePicker(a).jsx
+client/src/utils/construction_library(a).json
+client/src/utils/constructionLibrary(a).js

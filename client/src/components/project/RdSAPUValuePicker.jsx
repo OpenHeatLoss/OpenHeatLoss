@@ -24,6 +24,10 @@ import {
   AGE_BANDS,
   WALL_TYPE_LABELS,
   ROOF_TYPE_LABELS,
+  GLAZING_TYPE_LABELS,
+  GLAZING_PERIOD_LABELS,
+  FRAME_TYPE_LABELS,
+  GAP_LABELS,
 } from '../../utils/constructionLibrary';
 
 // ---------------------------------------------------------------------------
@@ -34,6 +38,8 @@ const ELEMENT_TYPE_OPTIONS = [
   { value: 'wall',          label: 'Wall' },
   { value: 'roof',          label: 'Roof' },
   { value: 'floor_exposed', label: 'Exposed / Semi-exposed Floor' },
+  { value: 'window',        label: 'Window or Glazing' },
+  { value: 'door',          label: 'External Door' },
 ];
 
 const REGION_LABELS = {
@@ -44,15 +50,15 @@ const REGION_LABELS = {
   iom:      'Isle of Man',
 };
 
-// Maps RdSAP element_type + wall_type/roof_type to the app's ELEMENT_TYPES
-// (the element_category stored on each u_value_library row).
+// Maps RdSAP element_type to the app's ELEMENT_TYPES
 function toElementCategory(record) {
   if (record.element_type === 'roof') {
     if (record.roof_type === 'room_in_roof') return 'Roof Room';
     return 'Roof';
   }
   if (record.element_type === 'floor_exposed') return 'Floor';
-  // wall
+  if (record.element_type === 'window') return 'Window';
+  if (record.element_type === 'door') return 'Door';
   return 'External Wall';
 }
 
@@ -169,15 +175,25 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
   );
 
   // --- Picker state ---
-  const [elementType,  setElementType]  = useState('wall');
-  const [region,       setRegion]       = useState(derivedRegion);
-  const [ageBandMode,  setAgeBandMode]  = useState('band');   // 'band' | 'year'
-  const [ageBand,      setAgeBand]      = useState('');
-  const [buildYear,    setBuildYear]    = useState('');
-  const [selectedRow,  setSelectedRow]  = useState(null);
-  const [thicknessMm,  setThicknessMm]  = useState('');
-  const [saveName,     setSaveName]     = useState('');
-  const [saveSuccess,  setSaveSuccess]  = useState(false);
+  const [elementType,    setElementType]    = useState('wall');
+  const [region,         setRegion]         = useState(derivedRegion);
+  const [ageBandMode,    setAgeBandMode]    = useState('band');
+  const [ageBand,        setAgeBand]        = useState('');
+  const [buildYear,      setBuildYear]      = useState('');
+  const [selectedRow,    setSelectedRow]    = useState(null);
+  const [thicknessMm,    setThicknessMm]    = useState('');
+  const [saveName,       setSaveName]       = useState('');
+  const [saveSuccess,    setSaveSuccess]    = useState(false);
+
+  // Window-specific filter state
+  const [glazingType,    setGlazingType]    = useState('');
+  const [glazingPeriod,  setGlazingPeriod]  = useState('');
+  const [frameType,      setFrameType]      = useState('');
+  const [gapMm,          setGapMm]          = useState('');
+  const [isRoofWindow,   setIsRoofWindow]   = useState(false);
+
+  // Door-specific filter state
+  const [opensTo,        setOpensTo]        = useState('outside');
 
   // Resolve age band from year if in year mode
   const resolvedBand = ageBandMode === 'year'
@@ -190,20 +206,44 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
       wall:          libraryData.walls          ?? [],
       roof:          libraryData.roofs          ?? [],
       floor_exposed: libraryData.floors_exposed ?? [],
+      window:        libraryData.windows        ?? [],
+      door:          libraryData.doors          ?? [],
     };
     return (sections[elementType] ?? []).filter(r => !('_comment' in r));
   }, [elementType]);
 
   const filteredRecords = useMemo(() => {
+    // Windows — filter by region, glazing type, period, frame, gap, roof window
+    if (elementType === 'window') {
+      return allRecords.filter(r => {
+        if (!r.regions?.includes(region)) return false;
+        if (glazingType   && r.glazing_type !== glazingType)   return false;
+        if (glazingPeriod && r.period       !== glazingPeriod) return false;
+        if (frameType     && r.frame_type   !== frameType)     return false;
+        if (gapMm         && r.gap_mm !== null && r.gap_mm !== parseInt(gapMm)) return false;
+        if (r.is_roof_window !== isRoofWindow) return false;
+        return true;
+      });
+    }
+    // Doors — filter by region and age band
+    if (elementType === 'door') {
+      return allRecords.filter(r => {
+        if (!r.regions?.includes(region)) return false;
+        if (r.opens_to !== opensTo) return false;
+        if (resolvedBand && r.age_bands && !r.age_bands.includes(resolvedBand)) return false;
+        return true;
+      });
+    }
+    // Walls / floors — require age band
     if (!resolvedBand && elementType !== 'roof') return [];
     return allRecords.filter(r => {
       if (!r.regions?.includes(region)) return false;
-      // Roof rows keyed by insulation_mm have null age_bands — always show them
       if (r.age_bands === null) return true;
       if (resolvedBand && !r.age_bands?.includes(resolvedBand)) return false;
       return true;
     });
-  }, [allRecords, region, resolvedBand, elementType]);
+  }, [allRecords, region, resolvedBand, elementType,
+      glazingType, glazingPeriod, frameType, gapMm, isRoofWindow, opensTo]);
 
   // Group wall records by wall_type for cleaner display
   const groupedWalls = useMemo(() => {
@@ -243,7 +283,19 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
     setSaveSuccess(false);
   };
 
-  const handleElementTypeChange = (v) => { setElementType(v); resetSelection(); };
+  const resetAll = () => {
+    resetSelection();
+    setAgeBand('');
+    setBuildYear('');
+    setGlazingType('');
+    setGlazingPeriod('');
+    setFrameType('');
+    setGapMm('');
+    setIsRoofWindow(false);
+    setOpensTo('outside');
+  };
+
+  const handleElementTypeChange = (v) => { setElementType(v); resetAll(); };
   const handleRegionChange      = (v) => { setRegion(v);      resetSelection(); };
   const handleAgeBandChange     = (v) => { setAgeBand(v);     resetSelection(); };
   const handleBuildYearChange   = (v) => { setBuildYear(v);   resetSelection(); };
@@ -256,18 +308,27 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
 
   const handleSave = async () => {
     if (!resolvedUValue || !saveName.trim()) return;
+    const notes = elementType === 'window'
+      ? `RdSAP10 ${selectedRow.source} · ${REGION_LABELS[region]}${selectedRow.g_value != null ? ` · g=${selectedRow.g_value}` : ''}`
+      : elementType === 'door'
+      ? `RdSAP10 ${selectedRow.source} · Band ${resolvedBand ?? '—'} · ${REGION_LABELS[region]}`
+      : `RdSAP10 ${selectedRow.source} · Band ${resolvedBand ?? '—'} · ${REGION_LABELS[region]}`;
     await onSaveToLibrary({
       elementCategory: toElementCategory(selectedRow),
       name:    saveName.trim(),
       uValue:  parseFloat(resolvedUValue.toFixed(3)),
-      notes:   `RdSAP10 ${selectedRow.source} · Band ${resolvedBand ?? '—'} · ${REGION_LABELS[region]}`,
+      notes,
     });
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const step1Done = true;
-  const step2Done = !!resolvedBand || elementType === 'roof';
+  const step2Done = elementType === 'window'
+    ? !!glazingType
+    : elementType === 'door'
+    ? true
+    : !!resolvedBand || elementType === 'roof';
   const step3Done = !!selectedRow;
 
   // ---------------------------------------------------------------------------
@@ -418,6 +479,80 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
     });
   }
 
+  function renderWindowOptions() {
+    if (filteredRecords.length === 0) {
+      const needsMore = !glazingType;
+      return (
+        <p style={{ padding: 16, fontSize: 13, color: '#6b7280' }}>
+          {needsMore ? 'Select glazing type above to see matching U-values.' : 'No records match the current filters.'}
+        </p>
+      );
+    }
+    return filteredRecords.map((r, i) => {
+      const isSelected = selectedRow === r;
+      return (
+        <div
+          key={i}
+          onClick={() => handleSelectRow(r)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6',
+            background: isSelected ? '#eff6ff' : '#fff',
+            borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent',
+            transition: 'all .1s',
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#374151', flex: 1 }}>
+            {r.description}
+            {r.g_value != null && (
+              <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                g = {r.g_value}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>
+              {r.u_value?.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>W/m²K</span>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: getUValueColour(r.u_value), flexShrink: 0 }} />
+          </div>
+        </div>
+      );
+    });
+  }
+
+  function renderDoorOptions() {
+    if (filteredRecords.length === 0) {
+      return <p style={{ padding: 16, fontSize: 13, color: '#6b7280' }}>No records found for this combination.</p>;
+    }
+    return filteredRecords.map((r, i) => {
+      const isSelected = selectedRow === r;
+      return (
+        <div
+          key={i}
+          onClick={() => handleSelectRow(r)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6',
+            background: isSelected ? '#eff6ff' : '#fff',
+            borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent',
+            transition: 'all .1s',
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#374151' }}>{r.description}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>
+              {r.u_value?.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>W/m²K</span>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: getUValueColour(r.u_value), flexShrink: 0 }} />
+          </div>
+        </div>
+      );
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -457,83 +592,159 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
         </div>
       </div>
 
-      {/* ── Step 2: Age band ── */}
+      {/* ── Step 2: Filters — age band for walls/roofs/floors/doors; glazing filters for windows ── */}
       <div style={sectionStyle}>
         <div style={sectionHeaderStyle}>
           <StepDot n={2} active={!step2Done} done={step2Done} />
-          <span>Age band</span>
+          <span>
+            {elementType === 'window' ? 'Glazing specification'
+              : elementType === 'door' ? 'Door type'
+              : 'Age band'}
+          </span>
           {elementType === 'roof' && (
             <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400, marginLeft: 4 }}>
               — optional for roofs (insulation-thickness tables don't need it)
             </span>
           )}
         </div>
-        <div style={{ padding: 16 }}>
-          {/* Toggle: select by band or by year */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            <span
-              style={badgeStyle(ageBandMode === 'band')}
-              onClick={() => setAgeBandMode('band')}
-            >
-              Select band
-            </span>
-            <span
-              style={badgeStyle(ageBandMode === 'year')}
-              onClick={() => setAgeBandMode('year')}
-            >
-              Enter build year
-            </span>
-          </div>
 
-          {ageBandMode === 'year' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: '0 0 160px' }}>
-                <label style={labelStyle}>Build year</label>
-                <input
-                  type="number"
-                  min={1700} max={2030} step={1}
-                  value={buildYear}
-                  onChange={e => handleBuildYearChange(e.target.value)}
-                  placeholder="e.g. 1967"
-                  style={inputStyle}
-                />
+        {/* WINDOW FILTERS */}
+        {elementType === 'window' && (
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Glazing type</label>
+              <select style={selectStyle} value={glazingType}
+                onChange={e => { setGlazingType(e.target.value); setGlazingPeriod(''); setGapMm(''); resetSelection(); }}>
+                <option value="">Select...</option>
+                {Object.entries(GLAZING_TYPE_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </div>
+            {/* Period — only for double/triple pre-cutoff distinction */}
+            {(glazingType === 'double' || glazingType === 'triple') && (
+              <div>
+                <label style={labelStyle}>Gap between panes</label>
+                <select style={selectStyle} value={gapMm}
+                  onChange={e => { setGapMm(e.target.value); resetSelection(); }}>
+                  <option value="">Any / unknown</option>
+                  {Object.entries(GAP_LABELS).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
               </div>
-              {resolvedBand && (
-                <div style={{ paddingTop: 18, fontSize: 13, color: '#374151' }}>
-                  → Age band <strong>{resolvedBand}</strong>
-                  <span style={{ color: '#6b7280', marginLeft: 6 }}>
-                    ({AGE_BANDS.find(b => b.band === resolvedBand)?.label})
-                  </span>
-                </div>
-              )}
-              {buildYear && !resolvedBand && (
-                <div style={{ paddingTop: 18, fontSize: 13, color: '#ea580c' }}>
-                  Year not recognised
-                </div>
-              )}
+            )}
+            <div>
+              <label style={labelStyle}>Frame type</label>
+              <select style={selectStyle} value={frameType}
+                onChange={e => { setFrameType(e.target.value); resetSelection(); }}>
+                <option value="">Any</option>
+                {Object.entries(FRAME_TYPE_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {AGE_BANDS.map(b => (
-                <button
-                  key={b.band}
-                  onClick={() => handleAgeBandChange(b.band)}
-                  style={{
-                    padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                    border: ageBand === b.band ? '2px solid #1e3a5f' : '1px solid #d1d5db',
-                    background: ageBand === b.band ? '#1e3a5f' : '#fff',
-                    color: ageBand === b.band ? '#fff' : '#374151',
-                    fontWeight: ageBand === b.band ? 700 : 400,
-                    transition: 'all .1s',
-                  }}
-                >
-                  <span style={{ fontWeight: 700, marginRight: 4 }}>{b.band}</span>
-                  <span style={{ fontSize: 11, opacity: 0.8 }}>{b.label}</span>
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={isRoofWindow}
+                  onChange={e => { setIsRoofWindow(e.target.checked); resetSelection(); }} />
+                Roof window (45° pitch)
+              </label>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* DOOR FILTERS */}
+        {elementType === 'door' && (
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Opens to</label>
+              <select style={selectStyle} value={opensTo}
+                onChange={e => { setOpensTo(e.target.value); resetSelection(); }}>
+                <option value="outside">Outside</option>
+                <option value="unheated_corridor">Unheated corridor or stairwell</option>
+              </select>
+            </div>
+            {opensTo === 'outside' && (
+              <div>
+                <label style={labelStyle}>Age band</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {AGE_BANDS.map(b => (
+                    <button key={b.band} onClick={() => handleAgeBandChange(b.band)}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                        border: ageBand === b.band ? '2px solid #1e3a5f' : '1px solid #d1d5db',
+                        background: ageBand === b.band ? '#1e3a5f' : '#fff',
+                        color: ageBand === b.band ? '#fff' : '#374151',
+                        fontWeight: ageBand === b.band ? 700 : 400,
+                        transition: 'all .1s',
+                      }}>
+                      <span style={{ fontWeight: 700 }}>{b.band}</span>
+                      <span style={{ fontSize: 10, opacity: 0.8, marginLeft: 3 }}>{b.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AGE BAND — walls, roofs, floors */}
+        {elementType !== 'window' && elementType !== 'door' && (
+          <div style={{ padding: 16 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              <span style={badgeStyle(ageBandMode === 'band')} onClick={() => setAgeBandMode('band')}>
+                Select band
+              </span>
+              <span style={badgeStyle(ageBandMode === 'year')} onClick={() => setAgeBandMode('year')}>
+                Enter build year
+              </span>
+            </div>
+
+            {ageBandMode === 'year' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: '0 0 160px' }}>
+                  <label style={labelStyle}>Build year</label>
+                  <input
+                    type="number" min={1700} max={2030} step={1}
+                    value={buildYear}
+                    onChange={e => handleBuildYearChange(e.target.value)}
+                    placeholder="e.g. 1967"
+                    style={inputStyle}
+                  />
+                </div>
+                {resolvedBand && (
+                  <div style={{ paddingTop: 18, fontSize: 13, color: '#374151' }}>
+                    → Age band <strong>{resolvedBand}</strong>
+                    <span style={{ color: '#6b7280', marginLeft: 6 }}>
+                      ({AGE_BANDS.find(b => b.band === resolvedBand)?.label})
+                    </span>
+                  </div>
+                )}
+                {buildYear && !resolvedBand && (
+                  <div style={{ paddingTop: 18, fontSize: 13, color: '#ea580c' }}>Year not recognised</div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {AGE_BANDS.map(b => (
+                  <button key={b.band} onClick={() => handleAgeBandChange(b.band)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      border: ageBand === b.band ? '2px solid #1e3a5f' : '1px solid #d1d5db',
+                      background: ageBand === b.band ? '#1e3a5f' : '#fff',
+                      color: ageBand === b.band ? '#fff' : '#374151',
+                      fontWeight: ageBand === b.band ? 700 : 400,
+                      transition: 'all .1s',
+                    }}>
+                    <span style={{ fontWeight: 700, marginRight: 4 }}>{b.band}</span>
+                    <span style={{ fontSize: 11, opacity: 0.8 }}>{b.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Step 3: Construction selection ── */}
@@ -541,7 +752,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
         <div style={sectionHeaderStyle}>
           <StepDot n={3} active={step2Done && !step3Done} done={step3Done} />
           <span>Select construction</span>
-          {resolvedBand && (
+          {resolvedBand && elementType !== 'window' && (
             <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 400, marginLeft: 4 }}>
               Band {resolvedBand} · {REGION_LABELS[region]}
             </span>
@@ -551,6 +762,8 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
           {elementType === 'wall'          && renderWallOptions()}
           {elementType === 'roof'          && renderRoofOptions()}
           {elementType === 'floor_exposed' && renderFloorOptions()}
+          {elementType === 'window'        && renderWindowOptions()}
+          {elementType === 'door'          && renderDoorOptions()}
         </div>
       </div>
 
@@ -645,7 +858,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
       )}
 
       <div style={{ marginTop: 12, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
-        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 16, 18, 20
+        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 16, 18, 20, 24, 26
       </div>
     </div>
   );

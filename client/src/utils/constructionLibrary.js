@@ -187,6 +187,36 @@ export const ROOF_TYPE_LABELS = {
 };
 
 // ---------------------------------------------------------------------------
+// Window and door label maps
+// ---------------------------------------------------------------------------
+
+export const GLAZING_TYPE_LABELS = {
+  single:           'Single glazed',
+  double:           'Double glazed (pre-2002 / unknown date)',
+  triple:           'Triple glazed (pre-2002)',
+  double_or_triple: 'Double or triple glazed (post-2002)',
+  secondary:        'Secondary glazing',
+};
+
+export const GLAZING_PERIOD_LABELS = {
+  pre_cutoff:  'Before 2002 (E/W) · 2003 (Scot) · 2006 (NI)',
+  post_cutoff: '2002+ (E/W) · 2003+ (Scot) · 2006+ (NI)',
+  post_2022:   '2022+ (E/W & NI) · 2023+ (Scot) — current standard',
+  any:         'Any period',
+};
+
+export const FRAME_TYPE_LABELS = {
+  pvc_wood: 'PVC or wood frame',
+  metal:    'Metal frame',
+};
+
+export const GAP_LABELS = {
+  6:  '6mm gap',
+  12: '12mm gap',
+  16: '16mm or more',
+};
+
+// ---------------------------------------------------------------------------
 // Formula row detection
 // ---------------------------------------------------------------------------
 

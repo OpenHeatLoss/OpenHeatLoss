@@ -7,13 +7,13 @@
       "Bands A-E solid brick: use formula_type='brick_thickness', call solidBrickUValue(thicknessMm)",
       "Bands A-E stone: use formula_type='stone_granite' or 'stone_sandstone', call stoneUValue(thicknessMm)",
       "Filled cavity rows are included as 'current state' regardless of when CWI was installed.",
-      "Ground floors are excluded — calculated via BS EN ISO 13370 from area/perimeter in the app.",
+      "Ground floors are excluded \u2014 calculated via BS EN ISO 13370 from area/perimeter in the app.",
       "Thermal bridging y-factors (Table 21) are stored separately, not in this library.",
       "Age band M (2023+) values taken from M column where shown. Not all regions publish M separately.",
-      "† means assumed as-built in RdSAP source. * means applies only if insulation added subsequently.",
-      "We include † rows (they are current-state values). We exclude * rows (retrofit insulation — enter directly).",
+      "\u2020 means assumed as-built in RdSAP source. * means applies only if insulation added subsequently.",
+      "We include \u2020 rows (they are current-state values). We exclude * rows (retrofit insulation \u2014 enter directly).",
       "insulation_mm: only relevant for rows where added insulation changes the base as-built value.",
-      "For formula rows, u_value is null — compute at runtime using formula_type + thicknessMm."
+      "For formula rows, u_value is null \u2014 compute at runtime using formula_type + thicknessMm."
     ],
     "age_bands": {
       "A": "pre-1900",
@@ -29,22 +29,35 @@
       "K": "2007-2011",
       "L": "2012-2022",
       "M": "2023+"
-    }
+    },
+    "tables": "Tables 6-10 (walls), 12-13 (brick/stone formula), 16 (roof thickness), 18 (roof defaults), 20 (exposed floors), 24 (windows), 26 (doors)"
   },
   "walls": [
     {
-      "_comment": "=== SOLID BRICK — age bands A-E use thickness formula (Table 13), F+ use fixed values ==="
+      "_comment": "=== SOLID BRICK \u2014 age bands A-E use thickness formula (Table 13), F+ use fixed values ==="
     },
     {
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["england","scotland","ni","wales","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "ni",
+        "wales",
+        "iom"
+      ],
       "u_value": null,
       "formula_type": "brick_thickness",
-      "description": "Solid brick, as built — U-value depends on wall thickness (measure on site)",
-      "description_detail": "Up to 200mm: 2.5 W/m²K | 200–280mm: 1.7 W/m²K | 280–420mm: 1.4 W/m²K | >420mm: 1.1 W/m²K",
+      "description": "Solid brick, as built \u2014 U-value depends on wall thickness (measure on site)",
+      "description_detail": "Up to 200mm: 2.5 W/m\u00b2K | 200\u2013280mm: 1.7 W/m\u00b2K | 280\u2013420mm: 1.4 W/m\u00b2K | >420mm: 1.1 W/m\u00b2K",
       "source": "RdSAP10 Table 13",
       "notes": "Measure wall thickness including plaster. Formula applies to age bands A-E only."
     },
@@ -52,8 +65,14 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -64,8 +83,13 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -76,9 +100,15 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 6",
@@ -88,9 +118,14 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -100,9 +135,15 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 6",
@@ -112,8 +153,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -124,8 +169,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["ni"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -136,8 +185,14 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -148,8 +203,13 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -160,8 +220,14 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -172,9 +238,13 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 7",
@@ -184,9 +254,15 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 6",
@@ -196,8 +272,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -208,9 +288,13 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 8",
@@ -220,8 +304,13 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -232,8 +321,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -244,8 +337,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -256,8 +353,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -268,8 +369,14 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -280,8 +387,12 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
       "description": "Solid brick, as built",
@@ -292,28 +403,43 @@
       "element_type": "wall",
       "wall_type": "solid_brick",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.18,
       "formula_type": null,
       "description": "Solid brick, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== STONE: GRANITE OR WHINSTONE — bands A-E use formula, F+ fixed ==="
+      "_comment": "=== STONE: GRANITE OR WHINSTONE \u2014 bands A-E use formula, F+ fixed ==="
     },
     {
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["england","scotland","ni","wales","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "ni",
+        "wales",
+        "iom"
+      ],
       "u_value": null,
       "formula_type": "stone_granite",
-      "description": "Stone: granite or whinstone, as built — U-value depends on wall thickness (measure on site)",
-      "description_detail": "Formula: U = 45.315 × W^(-0.513) where W is wall thickness in mm",
+      "description": "Stone: granite or whinstone, as built \u2014 U-value depends on wall thickness (measure on site)",
+      "description_detail": "Formula: U = 45.315 \u00d7 W^(-0.513) where W is wall thickness in mm",
       "source": "RdSAP10 Table 12",
       "notes": "Applies to age bands A-E. Measure wall thickness on site."
     },
@@ -321,8 +447,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -333,8 +465,12 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -345,8 +481,12 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -357,8 +497,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -369,8 +515,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -381,9 +532,15 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 6",
@@ -393,9 +550,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["scotland"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 7",
@@ -405,9 +566,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 8",
@@ -417,9 +582,15 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 6",
@@ -429,8 +600,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -441,8 +617,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -453,8 +635,12 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -465,8 +651,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -477,9 +669,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 7",
@@ -489,9 +685,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 8",
@@ -501,9 +701,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 6",
@@ -513,9 +718,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 9",
@@ -525,8 +734,12 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -537,9 +750,13 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 8",
@@ -549,8 +766,14 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -561,8 +784,12 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
@@ -573,28 +800,43 @@
       "element_type": "wall",
       "wall_type": "stone_granite",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Stone: granite or whinstone, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== STONE: SANDSTONE OR LIMESTONE — bands A-E formula, F+ fixed ==="
+      "_comment": "=== STONE: SANDSTONE OR LIMESTONE \u2014 bands A-E formula, F+ fixed ==="
     },
     {
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["england","scotland","ni","wales","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "ni",
+        "wales",
+        "iom"
+      ],
       "u_value": null,
       "formula_type": "stone_sandstone",
-      "description": "Stone: sandstone or limestone, as built — U-value depends on wall thickness (measure on site)",
-      "description_detail": "Formula: U = 54.876 × W^(-0.561) where W is wall thickness in mm",
+      "description": "Stone: sandstone or limestone, as built \u2014 U-value depends on wall thickness (measure on site)",
+      "description_detail": "Formula: U = 54.876 \u00d7 W^(-0.561) where W is wall thickness in mm",
       "source": "RdSAP10 Table 12",
       "notes": "Applies to age bands A-E. Measure wall thickness on site."
     },
@@ -602,8 +844,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -614,8 +862,12 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 1.5,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -626,8 +878,12 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -638,8 +894,16 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["england","wales","scotland","ni","iom"],
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -650,9 +914,15 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 6",
@@ -662,9 +932,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -674,9 +949,15 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 6",
@@ -686,8 +967,13 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -698,8 +984,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -710,8 +1002,12 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -722,8 +1018,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -734,9 +1036,13 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 7",
@@ -746,9 +1052,13 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 8",
@@ -758,9 +1068,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 6",
@@ -770,9 +1085,13 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 9",
@@ -782,8 +1101,12 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -794,9 +1117,13 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 8",
@@ -806,8 +1133,14 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -818,8 +1151,12 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
@@ -830,24 +1167,37 @@
       "element_type": "wall",
       "wall_type": "stone_sandstone",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Stone: sandstone or limestone, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== CAVITY — UNFILLED (as built) ==="
+      "_comment": "=== CAVITY \u2014 UNFILLED (as built) ==="
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.5,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -858,8 +1208,17 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.5,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -870,8 +1229,14 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -882,8 +1247,13 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -894,9 +1264,15 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 6",
@@ -906,9 +1282,14 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -918,9 +1299,15 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 6",
@@ -930,8 +1317,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -942,8 +1333,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["ni"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -954,8 +1349,14 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -966,8 +1367,13 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -978,8 +1384,14 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -990,9 +1402,13 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 7",
@@ -1002,9 +1418,15 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 6",
@@ -1014,8 +1436,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1026,9 +1452,13 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 8",
@@ -1038,8 +1468,13 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1050,8 +1485,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1062,8 +1501,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1074,8 +1517,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1086,8 +1533,14 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1098,8 +1551,12 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
@@ -1110,24 +1567,37 @@
       "element_type": "wall",
       "wall_type": "cavity_unfilled",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.18,
       "formula_type": null,
       "description": "Cavity wall, unfilled, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== CAVITY — FILLED (CWI) — treated as current state regardless of when filled ==="
+      "_comment": "=== CAVITY \u2014 FILLED (CWI) \u2014 treated as current state regardless of when filled ==="
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.7,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
@@ -1138,8 +1608,17 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["A","B","C","D","E"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.7,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
@@ -1150,9 +1629,15 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.40,
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.4,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
       "source": "RdSAP10 Table 6",
@@ -1162,9 +1647,14 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["F"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.40,
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.4,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -1174,8 +1664,14 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["G"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
@@ -1186,8 +1682,13 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["G"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Cavity wall, cavity fill insulation (CWI)",
@@ -1198,204 +1699,286 @@
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["H"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7 / Table 8",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7 / Table 8",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 8",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 9",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["L"],
-      "regions": ["ni"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 8",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 6",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 7",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
       "wall_type": "cavity_filled",
       "insulation_type": "cavity_fill",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.18,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
+      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
       "source": "RdSAP10 Table 8",
-      "notes": "† assumed as built per RdSAP10"
+      "notes": "\u2020 assumed as built per RdSAP10"
     },
-
     {
-      "_comment": "=== TIMBER FRAME — all bands, all regions ==="
+      "_comment": "=== TIMBER FRAME \u2014 all bands, all regions ==="
     },
     {
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["A"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "A"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 2.5,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1406,8 +1989,13 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["A"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "A"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 2.5,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1418,8 +2006,17 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["B","C"],
-      "regions": ["england","wales","scotland","ni","iom"],
+      "age_bands": [
+        "B",
+        "C"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
       "u_value": 1.9,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1430,8 +2027,16 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["D"],
-      "regions": ["england","wales","scotland","ni","iom"],
+      "age_bands": [
+        "D"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1442,9 +2047,17 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["E"],
-      "regions": ["england","wales","scotland","ni","iom"],
-      "u_value": 0.80,
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.8,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Tables 6-10",
@@ -1454,8 +2067,14 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1466,8 +2085,13 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1478,9 +2102,17 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["G","H","I"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.40,
+      "age_bands": [
+        "G",
+        "H",
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.4,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 6",
@@ -1490,9 +2122,16 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["G","H","I"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.40,
+      "age_bands": [
+        "G",
+        "H",
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.4,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -1502,8 +2141,14 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1514,9 +2159,13 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 7",
@@ -1526,9 +2175,15 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 6",
@@ -1538,8 +2193,12 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1550,9 +2209,13 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 8",
@@ -1562,8 +2225,13 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1574,8 +2242,12 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1586,8 +2258,12 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1598,8 +2274,12 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1610,8 +2290,14 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1622,8 +2308,12 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
       "description": "Timber frame, as built",
@@ -1634,24 +2324,38 @@
       "element_type": "wall",
       "wall_type": "timber_frame",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.18,
       "formula_type": null,
       "description": "Timber frame, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== SYSTEM BUILD — all bands, all regions ==="
+      "_comment": "=== SYSTEM BUILD \u2014 all bands, all regions ==="
     },
     {
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D"],
-      "regions": ["england","wales","scotland","ni","iom"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
       "u_value": 2.0,
       "formula_type": null,
       "description": "System build, as built",
@@ -1662,8 +2366,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["E"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "System build, as built",
@@ -1674,8 +2384,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["E"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.7,
       "formula_type": null,
       "description": "System build, as built",
@@ -1686,8 +2401,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "System build, as built",
@@ -1698,8 +2419,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["F"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 1.0,
       "formula_type": null,
       "description": "System build, as built",
@@ -1710,9 +2436,15 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 6",
@@ -1722,9 +2454,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["G"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -1734,9 +2471,15 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 6",
@@ -1746,8 +2489,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["H"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "System build, as built",
@@ -1758,8 +2506,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "System build, as built",
@@ -1770,8 +2524,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "System build, as built",
@@ -1782,8 +2541,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "System build, as built",
@@ -1794,9 +2559,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 7",
@@ -1806,9 +2575,15 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 6",
@@ -1818,8 +2593,12 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "System build, as built",
@@ -1830,9 +2609,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["ni"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "ni"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 8",
@@ -1842,8 +2625,13 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "System build, as built",
@@ -1854,8 +2642,12 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "System build, as built",
@@ -1866,8 +2658,12 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "System build, as built",
@@ -1878,8 +2674,12 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["ni"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "System build, as built",
@@ -1890,8 +2690,14 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
       "description": "System build, as built",
@@ -1902,8 +2708,12 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
       "description": "System build, as built",
@@ -1914,25 +2724,41 @@
       "element_type": "wall",
       "wall_type": "system_build",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["ni"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "ni"
+      ],
       "u_value": 0.18,
       "formula_type": null,
       "description": "System build, as built",
       "source": "RdSAP10 Table 8",
       "notes": null
     },
-
     {
-      "_comment": "=== COB — all regions (rare but should be present for SW England completeness) ==="
+      "_comment": "=== COB \u2014 all regions (rare but should be present for SW England completeness) ==="
     },
     {
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["A","B","C","D","E","F"],
-      "regions": ["england","wales","scotland","ni","iom"],
-      "u_value": 0.80,
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "scotland",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.8,
       "formula_type": null,
       "description": "Cob wall, as built",
       "source": "RdSAP10 Tables 6-10",
@@ -1942,9 +2768,16 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["G","H"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G",
+        "H"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Cob wall, as built",
       "source": "RdSAP10 Table 6",
@@ -1954,9 +2787,15 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["G","H"],
-      "regions": ["scotland","ni"],
-      "u_value": 0.60,
+      "age_bands": [
+        "G",
+        "H"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
+      "u_value": 0.6,
       "formula_type": null,
       "description": "Cob wall, as built",
       "source": "RdSAP10 Table 7 / Table 8",
@@ -1966,8 +2805,14 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -1978,8 +2823,13 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["I"],
-      "regions": ["scotland","ni"],
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "scotland",
+        "ni"
+      ],
       "u_value": 0.45,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -1990,8 +2840,14 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.35,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2002,9 +2858,13 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["J"],
-      "regions": ["scotland"],
-      "u_value": 0.30,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Cob wall, as built",
       "source": "RdSAP10 Table 7",
@@ -2014,9 +2874,15 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["england","wales","iom"],
-      "u_value": 0.30,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 0.3,
       "formula_type": null,
       "description": "Cob wall, as built",
       "source": "RdSAP10 Table 6",
@@ -2026,8 +2892,12 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["K"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.25,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2038,8 +2908,13 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["england","iom"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "iom"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2050,8 +2925,12 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["wales"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "wales"
+      ],
       "u_value": 0.28,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2062,8 +2941,12 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["L"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.22,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2074,8 +2957,14 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["england","wales","iom"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
       "u_value": 0.26,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2086,8 +2975,12 @@
       "element_type": "wall",
       "wall_type": "cob",
       "insulation_type": "as_built",
-      "age_bands": ["M"],
-      "regions": ["scotland"],
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.17,
       "formula_type": null,
       "description": "Cob wall, as built",
@@ -2095,116 +2988,1246 @@
       "notes": null
     }
   ],
-
   "roofs": [
     {
-      "_comment": "=== PITCHED ROOF — insulation thickness known (Table 16, column 1: at joists / flat roof) ==="
+      "_comment": "=== PITCHED ROOF \u2014 insulation thickness known (Table 16, column 1: at joists / flat roof) ==="
     },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 0,   "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 2.3,  "description": "Pitched roof, no insulation at joists",           "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 12,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 1.5,  "description": "Pitched roof, 12mm insulation at joists",         "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 25,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 1.0,  "description": "Pitched roof, 25mm insulation at joists",         "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 50,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.68, "description": "Pitched roof, 50mm insulation at joists",         "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 75,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.50, "description": "Pitched roof, 75mm insulation at joists",         "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 100, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.40, "description": "Pitched roof, 100mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 125, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.35, "description": "Pitched roof, 125mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 150, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.30, "description": "Pitched roof, 150mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 175, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.25, "description": "Pitched roof, 175mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 200, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.21, "description": "Pitched roof, 200mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 225, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.19, "description": "Pitched roof, 225mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 250, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.17, "description": "Pitched roof, 250mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 270, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.16, "description": "Pitched roof, 270mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 300, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.14, "description": "Pitched roof, 300mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 350, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.12, "description": "Pitched roof, 350mm insulation at joists",        "source": "RdSAP10 Table 16 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_joists", "insulation_mm": 400, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.11, "description": "Pitched roof, 400mm+ insulation at joists",       "source": "RdSAP10 Table 16 col.1", "notes": ">=400mm" },
-
     {
-      "_comment": "=== PITCHED ROOF — insulation at rafters (Table 16, column 2) ==="
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 0,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 2.3,
+      "description": "Pitched roof, no insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
     },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 0,   "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 2.3,  "description": "Pitched roof, no insulation at rafters",          "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 12,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 1.75, "description": "Pitched roof, 12mm insulation at rafters",        "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 25,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 1.30, "description": "Pitched roof, 25mm insulation at rafters",        "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 50,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.88, "description": "Pitched roof, 50mm insulation at rafters",        "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 75,  "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.67, "description": "Pitched roof, 75mm insulation at rafters",        "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 100, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.54, "description": "Pitched roof, 100mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 125, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.45, "description": "Pitched roof, 125mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 150, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.39, "description": "Pitched roof, 150mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 175, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.32, "description": "Pitched roof, 175mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 200, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.29, "description": "Pitched roof, 200mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 225, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.25, "description": "Pitched roof, 225mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 250, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.23, "description": "Pitched roof, 250mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 270, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.21, "description": "Pitched roof, 270mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 300, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.19, "description": "Pitched roof, 300mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 350, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.16, "description": "Pitched roof, 350mm insulation at rafters",       "source": "RdSAP10 Table 16 col.2", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_rafters", "insulation_mm": 400, "regions": ["england","scotland","wales","ni","iom"], "age_bands": null, "u_value": 0.14, "description": "Pitched roof, 400mm+ insulation at rafters",      "source": "RdSAP10 Table 16 col.2", "notes": ">=400mm" },
-
     {
-      "_comment": "=== PITCHED ROOF — age-band defaults, insulation unknown (Table 18 col.1) ==="
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 12,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 1.5,
+      "description": "Pitched roof, 12mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
     },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["A","B","C","D"], "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.40, "description": "Pitched roof, insulation unknown or as built (assumes 100mm)", "source": "RdSAP10 Table 18 col.1", "notes": "Age bands A-D" },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["E"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.40, "description": "Pitched roof, insulation unknown or as built (assumes 100mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["F"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.40, "description": "Pitched roof, insulation unknown or as built (assumes 100mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["G"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.40, "description": "Pitched roof, insulation unknown or as built (assumes 100mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["H"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.30, "description": "Pitched roof, insulation unknown or as built (assumes 150mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["I"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.26, "description": "Pitched roof, insulation unknown or as built (assumes 170mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["J"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.16, "description": "Pitched roof, insulation unknown or as built (assumes 270mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["K"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.16, "description": "Pitched roof, insulation unknown or as built (assumes 270mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["L"],             "regions": ["england","wales","ni","iom"],           "u_value": 0.16, "description": "Pitched roof, insulation unknown or as built (assumes 270mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["L"],             "regions": ["scotland"],                            "u_value": 0.15, "description": "Pitched roof, insulation unknown or as built",             "source": "RdSAP10 Table 18 col.1", "notes": "Scotland: 0.15 at band L" },
-    { "element_type": "roof", "roof_type": "pitched_unknown", "insulation_mm": null, "age_bands": ["M"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.15, "description": "Pitched roof, insulation unknown or as built (assumes 300mm)", "source": "RdSAP10 Table 18 col.1", "notes": null },
-
     {
-      "_comment": "=== FLAT ROOF — age-band defaults (Table 18 col.3) ==="
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 25,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 1.0,
+      "description": "Pitched roof, 25mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
     },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["A","B","C","D"], "regions": ["england","scotland","wales","ni","iom"], "u_value": 2.3,  "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["E"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 1.5,  "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["F"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.68, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["G"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.40, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["H"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.35, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["I"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.35, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["J"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.25, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["K"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.25, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["L"],             "regions": ["england","wales","ni","iom"],           "u_value": 0.18, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["L"],             "regions": ["scotland"],                            "u_value": 0.18, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-    { "element_type": "roof", "roof_type": "flat",            "insulation_mm": null, "age_bands": ["M"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.15, "description": "Flat roof, as built / insulation unknown", "source": "RdSAP10 Table 18 col.3", "notes": null },
-
     {
-      "_comment": "=== ROOM IN ROOF — age-band defaults (Table 18 col.4) ==="
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 50,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.68,
+      "description": "Pitched roof, 50mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
     },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["A","B","C","D"], "regions": ["england","scotland","wales","ni","iom"], "u_value": 2.3,  "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["E"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 1.5,  "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["F"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.80, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["G"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.50, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["H"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.35, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["I"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.35, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["J"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.30, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["K"],             "regions": ["england","wales","ni","iom"],           "u_value": 0.25, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["K"],             "regions": ["scotland"],                            "u_value": 0.20, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": "Scotland: 0.20 at band K" },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["L"],             "regions": ["england","wales","ni","iom"],           "u_value": 0.18, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["L"],             "regions": ["scotland"],                            "u_value": 0.18, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null },
-    { "element_type": "roof", "roof_type": "room_in_roof",   "insulation_mm": null, "age_bands": ["M"],             "regions": ["england","scotland","wales","ni","iom"], "u_value": 0.15, "description": "Room in roof, all elements, as built / insulation unknown", "source": "RdSAP10 Table 18 col.4", "notes": null }
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 75,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.5,
+      "description": "Pitched roof, 75mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 100,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.4,
+      "description": "Pitched roof, 100mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 125,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.35,
+      "description": "Pitched roof, 125mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 150,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.3,
+      "description": "Pitched roof, 150mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 175,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.25,
+      "description": "Pitched roof, 175mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 200,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.21,
+      "description": "Pitched roof, 200mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 225,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.19,
+      "description": "Pitched roof, 225mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 250,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.17,
+      "description": "Pitched roof, 250mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 270,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.16,
+      "description": "Pitched roof, 270mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 300,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.14,
+      "description": "Pitched roof, 300mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 350,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.12,
+      "description": "Pitched roof, 350mm insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_joists",
+      "insulation_mm": 400,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.11,
+      "description": "Pitched roof, 400mm+ insulation at joists",
+      "source": "RdSAP10 Table 16 col.1",
+      "notes": ">=400mm"
+    },
+    {
+      "_comment": "=== PITCHED ROOF \u2014 insulation at rafters (Table 16, column 2) ==="
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 0,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 2.3,
+      "description": "Pitched roof, no insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 12,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 1.75,
+      "description": "Pitched roof, 12mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 25,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 1.3,
+      "description": "Pitched roof, 25mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 50,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.88,
+      "description": "Pitched roof, 50mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 75,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.67,
+      "description": "Pitched roof, 75mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 100,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.54,
+      "description": "Pitched roof, 100mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 125,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.45,
+      "description": "Pitched roof, 125mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 150,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.39,
+      "description": "Pitched roof, 150mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 175,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.32,
+      "description": "Pitched roof, 175mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 200,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.29,
+      "description": "Pitched roof, 200mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 225,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.25,
+      "description": "Pitched roof, 225mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 250,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.23,
+      "description": "Pitched roof, 250mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 270,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.21,
+      "description": "Pitched roof, 270mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 300,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.19,
+      "description": "Pitched roof, 300mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 350,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.16,
+      "description": "Pitched roof, 350mm insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_rafters",
+      "insulation_mm": 400,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "age_bands": null,
+      "u_value": 0.14,
+      "description": "Pitched roof, 400mm+ insulation at rafters",
+      "source": "RdSAP10 Table 16 col.2",
+      "notes": ">=400mm"
+    },
+    {
+      "_comment": "=== PITCHED ROOF \u2014 age-band defaults, insulation unknown (Table 18 col.1) ==="
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.4,
+      "description": "Pitched roof, insulation unknown or as built (assumes 100mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": "Age bands A-D"
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.4,
+      "description": "Pitched roof, insulation unknown or as built (assumes 100mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.4,
+      "description": "Pitched roof, insulation unknown or as built (assumes 100mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.4,
+      "description": "Pitched roof, insulation unknown or as built (assumes 100mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.3,
+      "description": "Pitched roof, insulation unknown or as built (assumes 150mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.26,
+      "description": "Pitched roof, insulation unknown or as built (assumes 170mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.16,
+      "description": "Pitched roof, insulation unknown or as built (assumes 270mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.16,
+      "description": "Pitched roof, insulation unknown or as built (assumes 270mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.16,
+      "description": "Pitched roof, insulation unknown or as built (assumes 270mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.15,
+      "description": "Pitched roof, insulation unknown or as built",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": "Scotland: 0.15 at band L"
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "pitched_unknown",
+      "insulation_mm": null,
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.15,
+      "description": "Pitched roof, insulation unknown or as built (assumes 300mm)",
+      "source": "RdSAP10 Table 18 col.1",
+      "notes": null
+    },
+    {
+      "_comment": "=== FLAT ROOF \u2014 age-band defaults (Table 18 col.3) ==="
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.5,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.68,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.4,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.35,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.35,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.25,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.25,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.18,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.18,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "flat",
+      "insulation_mm": null,
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.15,
+      "description": "Flat roof, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.3",
+      "notes": null
+    },
+    {
+      "_comment": "=== ROOM IN ROOF \u2014 age-band defaults (Table 18 col.4) ==="
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "E"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.5,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "F"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.8,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "G"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.5,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "H"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.35,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.35,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.3,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.25,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.2,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": "Scotland: 0.20 at band K"
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.18,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 0.18,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    },
+    {
+      "element_type": "roof",
+      "roof_type": "room_in_roof",
+      "insulation_mm": null,
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.15,
+      "description": "Room in roof, all elements, as built / insulation unknown",
+      "source": "RdSAP10 Table 18 col.4",
+      "notes": null
+    }
   ],
-
   "floors_exposed": [
     {
-      "_comment": "=== EXPOSED / SEMI-EXPOSED UPPER FLOORS (Table 20) — ground floors excluded (calculated via ISO 13370) ==="
+      "_comment": "=== EXPOSED / SEMI-EXPOSED UPPER FLOORS (Table 20) \u2014 ground floors excluded (calculated via ISO 13370) ==="
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["A","B","C","D","E","F","G"],
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","scotland","wales","ni","iom"],
-      "u_value": 1.20,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.2,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
       "notes": null
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["H","I"],
+      "age_bands": [
+        "H",
+        "I"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","scotland","wales","ni","iom"],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
       "u_value": 0.51,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2212,10 +4235,18 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["J"],
+      "age_bands": [
+        "J"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","scotland","wales","ni","iom"],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
       "u_value": 0.25,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2223,10 +4254,18 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["K"],
+      "age_bands": [
+        "K"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","scotland","wales","ni","iom"],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
       "u_value": 0.22,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2234,10 +4273,17 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["L"],
+      "age_bands": [
+        "L"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","wales","ni","iom"],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
       "u_value": 0.22,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2245,10 +4291,14 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["L"],
+      "age_bands": [
+        "L"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["scotland"],
+      "regions": [
+        "scotland"
+      ],
       "u_value": 0.18,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2256,10 +4306,17 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["M"],
+      "age_bands": [
+        "M"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["england","wales","ni","iom"],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
       "u_value": 0.18,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
@@ -2267,23 +4324,1442 @@
     },
     {
       "element_type": "floor_exposed",
-      "age_bands": ["M"],
+      "age_bands": [
+        "M"
+      ],
       "insulation_type": "as_built",
       "insulation_mm": null,
-      "regions": ["scotland","wales"],
+      "regions": [
+        "scotland",
+        "wales"
+      ],
       "u_value": 0.15,
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
       "notes": "Scotland and Wales: 0.15 at band M"
     }
   ],
-
   "thermal_bridging_y_factors": [
     {
-      "_comment": "Table 21 — y-factors for SAP thermal bridging. Stored for reference. Different from CIBSE delta-U approach used in the main app. Do not use directly in BS EN 12831-1 calculations without review."
+      "_comment": "Table 21 \u2014 y-factors for SAP thermal bridging. Stored for reference. Different from CIBSE delta-U approach used in the main app. Do not use directly in BS EN 12831-1 calculations without review."
     },
-    { "age_bands": ["A","B","C","D","E","F","G","H","I"], "y_factor": 0.15, "source": "RdSAP10 Table 21", "notes": "Applies to non-park-home dwellings, age bands A-I" },
-    { "age_bands": ["J"],                                  "y_factor": 0.11, "source": "RdSAP10 Table 21", "notes": "Applies to non-park-home dwellings, age band J" },
-    { "age_bands": ["K","L","M"],                          "y_factor": 0.08, "source": "RdSAP10 Table 21", "notes": "Applies to non-park-home dwellings, age bands K, L, M" }
+    {
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I"
+      ],
+      "y_factor": 0.15,
+      "source": "RdSAP10 Table 21",
+      "notes": "Applies to non-park-home dwellings, age bands A-I"
+    },
+    {
+      "age_bands": [
+        "J"
+      ],
+      "y_factor": 0.11,
+      "source": "RdSAP10 Table 21",
+      "notes": "Applies to non-park-home dwellings, age band J"
+    },
+    {
+      "age_bands": [
+        "K",
+        "L",
+        "M"
+      ],
+      "y_factor": 0.08,
+      "source": "RdSAP10 Table 21",
+      "notes": "Applies to non-park-home dwellings, age bands K, L, M"
+    }
+  ],
+  "windows": [
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 4.8,
+      "g_value": 0.85,
+      "description": "Single glazed \u2014 PVC or wood frame",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 5.7,
+      "g_value": 0.85,
+      "description": "Single glazed \u2014 metal frame",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 5.3,
+      "g_value": 0.85,
+      "description": "Single glazed \u2014 roof window (PVC or wood frame, 45\u00b0 pitch)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal"
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45\u00b0 unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2023 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 PVC or wood frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2023 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed \u2014 metal frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "secondary",
+      "period": "any",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.85,
+      "description": "Secondary glazing, 16mm+ gap \u2014 normal emissivity",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "secondary",
+      "period": "any",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.85,
+      "description": "Secondary glazing, 16mm+ gap \u2014 low emissivity",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    }
+  ],
+  "doors": [
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 3.0,
+      "description": "External door \u2014 uninsulated (age bands A\u2013J)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "description": "External door \u2014 uninsulated (age band K, 2007\u20132011)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.8,
+      "description": "External door \u2014 uninsulated (age band L, 2012\u20132022)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.6,
+      "description": "External door \u2014 uninsulated (age band L, 2012\u20132022, Scotland)",
+      "source": "RdSAP10 Table 26",
+      "notes": "Scotland has a tighter standard at band L"
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "description": "External door \u2014 uninsulated (age band M, 2023+)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "semi_exposed",
+      "opens_to": "unheated_corridor",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "description": "Door to unheated corridor or stairwell \u2014 any age band",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    }
   ]
 }
