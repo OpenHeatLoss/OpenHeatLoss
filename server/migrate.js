@@ -891,6 +891,36 @@ const MIGRATIONS = [
       console.log(`  Seeded ${radiators.length} K-Rad Kompact records (Types 11, 21, 22, 33).`);
     },
   },
+  {
+    version: '009',
+    description: 'Add is_admin to users; create password_reset_tokens table',
+    run: async () => {
+      // is_admin flag — used to gate the /admin panel and requireAdmin middleware.
+      // Set manually via SQL for the platform owner: UPDATE users SET is_admin = true WHERE email = '...';
+      await addColumnIfMissing('users', 'is_admin', 'BOOLEAN NOT NULL DEFAULT false');
+
+      // Password reset tokens — one-time use, 1-hour expiry.
+      // token is a 32-byte hex string generated server-side via crypto.randomBytes.
+      // used_at is set when the token is consumed so it can never be replayed.
+      await query(`
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id         SERIAL PRIMARY KEY,
+          user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token      TEXT NOT NULL UNIQUE,
+          expires_at TIMESTAMPTZ NOT NULL,
+          used_at    TIMESTAMPTZ DEFAULT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token
+          ON password_reset_tokens (token)
+      `);
+
+      console.log('  Added users.is_admin and password_reset_tokens table');
+    },
+  },
 ];
 
 async function runMigrations() {

@@ -36,6 +36,7 @@ const {
   getProjectForUValue,
   getProjectForEmitter,
   ownsProject,
+  passwordResetTokens,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -113,6 +114,57 @@ function requireAuthOrAnon(req, res, next) {
   res.status(401).json({ error: 'Not authenticated' });
 }
 
+// requireAdmin — registered users with is_admin = true only.
+// The is_admin flag is embedded in the JWT at login time so this check
+// requires no DB round-trip.
+function requireAdmin(req, res, next) {
+  const token = req.cookies.auth_token;
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    if (!req.user.isAdmin) return res.status(403).json({ error: 'Admin access required' });
+    next();
+  } catch {
+    res.status(401).json({ error: 'Session expired — please log in again' });
+  }
+}
+
+// ------------------------------------------------------------
+// EMAIL HELPER (Resend)
+// Requires RESEND_API_KEY environment variable.
+// sendEmail returns true on success, false on failure — callers
+// should handle the false case gracefully rather than throwing.
+// ------------------------------------------------------------
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@openheatloss.com';
+const APP_URL = process.env.APP_URL || 'https://openheatloss.com';
+
+async function sendEmail({ to, subject, html }) {
+  if (!RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY not set — email not sent to', to);
+    return false;
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Resend error:', err);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Email send failed:', err.message);
+    return false;
+  }
+}
+
 // ============================================================
 // AUTH ENDPOINTS
 // ============================================================
@@ -125,7 +177,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const user = await users.getById(req.user.id);
     if (!user) return res.status(401).json({ error: 'User not found' });
-    res.json({ user: { id: user.id, email: user.email, name: user.name, companyId: user.company_id, plan: user.plan } });
+    res.json({ user: { id: user.id, email: user.email, name: user.name, companyId: user.company_id, plan: user.plan, isAdmin: user.is_admin === true || user.is_admin === 1 } });
   } catch (error) {
     console.error('Error in /api/auth/me:', error);
     res.status(500).json({ error: 'Failed to fetch user' });
@@ -227,7 +279,7 @@ app.post('/api/auth/login', async (req, res) => {
     const projectId = userProjects.length > 0 ? userProjects[0].id : null;
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, companyId: user.company_id },
+      { id: user.id, email: user.email, companyId: user.company_id, isAdmin: user.is_admin === true || user.is_admin === 1 },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
@@ -238,7 +290,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
     res.json({
-      user: { id: user.id, email: user.email, name: user.name, companyId: user.company_id, plan: user.plan },
+      user: { id: user.id, email: user.email, name: user.name, companyId: user.company_id, plan: user.plan, isAdmin: user.is_admin === true || user.is_admin === 1 },
       projectId,
     });
 
@@ -253,6 +305,152 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('auth_token');
   res.json({ ok: true });
+});
+
+// POST /api/auth/forgot-password
+// Body: { email }
+// Generates a one-time reset token, stores it, sends an email via Resend.
+// Always returns 200 regardless of whether the email exists — prevents enumeration.
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  try {
+    const user = await users.getByEmail(email.toLowerCase().trim());
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await passwordResetTokens.create(user.id, token, expiresAt);
+
+      const resetUrl = `${APP_URL}?reset=${token}`;
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset your OpenHeatLoss password',
+        html: `
+          <p>Hi ${user.name},</p>
+          <p>Someone requested a password reset for your OpenHeatLoss account.</p>
+          <p>
+            <a href="${resetUrl}" style="
+              display:inline-block;padding:12px 24px;
+              background:#2563eb;color:#fff;border-radius:6px;
+              text-decoration:none;font-weight:bold;
+            ">Reset my password</a>
+          </p>
+          <p>This link expires in 1 hour. If you didn't request this, you can safely ignore it.</p>
+          <p style="color:#6b7280;font-size:13px;">
+            Or paste this link into your browser:<br>${resetUrl}
+          </p>
+        `,
+      });
+    }
+    // Always return 200 — don't reveal whether the email exists
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
+// POST /api/auth/reset-password
+// Body: { token, password }
+// Validates the token and sets a new password.
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Token and password are required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const resetToken = await passwordResetTokens.getValid(token);
+    if (!resetToken) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    await users.updatePassword(resetToken.user_id, passwordHash);
+
+    // Mark token used and clean up any other tokens for this user
+    await passwordResetTokens.markUsed(resetToken.id);
+    await passwordResetTokens.deleteForUser(resetToken.user_id);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// ============================================================
+// ADMIN ENDPOINTS
+// All routes require requireAdmin middleware.
+// ============================================================
+
+// GET /api/admin/users
+// Returns all registered users with company name and project count.
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const allUsers = await users.getAllForAdmin();
+    res.json(allUsers);
+  } catch (error) {
+    console.error('Admin users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// GET /api/admin/users/:id/projects
+// Returns all projects for a given user (for support view).
+app.get('/api/admin/users/:id/projects', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        p.id, p.name, p.status, p.created_at, p.updated_at,
+        COUNT(r.id)::INTEGER AS room_count
+      FROM projects p
+      LEFT JOIN rooms r ON r.project_id = p.id
+      WHERE p.user_id = $1 AND p.session_token IS NULL
+      GROUP BY p.id
+      ORDER BY p.updated_at DESC
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (error) {
+    console.error('Admin user projects error:', error);
+    res.status(500).json({ error: 'Failed to fetch user projects' });
+  }
+});
+
+// PUT /api/admin/users/:id/reset-password
+// Body: { password }
+// Admin force-sets a user's password (no token required).
+app.put('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    await users.updatePassword(req.params.id, passwordHash);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Admin reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// PUT /api/admin/users/:id/active
+// Body: { isActive: true|false }
+// Deactivates or reactivates a user account.
+app.put('/api/admin/users/:id/active', requireAdmin, async (req, res) => {
+  try {
+    await users.setActive(req.params.id, req.body.isActive !== false);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Admin set active error:', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
 });
 
 // ============================================================

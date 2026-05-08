@@ -75,6 +75,70 @@ const users = {
     RETURNING id`,
     [data.companyId, data.email, data.name, data.passwordHash]
   ),
+
+  updatePassword: (id, passwordHash) =>
+    runQuery(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [passwordHash, id]
+    ),
+
+  setActive: (id, isActive) =>
+    runQuery(
+      'UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2',
+      [isActive ? 1 : 0, id]
+    ),
+
+  // Admin: list all registered users with their company name and project count.
+  // Excludes anonymous projects (session_token IS NULL filters to claimed projects only).
+  getAllForAdmin: () =>
+    allQuery(`
+      SELECT
+        u.id, u.email, u.name, u.role, u.plan, u.is_active, u.is_admin,
+        u.created_at,
+        c.id   AS company_id,
+        c.name AS company_name,
+        COUNT(p.id)::INTEGER AS project_count
+      FROM users u
+      LEFT JOIN companies c ON c.id = u.company_id
+      LEFT JOIN projects  p ON p.company_id = c.id AND p.session_token IS NULL
+      GROUP BY u.id, c.id, c.name
+      ORDER BY u.created_at DESC
+    `),
+};
+
+// ---------------------------------------------------------------------------
+// PASSWORD RESET TOKENS
+// ---------------------------------------------------------------------------
+const passwordResetTokens = {
+  create: (userId, token, expiresAt) =>
+    runQuery(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [userId, token, expiresAt]
+    ),
+
+  // Returns the token row only if it exists, is not expired, and has not been used.
+  getValid: (token) =>
+    getQuery(
+      `SELECT * FROM password_reset_tokens
+       WHERE token = $1
+         AND expires_at > NOW()
+         AND used_at IS NULL`,
+      [token]
+    ),
+
+  markUsed: (id) =>
+    runQuery(
+      'UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1',
+      [id]
+    ),
+
+  // Delete all tokens for a user after a successful reset (belt-and-braces cleanup).
+  deleteForUser: (userId) =>
+    runQuery(
+      'DELETE FROM password_reset_tokens WHERE user_id = $1',
+      [userId]
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -967,6 +1031,7 @@ module.exports = {
   getProjectForEmitter,
   getProjectForScheduleItem,
   ownsProject,
+  passwordResetTokens,
   // waitForDb is gone — no longer needed with Postgres connection pool.
   // server.js startup sequence is now a simple async IIFE (see migrate.js notes).
 };

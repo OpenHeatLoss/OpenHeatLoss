@@ -72,3 +72,7 @@ client/src/utils/constructionLibrary(a).js
 server/migrate(e).js
 server/seedStelradClassicCompact(b).js
 server/migrate(f).js
+client/src/App(j).jsx
+server/database(f).js
+server/migrate(g).js
+server/server(h).js
