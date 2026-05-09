@@ -15,6 +15,7 @@ import MCS031PerformanceEstimator from './components/mcs/MCS031PerformanceEstima
 import MCS020SoundCalculator from './components/mcs/MCS020SoundCalculator';
 import QuoteBuilder from './components/quote/QuoteBuilder';
 import SettingsPage from './components/settings/SettingsPage';
+import AdminPage from './components/admin/AdminPage';
 import { getMCSDataFromPostcode } from './utils/mcsData';
 
 function App() {
@@ -28,21 +29,32 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan }
+  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan, isAdmin }
   const [currentCompany, setCurrentCompany] = useState(null); // { id, name, mcs_number, ... }
   const [showAuthModal, setShowAuthModal] = useState(null);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [resetToken, setResetToken] = useState(null); // set from ?reset= query param on load
 
   // Derived: pro and beta users can access the project dashboard.
   // Set plan = 'beta' in Railway Postgres to grant early-access engineers dashboard access.
   const canSeeDashboard = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
+
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // Boot sequence:
   // 1. Check if already logged in (auth_token cookie via /api/auth/me)
   // 2. If yes  → load their most recent project, registered mode
   // 3. If no   → check for / create anonymous session project
   useEffect(() => {
+    // Check for password reset link (?reset=TOKEN) before anything else.
+    const params = new URLSearchParams(window.location.search);
+    const resetParam = params.get('reset');
+    if (resetParam) {
+      setResetToken(resetParam);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const boot = async () => {
       try {
         // Step 1: are we already authenticated?
@@ -1243,6 +1255,15 @@ const deleteProject = async (id) => {
     );
   }
 
+  if (showAdmin && currentUser?.isAdmin) {
+    return (
+      <AdminPage
+        currentUser={currentUser}
+        onBack={() => setShowAdmin(false)}
+      />
+    );
+  }
+
   // Project selection screen
   if (!currentProject && canSeeDashboard) {
     return (
@@ -1265,6 +1286,14 @@ const deleteProject = async (id) => {
                 </div>
               </div>
               <div className="flex gap-3 items-center">
+                {currentUser?.isAdmin && (
+                  <button
+                    onClick={() => setShowAdmin(true)}
+                    className="bg-red-700 text-white py-2 px-4 rounded-lg hover:bg-red-800 text-sm font-semibold transition"
+                  >
+                    ⚙ Admin
+                  </button>
+                )}
                 <button
                   onClick={() => setShowSettings(true)}
                   className="bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-800 text-sm font-semibold transition"
@@ -1680,17 +1709,251 @@ const deleteProject = async (id) => {
           onClose={() => setShowAuthModal(null)}
         />
       )}
+
+      {/* Password reset modal — shown when user arrives via ?reset=TOKEN link */}
+      {resetToken && (
+        <ResetPasswordModal
+          token={resetToken}
+          onClose={() => setResetToken(null)}
+          onSuccess={() => { setResetToken(null); setAuthError(''); setShowAuthModal('login'); }}
+        />
+      )}
     </div>
   );
 }
 
 // =============================================================================
-// AUTH MODAL
-// Handles both register and login in a single component, toggled by `mode`.
-// Kept in App.jsx to avoid an extra file — it's small and tightly coupled
-// to the auth state that lives here.
+// AUTH MODAL — with forgot password link
 // =============================================================================
 function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, onClose }) {
+  const [name, setName]         = useState('');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm]   = useState('');
+  const [localError, setLocalError] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
+
+  const isRegister = mode === 'register';
+
+  const handleSubmit = () => {
+    setLocalError('');
+    if (isRegister) {
+      if (!name.trim()) { setLocalError('Please enter your name'); return; }
+      if (!email.trim()) { setLocalError('Please enter your email'); return; }
+      if (password.length < 8) { setLocalError('Password must be at least 8 characters'); return; }
+      if (password !== confirm) { setLocalError('Passwords do not match'); return; }
+      onRegister({ name: name.trim(), email: email.trim(), password });
+    } else {
+      if (!email.trim()) { setLocalError('Please enter your email'); return; }
+      if (!password) { setLocalError('Please enter your password'); return; }
+      onLogin({ email: email.trim(), password });
+    }
+  };
+
+  const displayError = localError || error;
+
+  if (showForgot) {
+    return <ForgotPasswordModal onBack={() => setShowForgot(false)} onClose={onClose} />;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              {isRegister ? 'Create your free account' : 'Log in to your account'}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {isRegister ? 'Your project will be saved to your account.' : 'Welcome back — your project will load automatically.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          {isRegister && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Your name</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Jane Smith" autoFocus
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Email address</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="jane@example.com" autoFocus={!isRegister}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder={isRegister ? 'At least 8 characters' : ''}
+              onKeyDown={e => e.key === 'Enter' && !isRegister && handleSubmit()}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {isRegister && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm password</label>
+              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+                placeholder="Repeat password"
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          )}
+          {displayError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{displayError}</div>
+          )}
+          <button onClick={handleSubmit} disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+            {loading ? (isRegister ? 'Creating account…' : 'Logging in…') : (isRegister ? 'Create account & save project' : 'Log in')}
+          </button>
+          {!isRegister && (
+            <p className="text-center">
+              <button onClick={() => setShowForgot(true)} className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition">
+                Forgot your password?
+              </button>
+            </p>
+          )}
+        </div>
+        <div className="px-6 pb-6 text-center text-sm text-gray-500">
+          {isRegister ? (
+            <>Already have an account?{' '}
+              <button onClick={() => onSwitchMode('login')} className="text-blue-600 hover:underline font-semibold">Log in</button>
+            </>
+          ) : (
+            <>Don't have an account?{' '}
+              <button onClick={() => onSwitchMode('register')} className="text-blue-600 hover:underline font-semibold">Register free</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// FORGOT PASSWORD MODAL
+// =============================================================================
+function ForgotPasswordModal({ onBack, onClose }) {
+  const [email, setEmail]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState('');
+
+  const handleSubmit = async () => {
+    if (!email.trim()) { setError('Please enter your email address'); return; }
+    setLoading(true); setError('');
+    try {
+      await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      setSent(true);
+    } catch { setError('Network error — please try again'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-xl font-bold text-gray-900">Reset your password</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          {sent ? (
+            <div className="text-center space-y-3">
+              <div className="text-4xl">✉️</div>
+              <p className="font-semibold text-gray-900">Check your inbox</p>
+              <p className="text-sm text-gray-500">If an account exists for that email, we've sent a reset link. It expires in 1 hour.</p>
+              <button onClick={onClose} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition">Done</button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600">Enter your email and we'll send you a link to reset your password.</p>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="jane@example.com" autoFocus
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
+              <button onClick={handleSubmit} disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+                {loading ? 'Sending…' : 'Send reset link'}
+              </button>
+              <p className="text-center">
+                <button onClick={onBack} className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition">← Back to log in</button>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// RESET PASSWORD MODAL
+// =============================================================================
+function ResetPasswordModal({ token, onClose, onSuccess }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm]   = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+
+  const handleSubmit = async () => {
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (password !== confirm) { setError('Passwords do not match'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Reset failed — the link may have expired'); return; }
+      onSuccess();
+    } catch { setError('Network error — please try again'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Set a new password</h2>
+            <p className="text-sm text-gray-500 mt-1">Choose something secure — at least 8 characters.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">New password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="At least 8 characters" autoFocus
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm new password</label>
+            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="Repeat password"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
+          <button onClick={handleSubmit} disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+            {loading ? 'Saving…' : 'Set new password'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
