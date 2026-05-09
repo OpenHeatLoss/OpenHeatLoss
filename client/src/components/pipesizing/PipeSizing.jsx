@@ -157,8 +157,10 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
   const indexCircuitSections = sections.filter(s => s.include_in_index_circuit ?? s.includeInIndexCircuit);
   const indexCircuit = indexCircuitSections.length > 0 ? {
     sections: indexCircuitSections,
-    totalPressureDrop: indexCircuitSections.reduce((sum, s) => sum + (s.pressureDrop || 0), 0),
-    totalLength: indexCircuitSections.reduce((sum, s) => sum + (s.length || 0), 0)
+    totalPressureDrop: indexCircuitSections.reduce((sum, s) => sum + (s.pressure_drop ?? s.pressureDrop ?? 0), 0),
+    flowRate: indexCircuitSections.reduce((max, s) => Math.max(max, s.flow_rate ?? s.flowRate ?? 0), 0),
+    totalLength: indexCircuitSections.reduce((sum, s) => sum + (s.length_m ?? s.length ?? 0), 0),
+    name: 'Index Circuit',
   } : null;
 
   return (
@@ -282,7 +284,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                       <p className="text-sm text-gray-600">
                         {(section.use_whole_property ?? section.useWholeProperty) 
                           ? `Main header - Full system load (${project.heatPumpRatedOutput || 0} kW)`
-                          : `Branch - ${(section.connected_rooms ?? section.connectedRooms)?.length || 0} rooms (${section.heatLoad?.toFixed(2) || 0} kW)`
+                          : `Branch - ${(section.connected_rooms ?? section.connectedRooms)?.length || 0} rooms (${(section.heat_load ?? section.heatLoad)?.toFixed(2) || 0} kW)`
                         }
                       </p>
                     </div>
@@ -328,27 +330,27 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Flow Rate</div>
-                      <div className="font-semibold text-blue-700">{section.flowRate?.toFixed(3) || 0} l/s</div>
+                      <div className="font-semibold text-blue-700">{(section.flow_rate ?? section.flowRate)?.toFixed(3) || 0} l/s</div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Velocity</div>
                       <div className={`font-semibold ${
                         currentIsVelocityOK ? 'text-green-700' : 'text-red-700'
                       }`}>
-                        {section.velocity?.toFixed(2) || 0} m/s
+                        {(section.velocity ?? 0).toFixed(2) || 0} m/s
                         {!currentIsVelocityOK && ' ⚠'}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Pressure Drop</div>
-                      <div className="font-bold text-orange-700">{section.pressureDrop?.toFixed(2) || 0} kPa</div>
+                      <div className="font-bold text-orange-700">{(section.pressure_drop ?? section.pressureDrop)?.toFixed(2) || 0} kPa</div>
                     </div>
                   </div>
 
                   {/* Velocity Warning */}
                   {currentIsVelocityOK === false && (
                     <div className="mt-3 bg-red-50 border border-red-300 rounded p-2 text-sm text-red-800">
-                      <strong>⚠ Warning:</strong> Velocity ({section.velocity?.toFixed(2)} m/s) exceeds maximum ({currentMaxVelocity} m/s). 
+                      <strong>⚠ Warning:</strong> Velocity ({(section.velocity ?? 0).toFixed(2)} m/s) exceeds maximum ({currentMaxVelocity} m/s). 
                       Consider using a larger pipe diameter.
                     </div>
                   )}

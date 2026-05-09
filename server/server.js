@@ -1266,25 +1266,26 @@ app.get('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) =
 // snake_case (from PipeSectionEditor calculateAndSave) and returns camelCase
 // for the pipeSections DB layer.
 function normalisePipeSectionBody(body) {
+  const pipeMaterialId = body.pipeMaterialId ?? body.pipe_material_id;
   return {
     id:                        body.id,
     name:                      body.name,
-    pipeMaterialId:            body.pipeMaterialId   ?? body.pipe_material_id,
+    pipeMaterialId:            pipeMaterialId ? parseInt(pipeMaterialId) : null,
     nominalSize:               body.nominalSize      ?? body.nominal_size      ?? body.diameter,
-    lengthM:                   body.lengthM          ?? body.length_m          ?? body.length ?? 0,
-    flowRate:                  body.flowRate         ?? body.flow_rate         ?? 0,
-    heatLoad:                  body.heatLoad         ?? body.heat_load         ?? 0,
-    velocity:                  body.velocity         ?? 0,
-    pressureDrop:              body.pressureDrop     ?? body.pressure_drop     ?? 0,
-    straightPipePressureDrop:  body.straightPipePressureDrop ?? body.straight_pipe_pressure_drop ?? 0,
-    fittingsPressureDrop:      body.fittingsPressureDrop     ?? body.fittings_pressure_drop     ?? 0,
+    lengthM:                   parseFloat(body.lengthM ?? body.length_m ?? body.length ?? 0),
+    flowRate:                  parseFloat(body.flowRate         ?? body.flow_rate         ?? 0),
+    heatLoad:                  parseFloat(body.heatLoad         ?? body.heat_load         ?? 0),
+    velocity:                  parseFloat(body.velocity         ?? 0),
+    pressureDrop:              parseFloat(body.pressureDrop     ?? body.pressure_drop     ?? 0),
+    straightPipePressureDrop:  parseFloat(body.straightPipePressureDrop ?? body.straight_pipe_pressure_drop ?? 0),
+    fittingsPressureDrop:      parseFloat(body.fittingsPressureDrop     ?? body.fittings_pressure_drop     ?? 0),
     fittingsMethod:            body.fittingsMethod   ?? body.fittings_method   ?? 'percentage',
-    fittingPercentage:         body.fittingPercentage ?? body.fitting_percentage ?? 20,
-    waterTemperature:          body.waterTemperature ?? body.water_temperature  ?? 50,
-    useWholeProperty:          body.useWholeProperty ?? body.use_whole_property ?? false,
-    includeInIndexCircuit:     body.includeInIndexCircuit ?? body.include_in_index_circuit ?? false,
+    fittingPercentage:         parseFloat(body.fittingPercentage ?? body.fitting_percentage ?? 20),
+    waterTemperature:          parseFloat(body.waterTemperature ?? body.water_temperature  ?? 50),
+    useWholeProperty:          !!(body.useWholeProperty ?? body.use_whole_property ?? false),
+    includeInIndexCircuit:     !!(body.includeInIndexCircuit ?? body.include_in_index_circuit ?? false),
     connectedRooms:            body.connectedRooms   ?? body.connected_rooms   ?? [],
-    displayOrder:              body.displayOrder     ?? body.display_order     ?? 0,
+    displayOrder:              parseInt(body.displayOrder ?? body.display_order ?? 0),
     fittings:                  body.fittings         ?? [],
   };
 }
@@ -1303,8 +1304,8 @@ app.post('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) 
     const sections = await pipeSections.getForProject(req.params.id);
     res.json(sections);
   } catch (error) {
-    console.error('Create pipe section error:', error);
-    res.status(500).json({ error: 'Failed to create pipe section' });
+    console.error('Create pipe section error:', error.message, error.detail ?? '');
+    res.status(500).json({ error: 'Failed to create pipe section', detail: error.message });
   }
 });
 
@@ -1325,8 +1326,8 @@ app.put('/api/pipe-sections/:id', requireAuthOrAnon, async (req, res) => {
     const sections = await pipeSections.getForProject(rows[0].project_id);
     res.json(sections);
   } catch (error) {
-    console.error('Update pipe section error:', error);
-    res.status(500).json({ error: 'Failed to update pipe section' });
+    console.error('Update pipe section error:', error.message, error.detail ?? '');
+    res.status(500).json({ error: 'Failed to update pipe section', detail: error.message });
   }
 });
 
