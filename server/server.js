@@ -1267,26 +1267,30 @@ app.get('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) =
 // for the pipeSections DB layer.
 function normalisePipeSectionBody(body) {
   const pipeMaterialId = body.pipeMaterialId ?? body.pipe_material_id;
+  // IMPORTANT: snake_case fields from calculateAndSave take priority over
+  // camelCase fields from the spread of editedSection state. This ensures
+  // freshly calculated values (pressure_drop, velocity etc.) are never
+  // overridden by stale values from the previous DB load.
   return {
     id:                        body.id,
     name:                      body.name,
     pipeMaterialId:            pipeMaterialId ? parseInt(pipeMaterialId) : null,
-    nominalSize:               body.nominalSize      ?? body.nominal_size      ?? body.diameter,
-    lengthM:                   parseFloat(body.lengthM ?? body.length_m ?? body.length ?? 0),
-    flowRate:                  parseFloat(body.flowRate         ?? body.flow_rate         ?? 0),
-    heatLoad:                  parseFloat(body.heatLoad         ?? body.heat_load         ?? 0),
-    velocity:                  parseFloat(body.velocity         ?? 0),
-    pressureDrop:              parseFloat(body.pressureDrop     ?? body.pressure_drop     ?? 0),
-    straightPipePressureDrop:  parseFloat(body.straightPipePressureDrop ?? body.straight_pipe_pressure_drop ?? 0),
-    fittingsPressureDrop:      parseFloat(body.fittingsPressureDrop     ?? body.fittings_pressure_drop     ?? 0),
-    fittingsMethod:            body.fittingsMethod   ?? body.fittings_method   ?? 'percentage',
-    fittingPercentage:         parseFloat(body.fittingPercentage ?? body.fitting_percentage ?? 20),
-    waterTemperature:          parseFloat(body.waterTemperature ?? body.water_temperature  ?? 50),
-    useWholeProperty:          !!(body.useWholeProperty ?? body.use_whole_property ?? false),
-    includeInIndexCircuit:     !!(body.includeInIndexCircuit ?? body.include_in_index_circuit ?? false),
-    connectedRooms:            body.connectedRooms   ?? body.connected_rooms   ?? [],
-    displayOrder:              parseInt(body.displayOrder ?? body.display_order ?? 0),
-    fittings:                  body.fittings         ?? [],
+    nominalSize:               body.nominal_size      ?? body.nominalSize      ?? body.diameter,
+    lengthM:                   parseFloat(body.length_m          ?? body.lengthM          ?? body.length ?? 0),
+    flowRate:                  parseFloat(body.flow_rate          ?? body.flowRate         ?? 0),
+    heatLoad:                  parseFloat(body.heat_load          ?? body.heatLoad         ?? 0),
+    velocity:                  parseFloat(body.velocity           ?? 0),
+    pressureDrop:              parseFloat(body.pressure_drop      ?? body.pressureDrop     ?? 0),
+    straightPipePressureDrop:  parseFloat(body.straight_pipe_pressure_drop ?? body.straightPipePressureDrop ?? 0),
+    fittingsPressureDrop:      parseFloat(body.fittings_pressure_drop      ?? body.fittingsPressureDrop     ?? 0),
+    fittingsMethod:            body.fittings_method   ?? body.fittingsMethod   ?? 'percentage',
+    fittingPercentage:         parseFloat(body.fitting_percentage ?? body.fittingPercentage ?? 20),
+    waterTemperature:          parseFloat(body.water_temperature  ?? body.waterTemperature  ?? 50),
+    useWholeProperty:          !!(body.use_whole_property ?? body.useWholeProperty ?? false),
+    includeInIndexCircuit:     !!(body.include_in_index_circuit ?? body.includeInIndexCircuit ?? false),
+    connectedRooms:            body.connected_rooms   ?? body.connectedRooms   ?? [],
+    displayOrder:              parseInt(body.display_order ?? body.displayOrder ?? 0),
+    fittings:                  body.fittings          ?? [],
   };
 }
 

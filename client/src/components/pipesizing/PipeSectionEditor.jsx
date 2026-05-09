@@ -583,6 +583,51 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
           </div>
         )}
       </div>
+
+      {/* Calculated Results — shown when section has been saved at least once */}
+      {(editedSection.velocity > 0 || editedSection.pressureDrop > 0) && (
+        <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-800 mb-3">Current Calculated Results</h4>
+          <p className="text-xs text-gray-500 mb-3">
+            These values are from the last saved calculation. Click Save Section to recalculate after any changes.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500 mb-1">Flow Velocity</div>
+              <div className={`text-xl font-bold ${
+                editedSection.velocity <= (selectedMaterial?.max_velocity ?? 1.5)
+                  ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {editedSection.velocity?.toFixed(2) ?? '—'} m/s
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                max {selectedMaterial?.max_velocity ?? 1.5} m/s
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500 mb-1">Straight Pipe ΔP</div>
+              <div className="text-xl font-bold text-gray-800">
+                {editedSection.pressureDrop > 0
+                  ? ((editedSection.pressure_drop ?? editedSection.pressureDrop) - (editedSection.fittings_pressure_drop ?? editedSection.fittingsPressureDrop ?? 0)).toFixed(2)
+                  : (editedSection.straight_pipe_pressure_drop ?? editedSection.straightPipePressureDrop ?? 0).toFixed(2)
+                } kPa
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500 mb-1">Fittings ΔP</div>
+              <div className="text-xl font-bold text-gray-800">
+                {(editedSection.fittings_pressure_drop ?? editedSection.fittingsPressureDrop ?? 0).toFixed(2)} kPa
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center shadow-sm border-2 border-orange-300">
+              <div className="text-xs text-gray-500 mb-1">Total Section ΔP</div>
+              <div className="text-xl font-bold text-orange-700">
+                {(editedSection.pressure_drop ?? editedSection.pressureDrop ?? 0).toFixed(2)} kPa
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
