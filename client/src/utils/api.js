@@ -351,6 +351,135 @@ export const api = {
     }).then(r => r.json()),
 
   // ==========================================================
+  // QUOTE SNAPSHOTS
+  // ==========================================================
+
+  getQuoteSnapshots: (quoteId) =>
+    fetch(`${API_BASE}/quotes/${quoteId}/snapshots`).then(r => r.json()),
+
+  getQuoteSnapshot: (snapshotId) =>
+    fetch(`${API_BASE}/quote-snapshots/${snapshotId}`).then(r => r.json()),
+
+  createQuoteSnapshot: (quoteId, data) =>
+    fetch(`${API_BASE}/quotes/${quoteId}/snapshots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  // ==========================================================
+  // MATERIALS LIST (job-level)
+  // ==========================================================
+
+  getMaterials: (projectId) =>
+    fetch(`${API_BASE}/projects/${projectId}/materials`).then(r => r.json()),
+
+  createMaterial: (projectId, data) =>
+    fetch(`${API_BASE}/projects/${projectId}/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateMaterial: (id, data) =>
+    fetch(`${API_BASE}/materials/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deleteMaterial: (id) =>
+    fetch(`${API_BASE}/materials/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  importRadiators: (projectId, parentCategory) =>
+    fetch(`${API_BASE}/projects/${projectId}/materials/import-radiators`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentCategory }),
+    }).then(r => r.json()),
+
+  importPipeSections: (projectId, parentCategory) =>
+    fetch(`${API_BASE}/projects/${projectId}/materials/import-pipe-sections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentCategory }),
+    }).then(r => r.json()),
+
+  // ==========================================================
+  // MATERIALS LIBRARY (company-level)
+  // ==========================================================
+
+  getMaterialsLibrary: () =>
+    fetch(`${API_BASE}/materials-library`).then(r => r.json()),
+
+  createMaterialsLibraryItem: (data) =>
+    fetch(`${API_BASE}/materials-library`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateMaterialsLibraryItem: (id, data) =>
+    fetch(`${API_BASE}/materials-library/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deleteMaterialsLibraryItem: (id) =>
+    fetch(`${API_BASE}/materials-library/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  // ==========================================================
+  // LABOUR RATE CARDS
+  // ==========================================================
+
+  getLabourRateCards: () =>
+    fetch(`${API_BASE}/labour-rate-cards`).then(r => r.json()),
+
+  getCurrentLabourRateCard: () =>
+    fetch(`${API_BASE}/labour-rate-cards/current`).then(r => r.json()),
+
+  getLabourRateCard: (id) =>
+    fetch(`${API_BASE}/labour-rate-cards/${id}`).then(r => r.json()),
+
+  createLabourRateCard: (data) =>
+    fetch(`${API_BASE}/labour-rate-cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateLabourRateCard: (id, data) =>
+    fetch(`${API_BASE}/labour-rate-cards/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  addLabourRateItem: (rateCardId, data) =>
+    fetch(`${API_BASE}/labour-rate-cards/${rateCardId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateLabourRateItem: (id, data) =>
+    fetch(`${API_BASE}/labour-rate-items/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deleteLabourRateItem: (id) =>
+    fetch(`${API_BASE}/labour-rate-items/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  // ==========================================================
   // PIPE MATERIALS LIBRARY
   // ==========================================================
 

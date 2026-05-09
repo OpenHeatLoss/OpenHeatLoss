@@ -40,6 +40,10 @@ const {
   pipeMaterialsLib,
   fittingsLib,
   pipeSections,
+  labourRateCards,
+  materialsLibrary,
+  materialsListItems,
+  quoteSnapshots,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -1551,8 +1555,11 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
          total_inc_vat = $7, bus_grant = $8, client_pays = $9,
          deposit_amount = $10, hourly_rate = $11,
          notes = $12,
+         markup_pct = $13,
+         category_overrides = $14,
+         rate_card_id = $15,
          updated_at = NOW()
-       WHERE id = $13`,
+       WHERE id = $16`,
       [
         d.status || 'draft',
         d.surveyBasis || 'full',
@@ -1566,6 +1573,9 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
         d.depositAmount || 0,
         d.hourlyRate || 0,
         d.checklist ? JSON.stringify(d.checklist) : null,
+        d.markupPct || 0,
+        d.categoryOverrides ? JSON.stringify(d.categoryOverrides) : null,
+        d.rateCardId || null,
         req.params.id,
       ]
     );
@@ -1608,6 +1618,284 @@ app.put('/api/quotes/:id/items', requireAuthOrAnon, async (req, res) => {
   } catch (error) {
     console.error('Error updating quote items:', error);
     res.status(500).json({ error: 'Failed to update quote items' });
+  }
+});
+
+// ============================================================
+// QUOTE SNAPSHOTS
+// ============================================================
+
+// List snapshots for a quote (summary only — no snapshot_data)
+app.get('/api/quotes/:id/snapshots', requireAuthOrAnon, async (req, res) => {
+  try {
+    const snapshots = await quoteSnapshots.getForQuote(req.params.id);
+    res.json(snapshots);
+  } catch (error) {
+    console.error('Error fetching snapshots:', error);
+    res.status(500).json({ error: 'Failed to fetch snapshots' });
+  }
+});
+
+// Get a single snapshot with full data — for viewing a historical version
+app.get('/api/quote-snapshots/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const snapshot = await quoteSnapshots.getById(req.params.id);
+    if (!snapshot) return res.status(404).json({ error: 'Snapshot not found' });
+    res.json(snapshot);
+  } catch (error) {
+    console.error('Error fetching snapshot:', error);
+    res.status(500).json({ error: 'Failed to fetch snapshot' });
+  }
+});
+
+// Create a snapshot (manual trigger from UI)
+app.post('/api/quotes/:id/snapshots', requireAuthOrAnon, async (req, res) => {
+  try {
+    const d = req.body;
+    if (!d.versionLabel) {
+      return res.status(400).json({ error: 'versionLabel is required' });
+    }
+    if (!d.snapshotData) {
+      return res.status(400).json({ error: 'snapshotData is required' });
+    }
+    const result = await quoteSnapshots.create({
+      quoteId:      req.params.id,
+      versionLabel: d.versionLabel,
+      note:         d.note || null,
+      triggeredBy:  d.triggeredBy || 'manual',
+      snapshotData: d.snapshotData,
+      createdBy:    req.user?.name || null,
+    });
+    res.status(201).json({ id: result.id });
+  } catch (error) {
+    console.error('Error creating snapshot:', error);
+    res.status(500).json({ error: 'Failed to create snapshot' });
+  }
+});
+
+// ============================================================
+// MATERIALS LIST (job-level)
+// ============================================================
+
+// Get all materials list items for a project
+app.get('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
+  try {
+    const items = await materialsListItems.getForProject(req.params.id);
+    res.json(items);
+  } catch (error) {
+    console.error('Error fetching materials:', error);
+    res.status(500).json({ error: 'Failed to fetch materials' });
+  }
+});
+
+// Create a single materials list item
+app.post('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
+  try {
+    const result = await materialsListItems.create(req.params.id, req.body);
+    res.status(201).json({ id: result.id });
+  } catch (error) {
+    console.error('Error creating material item:', error);
+    res.status(500).json({ error: 'Failed to create material item' });
+  }
+});
+
+// Update a materials list item
+app.put('/api/materials/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    // Resolve project ownership via the item itself
+    const item = await pool.query(
+      'SELECT project_id FROM materials_list_items WHERE id = $1', [req.params.id]
+    );
+    if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    await materialsListItems.update(req.params.id, item.rows[0].project_id, req.body);
+    res.json({ saved: true });
+  } catch (error) {
+    console.error('Error updating material item:', error);
+    res.status(500).json({ error: 'Failed to update material item' });
+  }
+});
+
+// Delete a materials list item
+app.delete('/api/materials/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const item = await pool.query(
+      'SELECT project_id FROM materials_list_items WHERE id = $1', [req.params.id]
+    );
+    if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    await materialsListItems.delete(req.params.id, item.rows[0].project_id);
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting material item:', error);
+    res.status(500).json({ error: 'Failed to delete material item' });
+  }
+});
+
+// Import new radiators from radiator schedule into materials list
+app.post('/api/projects/:id/materials/import-radiators', requireAuthOrAnon, async (req, res) => {
+  try {
+    const inserted = await materialsListItems.importFromRadiatorSchedule(
+      req.params.id,
+      req.body.parentCategory || 'radiators'
+    );
+    res.json({ inserted: inserted.length, ids: inserted });
+  } catch (error) {
+    console.error('Error importing radiators:', error);
+    res.status(500).json({ error: 'Failed to import radiators' });
+  }
+});
+
+// Import pipe sections into materials list
+app.post('/api/projects/:id/materials/import-pipe-sections', requireAuthOrAnon, async (req, res) => {
+  try {
+    const inserted = await materialsListItems.importFromPipeSections(
+      req.params.id,
+      req.body.parentCategory || 'pipework'
+    );
+    res.json({ inserted: inserted.length, ids: inserted });
+  } catch (error) {
+    console.error('Error importing pipe sections:', error);
+    res.status(500).json({ error: 'Failed to import pipe sections' });
+  }
+});
+
+// ============================================================
+// MATERIALS LIBRARY (company-level)
+// ============================================================
+
+// Get all company library items
+app.get('/api/materials-library', requireAuth, async (req, res) => {
+  try {
+    const items = await materialsLibrary.getForCompany(req.user.companyId);
+    res.json(items);
+  } catch (error) {
+    console.error('Error fetching materials library:', error);
+    res.status(500).json({ error: 'Failed to fetch materials library' });
+  }
+});
+
+// Create a library item
+app.post('/api/materials-library', requireAuth, async (req, res) => {
+  try {
+    const result = await materialsLibrary.create(req.user.companyId, req.body);
+    res.status(201).json({ id: result.id });
+  } catch (error) {
+    console.error('Error creating library item:', error);
+    res.status(500).json({ error: 'Failed to create library item' });
+  }
+});
+
+// Update a library item
+app.put('/api/materials-library/:id', requireAuth, async (req, res) => {
+  try {
+    await materialsLibrary.update(req.params.id, req.user.companyId, req.body);
+    res.json({ saved: true });
+  } catch (error) {
+    console.error('Error updating library item:', error);
+    res.status(500).json({ error: 'Failed to update library item' });
+  }
+});
+
+// Delete a library item
+app.delete('/api/materials-library/:id', requireAuth, async (req, res) => {
+  try {
+    await materialsLibrary.delete(req.params.id, req.user.companyId);
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting library item:', error);
+    res.status(500).json({ error: 'Failed to delete library item' });
+  }
+});
+
+// ============================================================
+// LABOUR RATE CARDS
+// ============================================================
+
+// Get all rate cards for the company (list view — no items)
+app.get('/api/labour-rate-cards', requireAuth, async (req, res) => {
+  try {
+    const cards = await labourRateCards.getForCompany(req.user.companyId);
+    res.json(cards);
+  } catch (error) {
+    console.error('Error fetching rate cards:', error);
+    res.status(500).json({ error: 'Failed to fetch rate cards' });
+  }
+});
+
+// Get the current rate card with its items
+app.get('/api/labour-rate-cards/current', requireAuth, async (req, res) => {
+  try {
+    const card = await labourRateCards.getCurrent(req.user.companyId);
+    res.json(card || null);
+  } catch (error) {
+    console.error('Error fetching current rate card:', error);
+    res.status(500).json({ error: 'Failed to fetch current rate card' });
+  }
+});
+
+// Get a specific rate card with its items
+app.get('/api/labour-rate-cards/:id', requireAuth, async (req, res) => {
+  try {
+    const card = await labourRateCards.getById(req.params.id);
+    if (!card) return res.status(404).json({ error: 'Rate card not found' });
+    res.json(card);
+  } catch (error) {
+    console.error('Error fetching rate card:', error);
+    res.status(500).json({ error: 'Failed to fetch rate card' });
+  }
+});
+
+// Create a new rate card
+app.post('/api/labour-rate-cards', requireAuth, async (req, res) => {
+  try {
+    const result = await labourRateCards.create(req.user.companyId, req.body);
+    res.status(201).json({ id: result.id });
+  } catch (error) {
+    console.error('Error creating rate card:', error);
+    res.status(500).json({ error: 'Failed to create rate card' });
+  }
+});
+
+// Update a rate card
+app.put('/api/labour-rate-cards/:id', requireAuth, async (req, res) => {
+  try {
+    await labourRateCards.update(req.params.id, req.user.companyId, req.body);
+    res.json({ saved: true });
+  } catch (error) {
+    console.error('Error updating rate card:', error);
+    res.status(500).json({ error: 'Failed to update rate card' });
+  }
+});
+
+// Add an item to a rate card
+app.post('/api/labour-rate-cards/:id/items', requireAuth, async (req, res) => {
+  try {
+    const result = await labourRateCards.addItem(req.params.id, req.body);
+    res.status(201).json({ id: result.id });
+  } catch (error) {
+    console.error('Error adding rate card item:', error);
+    res.status(500).json({ error: 'Failed to add rate card item' });
+  }
+});
+
+// Update a rate card item
+app.put('/api/labour-rate-items/:id', requireAuth, async (req, res) => {
+  try {
+    await labourRateCards.updateItem(req.params.id, req.body);
+    res.json({ saved: true });
+  } catch (error) {
+    console.error('Error updating rate card item:', error);
+    res.status(500).json({ error: 'Failed to update rate card item' });
+  }
+});
+
+// Delete a rate card item
+app.delete('/api/labour-rate-items/:id', requireAuth, async (req, res) => {
+  try {
+    await labourRateCards.deleteItem(req.params.id);
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting rate card item:', error);
+    res.status(500).json({ error: 'Failed to delete rate card item' });
   }
 });
 

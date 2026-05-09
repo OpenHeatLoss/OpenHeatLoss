@@ -1265,6 +1265,421 @@ function ownsProject(project, req) {
 }
 
 // ---------------------------------------------------------------------------
+// LABOUR RATE CARDS
+// Company-wide versioned rate cards. is_current enforced at application layer:
+// server sets all others to false before inserting a new current card.
+// ---------------------------------------------------------------------------
+const labourRateCards = {
+  // Returns all rate cards for a company, most recent first.
+  getForCompany: (companyId) =>
+    allQuery(
+      `SELECT * FROM labour_rate_cards
+       WHERE company_id = $1
+       ORDER BY effective_from DESC, created_at DESC`,
+      [companyId]
+    ),
+
+  // Returns the current rate card with its line items.
+  getCurrent: async (companyId) => {
+    const card = await getQuery(
+      `SELECT * FROM labour_rate_cards
+       WHERE company_id = $1 AND is_current = true
+       LIMIT 1`,
+      [companyId]
+    );
+    if (!card) return null;
+    const items = await allQuery(
+      `SELECT * FROM labour_rate_items
+       WHERE rate_card_id = $1
+       ORDER BY display_order, id`,
+      [card.id]
+    );
+    return { ...card, items };
+  },
+
+  // Returns a specific card with its items — used for quote history display.
+  getById: async (id) => {
+    const card = await getQuery(
+      'SELECT * FROM labour_rate_cards WHERE id = $1', [id]
+    );
+    if (!card) return null;
+    const items = await allQuery(
+      `SELECT * FROM labour_rate_items
+       WHERE rate_card_id = $1
+       ORDER BY display_order, id`,
+      [card.id]
+    );
+    return { ...card, items };
+  },
+
+  // Create a new rate card. If isCurrent=true, demotes all others first.
+  create: async (companyId, data) => {
+    if (data.isCurrent) {
+      await runQuery(
+        'UPDATE labour_rate_cards SET is_current = false WHERE company_id = $1',
+        [companyId]
+      );
+    }
+    return runQuery(
+      `INSERT INTO labour_rate_cards
+         (company_id, effective_from, review_due, day_rate, hourly_rate, notes, is_current)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        companyId,
+        data.effectiveFrom,
+        data.reviewDue || null,
+        data.dayRate || 0,
+        data.hourlyRate || 0,
+        data.notes || null,
+        data.isCurrent ? true : false,
+      ]
+    );
+  },
+
+  // Update rates/dates. If marking as current, demote others first.
+  update: async (id, companyId, data) => {
+    if (data.isCurrent) {
+      await runQuery(
+        'UPDATE labour_rate_cards SET is_current = false WHERE company_id = $1 AND id != $2',
+        [companyId, id]
+      );
+    }
+    return runQuery(
+      `UPDATE labour_rate_cards SET
+         effective_from = $1, review_due = $2, day_rate = $3,
+         hourly_rate = $4, notes = $5, is_current = $6, updated_at = NOW()
+       WHERE id = $7 AND company_id = $8`,
+      [
+        data.effectiveFrom,
+        data.reviewDue || null,
+        data.dayRate || 0,
+        data.hourlyRate || 0,
+        data.notes || null,
+        data.isCurrent ? true : false,
+        id, companyId,
+      ]
+    );
+  },
+
+  // Rate card items — managed alongside the card
+  addItem: (rateCardId, data) =>
+    runQuery(
+      `INSERT INTO labour_rate_items
+         (rate_card_id, description, unit, rate, display_order)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [rateCardId, data.description, data.unit || 'unit', data.rate || 0, data.displayOrder ?? 0]
+    ),
+
+  updateItem: (id, data) =>
+    runQuery(
+      `UPDATE labour_rate_items SET
+         description = $1, unit = $2, rate = $3, display_order = $4
+       WHERE id = $5`,
+      [data.description, data.unit || 'unit', data.rate || 0, data.displayOrder ?? 0, id]
+    ),
+
+  deleteItem: (id) =>
+    runQuery('DELETE FROM labour_rate_items WHERE id = $1', [id]),
+};
+
+// ---------------------------------------------------------------------------
+// MATERIALS LIBRARY
+// Company-scoped reusable item templates. Built organically over time.
+// No global scope — prices change too frequently to seed.
+// ---------------------------------------------------------------------------
+const materialsLibrary = {
+  getForCompany: (companyId) =>
+    allQuery(
+      `SELECT * FROM materials_library
+       WHERE company_id = $1
+       ORDER BY category_key, display_order, description`,
+      [companyId]
+    ),
+
+  getByCategory: (companyId, categoryKey) =>
+    allQuery(
+      `SELECT * FROM materials_library
+       WHERE company_id = $1 AND category_key = $2
+       ORDER BY display_order, description`,
+      [companyId, categoryKey]
+    ),
+
+  create: (companyId, data) =>
+    runQuery(
+      `INSERT INTO materials_library
+         (company_id, category_key, description, pricing_mode,
+          unit_label, default_unit_cost, notes, display_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
+        companyId,
+        data.categoryKey,
+        data.description,
+        data.pricingMode || 'unit',
+        data.unitLabel || null,
+        data.defaultUnitCost || 0,
+        data.notes || null,
+        data.displayOrder ?? 0,
+      ]
+    ),
+
+  update: (id, companyId, data) =>
+    runQuery(
+      `UPDATE materials_library SET
+         category_key = $1, description = $2, pricing_mode = $3,
+         unit_label = $4, default_unit_cost = $5, notes = $6,
+         display_order = $7, updated_at = NOW()
+       WHERE id = $8 AND company_id = $9`,
+      [
+        data.categoryKey,
+        data.description,
+        data.pricingMode || 'unit',
+        data.unitLabel || null,
+        data.defaultUnitCost || 0,
+        data.notes || null,
+        data.displayOrder ?? 0,
+        id, companyId,
+      ]
+    ),
+
+  delete: (id, companyId) =>
+    runQuery(
+      'DELETE FROM materials_library WHERE id = $1 AND company_id = $2',
+      [id, companyId]
+    ),
+};
+
+// ---------------------------------------------------------------------------
+// MATERIALS LIST ITEMS
+// Job-level child line items. Prices copied at time of addition — not live
+// references — so historical job costs are always recoverable.
+// total_cost is stored and recalculated on every save.
+// ---------------------------------------------------------------------------
+const materialsListItems = {
+  getForProject: (projectId) =>
+    allQuery(
+      `SELECT mli.*, ml.description AS library_description
+       FROM materials_list_items mli
+       LEFT JOIN materials_library ml ON ml.id = mli.library_item_id
+       WHERE mli.project_id = $1
+       ORDER BY mli.parent_category, mli.display_order, mli.id`,
+      [projectId]
+    ),
+
+  create: (projectId, data) => {
+    const totalCost = data.pricingMode === 'flat'
+      ? (data.unitCost || 0)
+      : (data.quantity || 0) * (data.unitCost || 0);
+    return runQuery(
+      `INSERT INTO materials_list_items
+         (project_id, parent_category, description, pricing_mode,
+          unit_label, quantity, unit_cost, total_cost,
+          source, source_id, library_item_id, display_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id`,
+      [
+        projectId,
+        data.parentCategory,
+        data.description,
+        data.pricingMode || 'unit',
+        data.unitLabel || null,
+        data.quantity || 1,
+        data.unitCost || 0,
+        totalCost,
+        data.source || 'manual',
+        data.sourceId || null,
+        data.libraryItemId || null,
+        data.displayOrder ?? 0,
+      ]
+    );
+  },
+
+  update: (id, projectId, data) => {
+    const totalCost = data.pricingMode === 'flat'
+      ? (data.unitCost || 0)
+      : (data.quantity || 0) * (data.unitCost || 0);
+    return runQuery(
+      `UPDATE materials_list_items SET
+         parent_category = $1, description = $2, pricing_mode = $3,
+         unit_label = $4, quantity = $5, unit_cost = $6, total_cost = $7,
+         display_order = $8, updated_at = NOW()
+       WHERE id = $9 AND project_id = $10`,
+      [
+        data.parentCategory,
+        data.description,
+        data.pricingMode || 'unit',
+        data.unitLabel || null,
+        data.quantity || 1,
+        data.unitCost || 0,
+        totalCost,
+        data.displayOrder ?? 0,
+        id, projectId,
+      ]
+    );
+  },
+
+  delete: (id, projectId) =>
+    runQuery(
+      'DELETE FROM materials_list_items WHERE id = $1 AND project_id = $2',
+      [id, projectId]
+    ),
+
+  // Import new radiators from the radiator schedule.
+  // Returns inserted item IDs. Skips schedule rows that already have a
+  // materials_list_item with source='radiator_schedule' and the same source_id
+  // so re-running import is idempotent.
+  importFromRadiatorSchedule: async (projectId, parentCategory) => {
+    // Fetch all 'new' schedule items for this project with spec details
+    const scheduleItems = await allQuery(
+      `SELECT rs.id, rs.quantity, rs.notes,
+              rs2.manufacturer, rs2.model, rs2.type, rs2.height, rs2.length
+       FROM radiator_schedule rs
+       JOIN rooms r   ON r.id  = rs.room_id
+       JOIN radiator_specs rs2 ON rs2.id = rs.radiator_spec_id
+       WHERE r.project_id = $1
+         AND rs.emitter_status = 'new'`,
+      [projectId]
+    );
+
+    // Find which schedule IDs are already imported
+    const existing = await allQuery(
+      `SELECT source_id FROM materials_list_items
+       WHERE project_id = $1 AND source = 'radiator_schedule'`,
+      [projectId]
+    );
+    const existingIds = new Set(existing.map(r => r.source_id));
+
+    const inserted = [];
+    for (const item of scheduleItems) {
+      if (existingIds.has(item.id)) continue;
+      const description = `${item.manufacturer} ${item.model} ${item.type} ${item.height}×${item.length}`;
+      const result = await runQuery(
+        `INSERT INTO materials_list_items
+           (project_id, parent_category, description, pricing_mode,
+            unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
+         VALUES ($1, $2, $3, 'unit', 'each', $4, 0, 0, 'radiator_schedule', $5, 99)
+         RETURNING id`,
+        [projectId, parentCategory || 'radiators', description, item.quantity, item.id]
+      );
+      inserted.push(result.id);
+    }
+    return inserted;
+  },
+
+  // Import pipe sections as materials list items.
+  // Each section becomes one item: description = section name + material + size,
+  // pricing_mode = 'per_metre', quantity = length_m.
+  // Fittings (if detailed method) are imported as separate 'unit' items.
+  // Idempotent: skips sections already imported.
+  importFromPipeSections: async (projectId, parentCategory) => {
+    const sections = await allQuery(
+      `SELECT ps.id, ps.name, ps.length_m, ps.nominal_size,
+              ps.fittings_method,
+              pm.name AS material_name,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', psf.id, 'name', f.name,
+                    'quantity', psf.quantity, 'unit_cost', f.unit_cost
+                  ) ORDER BY psf.id
+                ) FILTER (WHERE psf.id IS NOT NULL),
+                '[]'
+              ) AS fittings
+       FROM pipe_sections ps
+       LEFT JOIN pipe_materials pm ON pm.id = ps.pipe_material_id
+       LEFT JOIN pipe_section_fittings psf ON psf.pipe_section_id = ps.id
+       LEFT JOIN fittings f ON f.id = psf.fitting_id
+       WHERE ps.project_id = $1
+       GROUP BY ps.id, pm.name`,
+      [projectId]
+    );
+
+    const existing = await allQuery(
+      `SELECT source_id FROM materials_list_items
+       WHERE project_id = $1 AND source = 'pipe_sections'`,
+      [projectId]
+    );
+    const existingIds = new Set(existing.map(r => r.source_id));
+
+    const inserted = [];
+    for (const sec of sections) {
+      if (existingIds.has(sec.id)) continue;
+      const desc = [sec.name, sec.material_name, sec.nominal_size]
+        .filter(Boolean).join(' — ');
+
+      // Pipe run as per_metre item
+      await runQuery(
+        `INSERT INTO materials_list_items
+           (project_id, parent_category, description, pricing_mode,
+            unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
+         VALUES ($1, $2, $3, 'per_metre', 'm', $4, 0, 0, 'pipe_sections', $5, 99)
+         RETURNING id`,
+        [projectId, parentCategory || 'pipework', desc, sec.length_m, sec.id]
+      );
+
+      // If detailed fittings, import each fitting type as a unit item.
+      // Use the fitting's unit_cost from the library as the starting price.
+      if (sec.fittings_method === 'detailed' && Array.isArray(sec.fittings)) {
+        for (const f of sec.fittings) {
+          if (!f.quantity) continue;
+          const total = f.quantity * (f.unit_cost || 0);
+          await runQuery(
+            `INSERT INTO materials_list_items
+               (project_id, parent_category, description, pricing_mode,
+                unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
+             VALUES ($1, $2, $3, 'unit', 'each', $4, $5, $6, 'pipe_sections', $7, 99)
+             RETURNING id`,
+            [projectId, parentCategory || 'pipework', f.name,
+             f.quantity, f.unit_cost || 0, total, sec.id]
+          );
+        }
+      }
+
+      inserted.push(sec.id);
+    }
+    return inserted;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// QUOTE SNAPSHOTS
+// Immutable records — never updated after creation.
+// snapshot_data captures the full quote state at a point in time.
+// ---------------------------------------------------------------------------
+const quoteSnapshots = {
+  getForQuote: (quoteId) =>
+    allQuery(
+      `SELECT id, quote_id, version_label, note, triggered_by, created_by, created_at
+       FROM quote_snapshots
+       WHERE quote_id = $1
+       ORDER BY created_at DESC`,
+      [quoteId]
+    ),
+
+  // Returns the full snapshot including data — for viewing a historical version.
+  getById: (id) =>
+    getQuery('SELECT * FROM quote_snapshots WHERE id = $1', [id]),
+
+  create: (data) =>
+    runQuery(
+      `INSERT INTO quote_snapshots
+         (quote_id, version_label, note, triggered_by, snapshot_data, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        data.quoteId,
+        data.versionLabel,
+        data.note || null,
+        data.triggeredBy || 'manual',
+        JSON.stringify(data.snapshotData),
+        data.createdBy || null,
+      ]
+    ),
+};
+
+// ---------------------------------------------------------------------------
 // EXPORTS
 // ---------------------------------------------------------------------------
 module.exports = {
@@ -1294,6 +1709,10 @@ module.exports = {
   pipeMaterialsLib,
   fittingsLib,
   pipeSections,
+  labourRateCards,
+  materialsLibrary,
+  materialsListItems,
+  quoteSnapshots,
   // waitForDb is gone — no longer needed with Postgres connection pool.
   // server.js startup sequence is now a simple async IIFE (see migrate.js notes).
 };
