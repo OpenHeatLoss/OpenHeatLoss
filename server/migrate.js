@@ -1301,6 +1301,203 @@ const MIGRATIONS = [
       if (warnings > 0) console.warn(`  ⚠ ${warnings} sections had unresolved materials — defaulted to copper_tableX`);
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // MIGRATION 011 — Materials list, quote snapshots, labour rate card
+  //
+  // Adds:
+  //   materials_library       — company-scoped reusable material/item templates
+  //   materials_list_items    — job-level child line items (copy of library price
+  //                             at time of use — not a live reference)
+  //   quote_snapshots         — immutable point-in-time snapshots of quote state;
+  //                             triggered manually or auto on draft→issued
+  //   labour_rate_cards       — company-wide versioned rate cards (day/hourly rate)
+  //   labour_rate_items       — standard task templates on a rate card
+  //
+  // Alters:
+  //   quotes                  — adds markup_pct, category_overrides,
+  //                             rate_card_id (FK to current rate card at quote time)
+  // ---------------------------------------------------------------------------
+  {
+    version: '011',
+    description: 'Materials library, job materials list, quote snapshots, labour rate card',
+    run: async () => {
+
+      // ── 1. LABOUR RATE CARDS ─────────────────────────────────────────────
+      // Company-wide versioned rate cards. Only one row per company should have
+      // is_current = true — enforced at the application layer when a new card
+      // is created (server sets all others to false before inserting the new one).
+      // rate_card_id is recorded on quotes so historical pricing context is
+      // preserved even after the rate card is superseded.
+      await query(`
+        CREATE TABLE IF NOT EXISTS labour_rate_cards (
+          id             SERIAL PRIMARY KEY,
+          company_id     INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          effective_from DATE NOT NULL,
+          review_due     DATE,
+          day_rate       DOUBLE PRECISION NOT NULL DEFAULT 0,
+          hourly_rate    DOUBLE PRECISION NOT NULL DEFAULT 0,
+          notes          TEXT,
+          is_current     BOOLEAN NOT NULL DEFAULT false,
+          created_at     TIMESTAMPTZ DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_labour_rate_cards_company
+          ON labour_rate_cards (company_id, is_current)
+      `);
+
+      // ── 2. LABOUR RATE ITEMS ─────────────────────────────────────────────
+      // Standard task templates attached to a rate card.
+      // unit: 'day' | 'hour' | 'unit'
+      // rate: cost per unit in that unit. When unit='unit', this is a flat
+      //   per-item rate (e.g. £150 per radiator installation).
+      await query(`
+        CREATE TABLE IF NOT EXISTS labour_rate_items (
+          id            SERIAL PRIMARY KEY,
+          rate_card_id  INTEGER NOT NULL
+                          REFERENCES labour_rate_cards(id) ON DELETE CASCADE,
+          description   TEXT NOT NULL,
+          unit          TEXT NOT NULL DEFAULT 'unit',
+          rate          DOUBLE PRECISION NOT NULL DEFAULT 0,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at    TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      // ── 3. MATERIALS LIBRARY ─────────────────────────────────────────────
+      // Company-scoped reusable item templates. Built organically over time —
+      // either via Settings management page or the "Save to library" button on
+      // a job child item. No global/seeded scope — prices change too frequently.
+      //
+      // pricing_mode: 'unit' | 'per_metre' | 'flat'
+      //   unit      — quantity × unit_cost  (e.g. 3 radiators × £320)
+      //   per_metre — quantity (metres) × unit_cost  (e.g. 12m × £4.50/m)
+      //   flat      — single total, quantity ignored  (e.g. £850 flush & fill)
+      //
+      // category_key maps to the FIXED_ITEMS keys in QuoteBuilder:
+      //   heat_pump | cylinder | radiators | pipework | electrical | labour |
+      //   design | mcs | other
+      await query(`
+        CREATE TABLE IF NOT EXISTS materials_library (
+          id               SERIAL PRIMARY KEY,
+          company_id       INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          category_key     TEXT NOT NULL,
+          description      TEXT NOT NULL,
+          pricing_mode     TEXT NOT NULL DEFAULT 'unit',
+          unit_label       TEXT,
+          default_unit_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+          notes            TEXT,
+          display_order    INTEGER NOT NULL DEFAULT 0,
+          created_at       TIMESTAMPTZ DEFAULT NOW(),
+          updated_at       TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_materials_library_company_cat
+          ON materials_library (company_id, category_key)
+      `);
+
+      // ── 4. MATERIALS LIST ITEMS ──────────────────────────────────────────
+      // Job-level child line items. One row per material/labour item on a job.
+      // Prices are copied at the time the item is added — not live references —
+      // so the historical cost for a job is always recoverable.
+      //
+      // source: 'manual' | 'radiator_schedule' | 'pipe_sections' | 'library'
+      //   source_id: FK to the originating row (nullable)
+      //   library_item_id: FK to materials_library if spawned from a library item
+      //
+      // total_cost is stored (= quantity × unit_cost, or flat figure).
+      // Recalculated server-side on every save — not a derived-only column —
+      // so queries can sum it without recalculating in SQL.
+      //
+      // parent_category: which quote parent this child rolls up into.
+      // This can differ from the library category_key — e.g. a pipework item
+      // can be assigned to the 'heat_pump' parent on a specific job.
+      await query(`
+        CREATE TABLE IF NOT EXISTS materials_list_items (
+          id               SERIAL PRIMARY KEY,
+          project_id       INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          parent_category  TEXT NOT NULL,
+          description      TEXT NOT NULL,
+          pricing_mode     TEXT NOT NULL DEFAULT 'unit',
+          unit_label       TEXT,
+          quantity         DOUBLE PRECISION NOT NULL DEFAULT 1,
+          unit_cost        DOUBLE PRECISION NOT NULL DEFAULT 0,
+          total_cost       DOUBLE PRECISION NOT NULL DEFAULT 0,
+          source           TEXT NOT NULL DEFAULT 'manual',
+          source_id        INTEGER,
+          library_item_id  INTEGER REFERENCES materials_library(id) ON DELETE SET NULL,
+          display_order    INTEGER NOT NULL DEFAULT 0,
+          created_at       TIMESTAMPTZ DEFAULT NOW(),
+          updated_at       TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_materials_list_items_project
+          ON materials_list_items (project_id, parent_category)
+      `);
+
+      // ── 5. QUOTE SNAPSHOTS ───────────────────────────────────────────────
+      // Immutable point-in-time records of quote state. Never modified after
+      // creation — the snapshot_data JSONB captures everything needed to
+      // reconstruct what the client received (or what was changed and why).
+      //
+      // snapshot_data shape (stored as-is from the QuoteBuilder state):
+      // {
+      //   quote: { reference, markup_pct, vat_rate, deposit_amount, ... },
+      //   items: [ { description, itemType, total_price, ... } ],
+      //   materials: [ { parent_category, description, quantity, unit_cost, ... } ],
+      //   category_overrides: { heat_pump: 4250, radiators: null, ... },
+      //   rate_card: { id, effective_from, day_rate, hourly_rate } | null,
+      //   totals: { ex_vat, vat_amount, inc_vat, bus_grant, client_pays }
+      // }
+      //
+      // triggered_by: 'manual' | 'status_change'
+      // For status_change snapshots, version_label is auto-set to the new status.
+      await query(`
+        CREATE TABLE IF NOT EXISTS quote_snapshots (
+          id             SERIAL PRIMARY KEY,
+          quote_id       INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+          version_label  TEXT NOT NULL,
+          note           TEXT,
+          triggered_by   TEXT NOT NULL DEFAULT 'manual',
+          snapshot_data  JSONB NOT NULL,
+          created_by     TEXT,
+          created_at     TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_quote_snapshots_quote
+          ON quote_snapshots (quote_id, created_at DESC)
+      `);
+
+      // ── 6. ALTER QUOTES ──────────────────────────────────────────────────
+      // markup_pct: single % markup applied to materials subtotal per category
+      //   before rolling up into quote line item. Default 0 — no markup.
+      //
+      // category_overrides: JSONB map of category_key → override amount (£).
+      //   null value for a key means "use materials sum + markup" (auto).
+      //   A numeric value means the engineer has set a specific quote price
+      //   for that category, overriding the materials calculation.
+      //   e.g. { "heat_pump": 4250.00, "radiators": null, "labour": 3200.00 }
+      //
+      // rate_card_id: records which labour rate card was current when this quote
+      //   was prepared. Nullable — quotes created before rate cards were set up
+      //   will have null. Not a CASCADE delete — rate cards are never deleted,
+      //   only superseded.
+      await addColumnIfMissing('quotes', 'markup_pct',          'DOUBLE PRECISION NOT NULL DEFAULT 0');
+      await addColumnIfMissing('quotes', 'category_overrides',  'JSONB DEFAULT NULL');
+      await addColumnIfMissing('quotes', 'rate_card_id',        'INTEGER REFERENCES labour_rate_cards(id) ON DELETE SET NULL');
+
+      console.log('  Migration 011 complete: materials library, job materials, quote snapshots, labour rate card');
+    },
+  },
 ];
 
 async function runMigrations() {
