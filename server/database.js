@@ -209,7 +209,7 @@ const pipeMaterialsLib = {
   },
 
   create: (companyId, data) =>
-    query(
+    pool.query(
       `INSERT INTO pipe_materials
          (company_id, scope, material_key, name, description, roughness_mm, max_velocity, display_order)
        VALUES ($1, 'company', $2, $3, $4, $5, $6, $7)
@@ -269,7 +269,7 @@ const fittingsLib = {
   },
 
   create: (companyId, data) =>
-    query(
+    pool.query(
       `INSERT INTO fittings
          (company_id, scope, fitting_key, name, k_value, description, unit_cost, display_order)
        VALUES ($1, 'company', $2, $3, $4, $5, $6, $7)
@@ -336,7 +336,7 @@ const pipeSections = {
     `, [projectId]),
 
   create: (projectId, data) =>
-    query(
+    pool.query(
       `INSERT INTO pipe_sections (
         project_id, pipe_material_id, name, nominal_size, length_m,
         flow_rate, heat_load, velocity, pressure_drop,
