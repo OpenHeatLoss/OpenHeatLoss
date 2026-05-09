@@ -185,7 +185,7 @@ const pipeMaterialsLib = {
         [companyId, mat.material_key]
       );
       if (!exists) {
-        const ins = await query(
+        const ins = await pool.query(
           `INSERT INTO pipe_materials
              (company_id, scope, material_key, name, description, roughness_mm, max_velocity, display_order)
            VALUES ($1, 'global', $2, $3, $4, $5, $6, $7)
@@ -197,11 +197,11 @@ const pipeMaterialsLib = {
           [mat.id]
         );
         for (const s of sizes) {
-          await query(
+          await pool.query(
             `INSERT INTO pipe_material_sizes
                (pipe_material_id, nominal_size, external_diameter, internal_diameter, wall_thickness, display_order)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [ins.id, s.nominal_size, s.external_diameter, s.internal_diameter, s.wall_thickness, s.display_order]
+            [ins.rows[0].id, s.nominal_size, s.external_diameter, s.internal_diameter, s.wall_thickness, s.display_order]
           );
         }
       }
@@ -258,7 +258,7 @@ const fittingsLib = {
       `SELECT * FROM fittings WHERE company_id = 1 AND scope = 'global'`
     );
     for (const f of globals) {
-      await query(
+      await pool.query(
         `INSERT INTO fittings
            (company_id, scope, fitting_key, name, k_value, description, display_order)
          VALUES ($1, 'global', $2, $3, $4, $5, $6)
@@ -389,13 +389,13 @@ const pipeSections = {
   // Replace all fittings for a section atomically.
   // Called after every section save — simpler than diffing individual fittings.
   replaceFittings: async (pipeSectionId, fittingsArr) => {
-    await query(
+    await pool.query(
       `DELETE FROM pipe_section_fittings WHERE pipe_section_id=$1`,
       [pipeSectionId]
     );
     for (const f of (fittingsArr || [])) {
       if (!f.fittingId || f.quantity < 1) continue;
-      await query(
+      await pool.query(
         `INSERT INTO pipe_section_fittings (pipe_section_id, fitting_id, quantity)
          VALUES ($1, $2, $3)`,
         [pipeSectionId, f.fittingId, f.quantity]
