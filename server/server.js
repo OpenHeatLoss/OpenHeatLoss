@@ -1262,15 +1262,43 @@ app.get('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) =
   }
 });
 
+// normalisePipeSectionBody — accepts either camelCase (from React state) or
+// snake_case (from PipeSectionEditor calculateAndSave) and returns camelCase
+// for the pipeSections DB layer.
+function normalisePipeSectionBody(body) {
+  return {
+    id:                        body.id,
+    name:                      body.name,
+    pipeMaterialId:            body.pipeMaterialId   ?? body.pipe_material_id,
+    nominalSize:               body.nominalSize      ?? body.nominal_size      ?? body.diameter,
+    lengthM:                   body.lengthM          ?? body.length_m          ?? body.length ?? 0,
+    flowRate:                  body.flowRate         ?? body.flow_rate         ?? 0,
+    heatLoad:                  body.heatLoad         ?? body.heat_load         ?? 0,
+    velocity:                  body.velocity         ?? 0,
+    pressureDrop:              body.pressureDrop     ?? body.pressure_drop     ?? 0,
+    straightPipePressureDrop:  body.straightPipePressureDrop ?? body.straight_pipe_pressure_drop ?? 0,
+    fittingsPressureDrop:      body.fittingsPressureDrop     ?? body.fittings_pressure_drop     ?? 0,
+    fittingsMethod:            body.fittingsMethod   ?? body.fittings_method   ?? 'percentage',
+    fittingPercentage:         body.fittingPercentage ?? body.fitting_percentage ?? 20,
+    waterTemperature:          body.waterTemperature ?? body.water_temperature  ?? 50,
+    useWholeProperty:          body.useWholeProperty ?? body.use_whole_property ?? false,
+    includeInIndexCircuit:     body.includeInIndexCircuit ?? body.include_in_index_circuit ?? false,
+    connectedRooms:            body.connectedRooms   ?? body.connected_rooms   ?? [],
+    displayOrder:              body.displayOrder     ?? body.display_order     ?? 0,
+    fittings:                  body.fittings         ?? [],
+  };
+}
+
 // POST /api/projects/:id/pipe-sections
 app.post('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) => {
   try {
     const project = await projects.getById(req.params.id);
     if (!project || !ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
-    const result = await pipeSections.create(req.params.id, req.body);
+    const data = normalisePipeSectionBody(req.body);
+    const result = await pipeSections.create(req.params.id, data);
     const sectionId = result.rows[0].id;
-    if (Array.isArray(req.body.fittings)) {
-      await pipeSections.replaceFittings(sectionId, req.body.fittings);
+    if (Array.isArray(data.fittings)) {
+      await pipeSections.replaceFittings(sectionId, data.fittings);
     }
     const sections = await pipeSections.getForProject(req.params.id);
     res.json(sections);
@@ -1283,16 +1311,16 @@ app.post('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) 
 // PUT /api/pipe-sections/:id
 app.put('/api/pipe-sections/:id', requireAuthOrAnon, async (req, res) => {
   try {
-    // Verify ownership via project_id on the section
     const { rows } = await pool.query(
       'SELECT project_id FROM pipe_sections WHERE id=$1', [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Section not found' });
     const project = await projects.getById(rows[0].project_id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
-    await pipeSections.update(req.params.id, rows[0].project_id, req.body);
-    if (Array.isArray(req.body.fittings)) {
-      await pipeSections.replaceFittings(req.params.id, req.body.fittings);
+    const data = normalisePipeSectionBody(req.body);
+    await pipeSections.update(req.params.id, rows[0].project_id, data);
+    if (Array.isArray(data.fittings)) {
+      await pipeSections.replaceFittings(req.params.id, data.fittings);
     }
     const sections = await pipeSections.getForProject(rows[0].project_id);
     res.json(sections);

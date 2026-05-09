@@ -1,7 +1,6 @@
 // client/src/components/pipesizing/PipeSizing.jsx
 import { useState, useEffect } from 'react';
 import PipeSectionEditor from './PipeSectionEditor';
-import { PIPE_MATERIALS } from '../../utils/pipeMaterialData';
 import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
 
 export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSave }) {
@@ -57,7 +56,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
     if (!section) return;
     onSavePipeSection?.({
       ...section,
-      includeInIndexCircuit: !section.include_in_index_circuit,
+      includeInIndexCircuit: !(section.include_in_index_circuit ?? section.includeInIndexCircuit),
     }, 'update');
   };
 
@@ -155,7 +154,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
 
   // Index circuit is the designer-selected set of sections that form the longest/
   // highest-resistance flow path. Summed directly from user checkboxes.
-  const indexCircuitSections = sections.filter(s => s.includeInIndexCircuit);
+  const indexCircuitSections = sections.filter(s => s.include_in_index_circuit ?? s.includeInIndexCircuit);
   const indexCircuit = indexCircuitSections.length > 0 ? {
     sections: indexCircuitSections,
     totalPressureDrop: indexCircuitSections.reduce((sum, s) => sum + (s.pressureDrop || 0), 0),
@@ -192,11 +191,11 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
           <div>
             <h3 className="font-semibold text-blue-900 mb-2">Material Selection Guide</h3>
             <div className="space-y-1.5">
-              {Object.entries(PIPE_MATERIALS).map(([key, mat]) => (
-                <div key={key} className="flex items-baseline justify-between text-sm">
+              {pipeMaterials.map(mat => (
+                <div key={mat.id} className="flex items-baseline justify-between text-sm">
                   <span className="text-blue-800 font-medium">{mat.name}</span>
                   <span className="text-blue-700 ml-3 whitespace-nowrap">
-                    max {mat.maxVelocity} m/s
+                    max {mat.max_velocity} m/s
                   </span>
                 </div>
               ))}
@@ -264,9 +263,8 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                 // Derive velocity status live from current PIPE_MATERIALS so that
                 // changes to maxVelocity limits (e.g. PB 1.0→1.5) are reflected
                 // immediately without requiring a re-save of each section.
-                let materialKey = section.material;
-                if (materialKey === 'mlcp_riifo' || materialKey === 'mlcp_maincor') materialKey = 'mlcp';
-                const currentMaxVelocity = PIPE_MATERIALS[materialKey]?.maxVelocity ?? section.maxVelocity;
+                // max_velocity comes from the DB-joined pipe_materials row
+                const currentMaxVelocity = section.max_velocity ?? section.maxVelocity ?? 1.5;
                 const currentIsVelocityOK = section.velocity !== undefined
                   ? section.velocity <= currentMaxVelocity
                   : section.isVelocityOK;
@@ -282,9 +280,9 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                         {section.name || `Section ${index + 1}`}
                       </h3>
                       <p className="text-sm text-gray-600">
-                        {section.useWholeProperty 
+                        {(section.use_whole_property ?? section.useWholeProperty) 
                           ? `Main header - Full system load (${project.heatPumpRatedOutput || 0} kW)`
-                          : `Branch - ${section.connectedRooms?.length || 0} rooms (${section.heatLoad?.toFixed(2) || 0} kW)`
+                          : `Branch - ${(section.connected_rooms ?? section.connectedRooms)?.length || 0} rooms (${section.heatLoad?.toFixed(2) || 0} kW)`
                         }
                       </p>
                     </div>
@@ -293,7 +291,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                       <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm text-gray-600 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50">
                         <input
                           type="checkbox"
-                          checked={!!section.includeInIndexCircuit}
+                          checked={!!(section.include_in_index_circuit ?? section.includeInIndexCircuit)}
                           onChange={() => toggleIndexCircuitInclusion(index)}
                           className="w-3.5 h-3.5 accent-yellow-500"
                         />
@@ -318,15 +316,15 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                   <div className="grid grid-cols-6 gap-4 bg-gray-50 rounded p-4">
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Material</div>
-                      <div className="font-semibold text-gray-800">{section.material}</div>
+                      <div className="font-semibold text-gray-800">{section.material_name || section.material}</div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Diameter</div>
-                      <div className="font-semibold text-gray-800">{section.diameter}</div>
+                      <div className="font-semibold text-gray-800">{section.nominal_size || section.diameter}</div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Length</div>
-                      <div className="font-semibold text-gray-800">{section.length} m</div>
+                      <div className="font-semibold text-gray-800">{(section.length_m ?? section.length) || 0} m</div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-600 mb-1">Flow Rate</div>
@@ -356,11 +354,11 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                   )}
 
                   {/* Connected Rooms */}
-                  {section.connectedRooms && section.connectedRooms.length > 0 && (
+                  {(section.connected_rooms ?? section.connectedRooms)?.length > 0 && (
                     <div className="mt-3">
                       <div className="text-xs text-gray-600 mb-1">Feeds:</div>
                       <div className="flex flex-wrap gap-2">
-                        {section.connectedRooms.map((roomId) => {
+                        {(section.connected_rooms ?? section.connectedRooms).map((roomId) => {
                           const room = (project.rooms || []).find(r => r.id === roomId);
                           return room ? (
                             <span key={roomId} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
