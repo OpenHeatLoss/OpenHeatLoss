@@ -2,7 +2,7 @@
 // Receives pipeMaterials and fittings from project state (DB-sourced) rather than
 // importing static files. The static pipeMaterialData.js calculation functions are
 // still used for pressure drop — they accept raw property values, so no change needed.
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { calculatePressureDrop, getPipeSize, suggestPipeSize, calculateFlowRate } from '../../utils/pipeMaterialData';
 import { calculateFittingsPressureDrop, calculateFittingsAllowance } from '../../utils/fittingsDatabase';
 import { calculateRoomTotal } from '../../utils/calculations';
@@ -161,40 +161,12 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     if (!editedSection.useWholeProperty && (!editedSection.connectedRooms || editedSection.connectedRooms.length === 0)) {
       alert('Please select either "Use full heat pump output" or choose rooms to feed'); return;
     }
-
-    const mat = selectedMaterial;
-    if (!mat) { alert('Please select a pipe material'); return; }
-
-    const size = mat.sizes?.find(s => s.nominalSize === editedSection.nominalSize);
-    if (!size) { alert('Invalid pipe size selected'); return; }
-
-    // Use Darcy-Weisbach via calculatePressureDrop — pass internal diameter directly
-    const straightResult = calculatePressureDrop(
-      editedSection.flowRate,
-      size.internalDiameter,
-      editedSection.lengthM,
-      mat.material_key,
-      editedSection.waterTemperature || 50,
-    );
-
-    let fittingsPressureDrop = 0;
-    if (editedSection.fittingsMethod === 'percentage') {
-      fittingsPressureDrop = calculateFittingsAllowance(straightResult.pressureDrop, editedSection.fittingPercentage);
-    } else {
-      // Build K-value array from selected fittings
-      const fittingsList = (editedSection.fittings || []).map(f => ({ type: f.fittingKey, quantity: f.quantity, kValue: f.kValue }));
-      fittingsPressureDrop = fittingsList.reduce((sum, f) => sum + (f.kValue * f.quantity), 0);
-      fittingsPressureDrop = fittingsPressureDrop * (mat.max_velocity ? straightResult.velocity ** 2 / 2 : 0);
-      // Re-use calculateFittingsPressureDrop with adapted format
-      fittingsPressureDrop = calculateFittingsPressureDrop(
-        straightResult.velocity,
-        (editedSection.fittings || []).map(f => ({ type: f.fittingKey, quantity: f.quantity }))
-      );
+    if (!liveCalc) {
+      alert('Please select a pipe material, diameter and length to calculate'); return;
     }
 
     onSave({
       ...editedSection,
-      // Ensure DB field names are correct on save
       pipe_material_id:            editedSection.pipeMaterialId,
       nominal_size:                editedSection.nominalSize,
       length_m:                    editedSection.lengthM,
@@ -204,12 +176,10 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
       fittings_method:             editedSection.fittingsMethod,
       fitting_percentage:          editedSection.fittingPercentage,
       water_temperature:           editedSection.waterTemperature,
-      velocity:                    straightResult.velocity,
-      straight_pipe_pressure_drop: straightResult.pressureDrop,
-      fittings_pressure_drop:      fittingsPressureDrop,
-      pressure_drop:               straightResult.pressureDrop + fittingsPressureDrop,
-      isVelocityOK:                straightResult.isVelocityOK,
-      maxVelocity:                 straightResult.maxVelocity,
+      velocity:                    liveCalc.velocity,
+      straight_pipe_pressure_drop: liveCalc.straightPipePressureDrop,
+      fittings_pressure_drop:      liveCalc.fittingsPressureDrop,
+      pressure_drop:               liveCalc.totalPressureDrop,
     });
   };
 
@@ -227,6 +197,52 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     return last ? { size: last.nominalSize, isAcceptable: false } : null;
   };
   const suggestion = suggestSize();
+
+  // Live calculation — recalculates whenever inputs change.
+  // Requires length, material, diameter and flow rate to be populated.
+  const liveCalc = useMemo(() => {
+    const mat = selectedMaterial;
+    if (!mat || !editedSection.lengthM || editedSection.lengthM <= 0) return null;
+    if (!editedSection.flowRate || editedSection.flowRate <= 0) return null;
+    const size = mat.sizes?.find(s => s.nominalSize === editedSection.nominalSize);
+    if (!size) return null;
+
+    try {
+      const straight = calculatePressureDrop(
+        editedSection.flowRate,
+        size.internalDiameter,
+        editedSection.lengthM,
+        mat.material_key,
+        editedSection.waterTemperature || 50,
+      );
+
+      let fittingsDrop = 0;
+      if (editedSection.fittingsMethod === 'percentage') {
+        fittingsDrop = calculateFittingsAllowance(straight.pressureDrop, editedSection.fittingPercentage);
+      } else {
+        fittingsDrop = calculateFittingsPressureDrop(
+          straight.velocity,
+          (editedSection.fittings || []).map(f => ({ type: f.fittingKey, quantity: f.quantity }))
+        );
+      }
+
+      return {
+        velocity:                   straight.velocity,
+        straightPipePressureDrop:   straight.pressureDrop,
+        fittingsPressureDrop:       fittingsDrop,
+        totalPressureDrop:          straight.pressureDrop + fittingsDrop,
+        isVelocityOK:               straight.isVelocityOK,
+        maxVelocity:                straight.maxVelocity,
+      };
+    } catch {
+      return null;
+    }
+  }, [
+    editedSection.flowRate, editedSection.lengthM, editedSection.nominalSize,
+    editedSection.pipeMaterialId, editedSection.waterTemperature,
+    editedSection.fittingsMethod, editedSection.fittingPercentage,
+    editedSection.fittings, selectedMaterial,
+  ]);
 
   return (
     <div className="border-2 border-blue-500 rounded-lg p-6 bg-blue-50 space-y-6">
@@ -584,45 +600,39 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
         )}
       </div>
 
-      {/* Calculated Results — shown when section has been saved at least once */}
-      {(editedSection.velocity > 0 || editedSection.pressureDrop > 0) && (
+      {/* Calculated Results — live, updates as inputs change */}
+      {liveCalc && (
         <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
-          <h4 className="font-semibold text-gray-800 mb-3">Current Calculated Results</h4>
-          <p className="text-xs text-gray-500 mb-3">
-            These values are from the last saved calculation. Click Save Section to recalculate after any changes.
-          </p>
+          <h4 className="font-semibold text-gray-800 mb-3">Calculated Results</h4>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="bg-white rounded-lg p-3 text-center shadow-sm">
               <div className="text-xs text-gray-500 mb-1">Flow Velocity</div>
               <div className={`text-xl font-bold ${
-                editedSection.velocity <= (selectedMaterial?.max_velocity ?? 1.5)
-                  ? 'text-green-700' : 'text-red-700'
+                liveCalc.isVelocityOK ? 'text-green-700' : 'text-red-700'
               }`}>
-                {editedSection.velocity?.toFixed(2) ?? '—'} m/s
+                {liveCalc.velocity.toFixed(2)} m/s
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                max {selectedMaterial?.max_velocity ?? 1.5} m/s
+                max {liveCalc.maxVelocity} m/s
+                {!liveCalc.isVelocityOK && <span className="text-red-600 ml-1">⚠ exceeds limit</span>}
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center shadow-sm">
               <div className="text-xs text-gray-500 mb-1">Straight Pipe ΔP</div>
               <div className="text-xl font-bold text-gray-800">
-                {editedSection.pressureDrop > 0
-                  ? ((editedSection.pressure_drop ?? editedSection.pressureDrop) - (editedSection.fittings_pressure_drop ?? editedSection.fittingsPressureDrop ?? 0)).toFixed(2)
-                  : (editedSection.straight_pipe_pressure_drop ?? editedSection.straightPipePressureDrop ?? 0).toFixed(2)
-                } kPa
+                {liveCalc.straightPipePressureDrop.toFixed(2)} kPa
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center shadow-sm">
               <div className="text-xs text-gray-500 mb-1">Fittings ΔP</div>
               <div className="text-xl font-bold text-gray-800">
-                {(editedSection.fittings_pressure_drop ?? editedSection.fittingsPressureDrop ?? 0).toFixed(2)} kPa
+                {liveCalc.fittingsPressureDrop.toFixed(2)} kPa
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center shadow-sm border-2 border-orange-300">
               <div className="text-xs text-gray-500 mb-1">Total Section ΔP</div>
               <div className="text-xl font-bold text-orange-700">
-                {(editedSection.pressure_drop ?? editedSection.pressureDrop ?? 0).toFixed(2)} kPa
+                {liveCalc.totalPressureDrop.toFixed(2)} kPa
               </div>
             </div>
           </div>
