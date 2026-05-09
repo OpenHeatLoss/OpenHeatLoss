@@ -89,3 +89,4 @@ server/server(j).js
 server/server(k).js
 client/src/components/pipesizing/PipeSizing(c).jsx
 server/database(h).js
+client/src/components/pipesizing/PipeSectionEditor(b).jsx

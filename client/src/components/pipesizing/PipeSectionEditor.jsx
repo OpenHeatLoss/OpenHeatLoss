@@ -41,6 +41,10 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     lengthM:               section.length_m ?? section.length ?? 0,
     nominalSize:           section.nominal_size ?? section.diameter ?? '',
     pipeMaterialId:        section.pipe_material_id ?? defaultMaterialId,
+    flowRate:              section.flow_rate ?? section.flowRate ?? 0,
+    heatLoad:              section.heat_load ?? section.heatLoad ?? 0,
+    velocity:              section.velocity ?? 0,
+    pressureDrop:          section.pressure_drop ?? section.pressureDrop ?? 0,
     // fittings on existing sections come from the DB join as an array of objects
     fittings: (section.fittings || []).map(f => ({
       fittingId: f.fittingId ?? f.fitting_id,
