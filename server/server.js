@@ -1300,6 +1300,12 @@ app.post('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) 
     const project = await projects.getById(req.params.id);
     if (!project || !ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const data = normalisePipeSectionBody(req.body);
+    // Set display_order to current max + 1 so new sections always appear at the bottom
+    const maxOrder = await pool.query(
+      'SELECT COALESCE(MAX(display_order), -1) AS max FROM pipe_sections WHERE project_id = $1',
+      [req.params.id]
+    );
+    data.displayOrder = maxOrder.rows[0].max + 1;
     const result = await pipeSections.create(req.params.id, data);
     const sectionId = result.rows[0].id;
     if (Array.isArray(data.fittings)) {
