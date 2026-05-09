@@ -37,6 +37,9 @@ const {
   getProjectForEmitter,
   ownsProject,
   passwordResetTokens,
+  pipeMaterialsLib,
+  fittingsLib,
+  pipeSections,
 } = require('./database');
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
@@ -1103,6 +1106,217 @@ app.get('/api/radiator-specs/:id/usage', async (req, res) => {
   } catch (error) {
     console.error('Error fetching radiator usage:', error);
     res.status(500).json({ error: 'Failed to fetch usage count' });
+  }
+});
+
+// ============================================================
+// PIPE MATERIALS LIBRARY
+// ============================================================
+
+// GET /api/pipe-materials
+// Returns all pipe materials (global + company) with sizes.
+// Also ensures global library rows exist for this company on first load.
+app.get('/api/pipe-materials', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await pipeMaterialsLib.ensureGlobalForCompany(companyId);
+    const materials = await pipeMaterialsLib.getForCompany(companyId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Get pipe materials error:', error);
+    res.status(500).json({ error: 'Failed to fetch pipe materials' });
+  }
+});
+
+// POST /api/pipe-materials
+// Create a company-specific pipe material.
+app.post('/api/pipe-materials', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    const result = await pipeMaterialsLib.create(companyId, req.body);
+    // Add sizes if provided
+    if (Array.isArray(req.body.sizes)) {
+      for (const size of req.body.sizes) {
+        await pipeMaterialsLib.addSize(result.rows[0].id, size);
+      }
+    }
+    const materials = await pipeMaterialsLib.getForCompany(companyId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Create pipe material error:', error);
+    res.status(500).json({ error: 'Failed to create pipe material' });
+  }
+});
+
+// PUT /api/pipe-materials/:id
+app.put('/api/pipe-materials/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await pipeMaterialsLib.update(req.params.id, companyId, req.body);
+    const materials = await pipeMaterialsLib.getForCompany(companyId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Update pipe material error:', error);
+    res.status(500).json({ error: 'Failed to update pipe material' });
+  }
+});
+
+// DELETE /api/pipe-materials/:id
+// Only company-scoped materials can be deleted.
+app.delete('/api/pipe-materials/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await pipeMaterialsLib.delete(req.params.id, companyId);
+    const materials = await pipeMaterialsLib.getForCompany(companyId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Delete pipe material error:', error);
+    res.status(500).json({ error: 'Failed to delete pipe material' });
+  }
+});
+
+// ============================================================
+// FITTINGS LIBRARY
+// ============================================================
+
+// GET /api/fittings
+app.get('/api/fittings', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await fittingsLib.ensureGlobalForCompany(companyId);
+    const fittings = await fittingsLib.getForCompany(companyId);
+    res.json(fittings);
+  } catch (error) {
+    console.error('Get fittings error:', error);
+    res.status(500).json({ error: 'Failed to fetch fittings' });
+  }
+});
+
+// POST /api/fittings
+app.post('/api/fittings', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await fittingsLib.create(companyId, req.body);
+    const fittings = await fittingsLib.getForCompany(companyId);
+    res.json(fittings);
+  } catch (error) {
+    console.error('Create fitting error:', error);
+    res.status(500).json({ error: 'Failed to create fitting' });
+  }
+});
+
+// PUT /api/fittings/:id
+// Updates name, k_value, description, unit_cost.
+// unit_cost updates are allowed on global rows (price is company-specific data).
+app.put('/api/fittings/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    if (req.body.unitCostOnly) {
+      await fittingsLib.updateCost(req.params.id, companyId, req.body.unitCost);
+    } else {
+      await fittingsLib.update(req.params.id, companyId, req.body);
+    }
+    const fittings = await fittingsLib.getForCompany(companyId);
+    res.json(fittings);
+  } catch (error) {
+    console.error('Update fitting error:', error);
+    res.status(500).json({ error: 'Failed to update fitting' });
+  }
+});
+
+// DELETE /api/fittings/:id
+app.delete('/api/fittings/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required' });
+    await fittingsLib.delete(req.params.id, companyId);
+    const fittings = await fittingsLib.getForCompany(companyId);
+    res.json(fittings);
+  } catch (error) {
+    console.error('Delete fitting error:', error);
+    res.status(500).json({ error: 'Failed to delete fitting' });
+  }
+});
+
+// ============================================================
+// PIPE SECTIONS
+// ============================================================
+
+// GET /api/projects/:id/pipe-sections
+app.get('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) => {
+  try {
+    const project = await projects.getById(req.params.id);
+    if (!project || !ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const sections = await pipeSections.getForProject(req.params.id);
+    res.json(sections);
+  } catch (error) {
+    console.error('Get pipe sections error:', error);
+    res.status(500).json({ error: 'Failed to fetch pipe sections' });
+  }
+});
+
+// POST /api/projects/:id/pipe-sections
+app.post('/api/projects/:id/pipe-sections', requireAuthOrAnon, async (req, res) => {
+  try {
+    const project = await projects.getById(req.params.id);
+    if (!project || !ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const result = await pipeSections.create(req.params.id, req.body);
+    const sectionId = result.rows[0].id;
+    if (Array.isArray(req.body.fittings)) {
+      await pipeSections.replaceFittings(sectionId, req.body.fittings);
+    }
+    const sections = await pipeSections.getForProject(req.params.id);
+    res.json(sections);
+  } catch (error) {
+    console.error('Create pipe section error:', error);
+    res.status(500).json({ error: 'Failed to create pipe section' });
+  }
+});
+
+// PUT /api/pipe-sections/:id
+app.put('/api/pipe-sections/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    // Verify ownership via project_id on the section
+    const { rows } = await pool.query(
+      'SELECT project_id FROM pipe_sections WHERE id=$1', [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Section not found' });
+    const project = await projects.getById(rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    await pipeSections.update(req.params.id, rows[0].project_id, req.body);
+    if (Array.isArray(req.body.fittings)) {
+      await pipeSections.replaceFittings(req.params.id, req.body.fittings);
+    }
+    const sections = await pipeSections.getForProject(rows[0].project_id);
+    res.json(sections);
+  } catch (error) {
+    console.error('Update pipe section error:', error);
+    res.status(500).json({ error: 'Failed to update pipe section' });
+  }
+});
+
+// DELETE /api/pipe-sections/:id
+app.delete('/api/pipe-sections/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT project_id FROM pipe_sections WHERE id=$1', [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Section not found' });
+    const project = await projects.getById(rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    await pipeSections.delete(req.params.id, rows[0].project_id);
+    const sections = await pipeSections.getForProject(rows[0].project_id);
+    res.json(sections);
+  } catch (error) {
+    console.error('Delete pipe section error:', error);
+    res.status(500).json({ error: 'Failed to delete pipe section' });
   }
 });
 

@@ -142,8 +142,267 @@ const passwordResetTokens = {
 };
 
 // ---------------------------------------------------------------------------
-// COMPANIES
+// PIPE MATERIALS LIBRARY
 // ---------------------------------------------------------------------------
+const pipeMaterialsLib = {
+  // Get all materials for a company (global seed + company-specific).
+  // Returns materials with their sizes joined as a JSON array.
+  getForCompany: (companyId) =>
+    allQuery(`
+      SELECT
+        pm.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id',               pms.id,
+              'nominalSize',      pms.nominal_size,
+              'externalDiameter', pms.external_diameter,
+              'internalDiameter', pms.internal_diameter,
+              'wallThickness',    pms.wall_thickness,
+              'displayOrder',     pms.display_order
+            ) ORDER BY pms.display_order
+          ) FILTER (WHERE pms.id IS NOT NULL),
+          '[]'
+        ) AS sizes
+      FROM pipe_materials pm
+      LEFT JOIN pipe_material_sizes pms ON pms.pipe_material_id = pm.id
+      WHERE pm.company_id = $1
+         OR pm.company_id = 1
+      GROUP BY pm.id
+      ORDER BY pm.scope DESC, pm.display_order, pm.name
+    `, [companyId]),
+
+  // Ensure global seed rows exist for a company (called on first pipe sizing load).
+  // Copies global rows from company_id=1 to the target company if not already present.
+  ensureGlobalForCompany: async (companyId) => {
+    if (companyId === 1) return; // Already seeded
+    const globals = await allQuery(
+      `SELECT * FROM pipe_materials WHERE company_id = 1 AND scope = 'global'`
+    );
+    for (const mat of globals) {
+      const exists = await getQuery(
+        `SELECT id FROM pipe_materials WHERE company_id = $1 AND material_key = $2`,
+        [companyId, mat.material_key]
+      );
+      if (!exists) {
+        const ins = await query(
+          `INSERT INTO pipe_materials
+             (company_id, scope, material_key, name, description, roughness_mm, max_velocity, display_order)
+           VALUES ($1, 'global', $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [companyId, mat.material_key, mat.name, mat.description, mat.roughness_mm, mat.max_velocity, mat.display_order]
+        );
+        const sizes = await allQuery(
+          `SELECT * FROM pipe_material_sizes WHERE pipe_material_id = $1 ORDER BY display_order`,
+          [mat.id]
+        );
+        for (const s of sizes) {
+          await query(
+            `INSERT INTO pipe_material_sizes
+               (pipe_material_id, nominal_size, external_diameter, internal_diameter, wall_thickness, display_order)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [ins.id, s.nominal_size, s.external_diameter, s.internal_diameter, s.wall_thickness, s.display_order]
+          );
+        }
+      }
+    }
+  },
+
+  create: (companyId, data) =>
+    query(
+      `INSERT INTO pipe_materials
+         (company_id, scope, material_key, name, description, roughness_mm, max_velocity, display_order)
+       VALUES ($1, 'company', $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [companyId, data.materialKey, data.name, data.description, data.roughnessMm, data.maxVelocity, data.displayOrder ?? 99]
+    ),
+
+  addSize: (pipeMaterialId, data) =>
+    runQuery(
+      `INSERT INTO pipe_material_sizes
+         (pipe_material_id, nominal_size, external_diameter, internal_diameter, wall_thickness, display_order)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [pipeMaterialId, data.nominalSize, data.externalDiameter, data.internalDiameter, data.wallThickness, data.displayOrder ?? 0]
+    ),
+
+  update: (id, companyId, data) =>
+    runQuery(
+      `UPDATE pipe_materials
+       SET name=$1, description=$2, roughness_mm=$3, max_velocity=$4
+       WHERE id=$5 AND company_id=$6 AND scope='company'`,
+      [data.name, data.description, data.roughnessMm, data.maxVelocity, id, companyId]
+    ),
+
+  delete: (id, companyId) =>
+    runQuery(
+      `DELETE FROM pipe_materials WHERE id=$1 AND company_id=$2 AND scope='company'`,
+      [id, companyId]
+    ),
+};
+
+// ---------------------------------------------------------------------------
+// FITTINGS LIBRARY
+// ---------------------------------------------------------------------------
+const fittingsLib = {
+  getForCompany: (companyId) =>
+    allQuery(
+      `SELECT * FROM fittings
+       WHERE company_id = $1 OR company_id = 1
+       ORDER BY scope DESC, display_order, name`,
+      [companyId]
+    ),
+
+  ensureGlobalForCompany: async (companyId) => {
+    if (companyId === 1) return;
+    const globals = await allQuery(
+      `SELECT * FROM fittings WHERE company_id = 1 AND scope = 'global'`
+    );
+    for (const f of globals) {
+      await query(
+        `INSERT INTO fittings
+           (company_id, scope, fitting_key, name, k_value, description, display_order)
+         VALUES ($1, 'global', $2, $3, $4, $5, $6)
+         ON CONFLICT (company_id, fitting_key) DO NOTHING`,
+        [companyId, f.fitting_key, f.name, f.k_value, f.description, f.display_order]
+      );
+    }
+  },
+
+  create: (companyId, data) =>
+    query(
+      `INSERT INTO fittings
+         (company_id, scope, fitting_key, name, k_value, description, unit_cost, display_order)
+       VALUES ($1, 'company', $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [companyId, data.fittingKey, data.name, data.kValue, data.description, data.unitCost ?? 0, data.displayOrder ?? 99]
+    ),
+
+  update: (id, companyId, data) =>
+    runQuery(
+      `UPDATE fittings
+       SET name=$1, k_value=$2, description=$3, unit_cost=$4
+       WHERE id=$5 AND company_id=$6`,
+      [data.name, data.kValue, data.description, data.unitCost ?? 0, id, companyId]
+    ),
+
+  // Update unit cost only — allowed on global rows too (price is company-specific)
+  updateCost: (id, companyId, unitCost) =>
+    runQuery(
+      `UPDATE fittings SET unit_cost=$1 WHERE id=$2 AND company_id=$3`,
+      [unitCost, id, companyId]
+    ),
+
+  delete: (id, companyId) =>
+    runQuery(
+      `DELETE FROM fittings WHERE id=$1 AND company_id=$2 AND scope='company'`,
+      [id, companyId]
+    ),
+};
+
+// ---------------------------------------------------------------------------
+// PIPE SECTIONS
+// ---------------------------------------------------------------------------
+const pipeSections = {
+  // Returns all sections for a project with their fittings as a nested JSON array.
+  getForProject: (projectId) =>
+    allQuery(`
+      SELECT
+        ps.*,
+        pm.material_key,
+        pm.name         AS material_name,
+        pm.roughness_mm,
+        pm.max_velocity,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id',         psf.id,
+              'fittingId',  psf.fitting_id,
+              'fittingKey', f.fitting_key,
+              'name',       f.name,
+              'kValue',     f.k_value,
+              'unitCost',   f.unit_cost,
+              'quantity',   psf.quantity
+            ) ORDER BY psf.id
+          ) FILTER (WHERE psf.id IS NOT NULL),
+          '[]'
+        ) AS fittings
+      FROM pipe_sections ps
+      LEFT JOIN pipe_materials pm ON pm.id = ps.pipe_material_id
+      LEFT JOIN pipe_section_fittings psf ON psf.pipe_section_id = ps.id
+      LEFT JOIN fittings f ON f.id = psf.fitting_id
+      WHERE ps.project_id = $1
+      GROUP BY ps.id, pm.id
+      ORDER BY ps.display_order, ps.id
+    `, [projectId]),
+
+  create: (projectId, data) =>
+    query(
+      `INSERT INTO pipe_sections (
+        project_id, pipe_material_id, name, nominal_size, length_m,
+        flow_rate, heat_load, velocity, pressure_drop,
+        straight_pipe_pressure_drop, fittings_pressure_drop,
+        fittings_method, fitting_percentage, water_temperature,
+        use_whole_property, include_in_index_circuit,
+        connected_rooms, display_order
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+      ) RETURNING id`,
+      [
+        projectId, data.pipeMaterialId, data.name, data.nominalSize, data.lengthM,
+        data.flowRate, data.heatLoad, data.velocity, data.pressureDrop,
+        data.straightPipePressureDrop, data.fittingsPressureDrop,
+        data.fittingsMethod, data.fittingPercentage, data.waterTemperature,
+        data.useWholeProperty, data.includeInIndexCircuit,
+        data.connectedRooms ? JSON.stringify(data.connectedRooms) : null,
+        data.displayOrder ?? 0,
+      ]
+    ),
+
+  update: (id, projectId, data) =>
+    runQuery(
+      `UPDATE pipe_sections SET
+        pipe_material_id=$1, name=$2, nominal_size=$3, length_m=$4,
+        flow_rate=$5, heat_load=$6, velocity=$7, pressure_drop=$8,
+        straight_pipe_pressure_drop=$9, fittings_pressure_drop=$10,
+        fittings_method=$11, fitting_percentage=$12, water_temperature=$13,
+        use_whole_property=$14, include_in_index_circuit=$15,
+        connected_rooms=$16, display_order=$17, updated_at=NOW()
+       WHERE id=$18 AND project_id=$19`,
+      [
+        data.pipeMaterialId, data.name, data.nominalSize, data.lengthM,
+        data.flowRate, data.heatLoad, data.velocity, data.pressureDrop,
+        data.straightPipePressureDrop, data.fittingsPressureDrop,
+        data.fittingsMethod, data.fittingPercentage, data.waterTemperature,
+        data.useWholeProperty, data.includeInIndexCircuit,
+        data.connectedRooms ? JSON.stringify(data.connectedRooms) : null,
+        data.displayOrder ?? 0,
+        id, projectId,
+      ]
+    ),
+
+  delete: (id, projectId) =>
+    runQuery(
+      `DELETE FROM pipe_sections WHERE id=$1 AND project_id=$2`,
+      [id, projectId]
+    ),
+
+  // Replace all fittings for a section atomically.
+  // Called after every section save — simpler than diffing individual fittings.
+  replaceFittings: async (pipeSectionId, fittingsArr) => {
+    await query(
+      `DELETE FROM pipe_section_fittings WHERE pipe_section_id=$1`,
+      [pipeSectionId]
+    );
+    for (const f of (fittingsArr || [])) {
+      if (!f.fittingId || f.quantity < 1) continue;
+      await query(
+        `INSERT INTO pipe_section_fittings (pipe_section_id, fitting_id, quantity)
+         VALUES ($1, $2, $3)`,
+        [pipeSectionId, f.fittingId, f.quantity]
+      );
+    }
+  },
+};
 const companies = {
   getById: (id) => getQuery('SELECT * FROM companies WHERE id = $1', [id]),
 
@@ -1032,6 +1291,9 @@ module.exports = {
   getProjectForScheduleItem,
   ownsProject,
   passwordResetTokens,
+  pipeMaterialsLib,
+  fittingsLib,
+  pipeSections,
   // waitForDb is gone — no longer needed with Postgres connection pool.
   // server.js startup sequence is now a simple async IIFE (see migrate.js notes).
 };

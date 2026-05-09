@@ -350,4 +350,82 @@ export const api = {
       body: JSON.stringify({ items }),
     }).then(r => r.json()),
 
+  // ==========================================================
+  // PIPE MATERIALS LIBRARY
+  // ==========================================================
+
+  getPipeMaterials: () =>
+    fetch(`${API_BASE}/pipe-materials`).then(r => r.json()),
+
+  createPipeMaterial: (data) =>
+    fetch(`${API_BASE}/pipe-materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updatePipeMaterial: (id, data) =>
+    fetch(`${API_BASE}/pipe-materials/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deletePipeMaterial: (id) =>
+    fetch(`${API_BASE}/pipe-materials/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  // ==========================================================
+  // FITTINGS LIBRARY
+  // ==========================================================
+
+  getFittings: () =>
+    fetch(`${API_BASE}/fittings`).then(r => r.json()),
+
+  createFitting: (data) =>
+    fetch(`${API_BASE}/fittings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateFitting: (id, data) =>
+    fetch(`${API_BASE}/fittings/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deleteFitting: (id) =>
+    fetch(`${API_BASE}/fittings/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
+  // ==========================================================
+  // PIPE SECTIONS
+  // ==========================================================
+
+  getPipeSections: (projectId) =>
+    fetch(`${API_BASE}/projects/${projectId}/pipe-sections`).then(r => r.json()),
+
+  createPipeSection: (projectId, data) =>
+    fetch(`${API_BASE}/projects/${projectId}/pipe-sections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updatePipeSection: (id, data) =>
+    fetch(`${API_BASE}/pipe-sections/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deletePipeSection: (id) =>
+    fetch(`${API_BASE}/pipe-sections/${id}`, {
+      method: 'DELETE',
+    }).then(r => r.json()),
+
   };

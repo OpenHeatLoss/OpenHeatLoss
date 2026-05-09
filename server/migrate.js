@@ -921,6 +921,386 @@ const MIGRATIONS = [
       console.log('  Added users.is_admin and password_reset_tokens table');
     },
   },
+  {
+    version: '010',
+    description: 'Pipe materials/fittings library; normalise pipe_sections out of design_params JSON blob',
+    run: async () => {
+
+      // ── 1. PIPE MATERIALS ────────────────────────────────────────────────
+      // Company-level pipe material library. scope='global' rows are seeded here
+      // and are read-only in the UI. scope='company' rows are user-created.
+      await query(`
+        CREATE TABLE IF NOT EXISTS pipe_materials (
+          id             SERIAL PRIMARY KEY,
+          company_id     INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          scope          TEXT NOT NULL DEFAULT 'global',
+          material_key   TEXT NOT NULL,
+          name           TEXT NOT NULL,
+          description    TEXT,
+          roughness_mm   REAL NOT NULL DEFAULT 0.0015,
+          max_velocity   REAL NOT NULL DEFAULT 1.5,
+          display_order  INTEGER NOT NULL DEFAULT 0,
+          created_at     TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(company_id, material_key)
+        )
+      `);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS pipe_material_sizes (
+          id               SERIAL PRIMARY KEY,
+          pipe_material_id INTEGER NOT NULL REFERENCES pipe_materials(id) ON DELETE CASCADE,
+          nominal_size     TEXT NOT NULL,
+          external_diameter REAL NOT NULL,
+          internal_diameter REAL NOT NULL,
+          wall_thickness    REAL NOT NULL,
+          display_order     INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      // ── 2. FITTINGS ──────────────────────────────────────────────────────
+      // Company-level fittings library. scope='global' rows seeded here.
+      // unit_cost defaults to 0 — engineer sets prices in Settings.
+      await query(`
+        CREATE TABLE IF NOT EXISTS fittings (
+          id           SERIAL PRIMARY KEY,
+          company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          scope        TEXT NOT NULL DEFAULT 'global',
+          fitting_key  TEXT NOT NULL,
+          name         TEXT NOT NULL,
+          k_value      REAL NOT NULL DEFAULT 0,
+          description  TEXT,
+          unit_cost    REAL NOT NULL DEFAULT 0,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at   TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(company_id, fitting_key)
+        )
+      `);
+
+      // ── 3. PIPE SECTIONS (normalised) ────────────────────────────────────
+      // Replaces the pipe_sections JSONB blob on design_params.
+      // pipe_material_id references the company's pipe_materials table.
+      // connected_rooms stays JSONB — small array, never queried individually.
+      await query(`
+        CREATE TABLE IF NOT EXISTS pipe_sections (
+          id                          SERIAL PRIMARY KEY,
+          project_id                  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          pipe_material_id            INTEGER REFERENCES pipe_materials(id),
+          name                        TEXT,
+          nominal_size                TEXT,
+          length_m                    REAL NOT NULL DEFAULT 0,
+          flow_rate                   REAL NOT NULL DEFAULT 0,
+          heat_load                   REAL NOT NULL DEFAULT 0,
+          velocity                    REAL NOT NULL DEFAULT 0,
+          pressure_drop               REAL NOT NULL DEFAULT 0,
+          straight_pipe_pressure_drop REAL NOT NULL DEFAULT 0,
+          fittings_pressure_drop      REAL NOT NULL DEFAULT 0,
+          fittings_method             TEXT NOT NULL DEFAULT 'percentage',
+          fitting_percentage          REAL NOT NULL DEFAULT 20,
+          water_temperature           REAL NOT NULL DEFAULT 50,
+          use_whole_property          BOOLEAN NOT NULL DEFAULT false,
+          include_in_index_circuit    BOOLEAN NOT NULL DEFAULT false,
+          connected_rooms             JSONB,
+          display_order               INTEGER NOT NULL DEFAULT 0,
+          created_at                  TIMESTAMPTZ DEFAULT NOW(),
+          updated_at                  TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_pipe_sections_project
+          ON pipe_sections (project_id)
+      `);
+
+      // ── 4. PIPE SECTION FITTINGS ─────────────────────────────────────────
+      // Child rows per pipe section. References fittings table for K-value
+      // and unit_cost lookups. quantity stored here.
+      await query(`
+        CREATE TABLE IF NOT EXISTS pipe_section_fittings (
+          id              SERIAL PRIMARY KEY,
+          pipe_section_id INTEGER NOT NULL REFERENCES pipe_sections(id) ON DELETE CASCADE,
+          fitting_id      INTEGER NOT NULL REFERENCES fittings(id),
+          quantity        INTEGER NOT NULL DEFAULT 1,
+          created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      // ── 5. SEED GLOBAL PIPE MATERIALS for company_id = 1 ────────────────
+      // Seeds from the static pipeMaterialData.js data.
+      // Other companies get their global rows when they first load pipe sizing
+      // (server-side ensureCompanyLibraries helper — see server.js).
+      const pipeMaterialSeed = [
+        {
+          key: 'copper_tableX', name: 'Copper (Table X)',
+          description: 'Half-hard copper to BS EN 1057',
+          roughness: 0.0015, maxVel: 1.5, order: 1,
+          sizes: [
+            { nom: '10mm', od: 10, id: 8.0,  wt: 1.0 },
+            { nom: '15mm', od: 15, id: 13.0, wt: 1.0 },
+            { nom: '22mm', od: 22, id: 20.0, wt: 1.0 },
+            { nom: '28mm', od: 28, id: 26.0, wt: 1.0 },
+            { nom: '35mm', od: 35, id: 33.0, wt: 1.0 },
+            { nom: '42mm', od: 42, id: 40.0, wt: 1.0 },
+            { nom: '54mm', od: 54, id: 52.0, wt: 1.0 },
+          ],
+        },
+        {
+          key: 'copper_tableY', name: 'Copper (Table Y)',
+          description: 'Thin wall copper to BS EN 1057',
+          roughness: 0.0015, maxVel: 1.5, order: 2,
+          sizes: [
+            { nom: '10mm', od: 10, id: 8.8,  wt: 0.6 },
+            { nom: '15mm', od: 15, id: 13.6, wt: 0.7 },
+            { nom: '22mm', od: 22, id: 20.2, wt: 0.9 },
+            { nom: '28mm', od: 28, id: 26.2, wt: 0.9 },
+            { nom: '35mm', od: 35, id: 33.2, wt: 0.9 },
+            { nom: '42mm', od: 42, id: 40.0, wt: 1.0 },
+            { nom: '54mm', od: 54, id: 51.6, wt: 1.2 },
+          ],
+        },
+        {
+          key: 'polybutylene', name: 'Polybutylene (Pipelife)',
+          description: 'Polybutylene barrier pipe',
+          roughness: 0.0007, maxVel: 1.5, order: 3,
+          sizes: [
+            { nom: '10mm', od: 10, id: 6.7,  wt: 1.65 },
+            { nom: '15mm', od: 15, id: 11.7, wt: 1.65 },
+            { nom: '22mm', od: 22, id: 17.7, wt: 2.15 },
+            { nom: '28mm', od: 28, id: 22.5, wt: 2.75 },
+          ],
+        },
+        {
+          key: 'mlcp', name: 'MLCP (Multi-Layer Composite)',
+          description: 'PEX/AL/PEX multilayer composite pipe',
+          roughness: 0.0007, maxVel: 1.2, order: 4,
+          sizes: [
+            { nom: '16mm', od: 16, id: 12.0, wt: 2.0 },
+            { nom: '20mm', od: 20, id: 16.0, wt: 2.0 },
+            { nom: '26mm', od: 26, id: 20.0, wt: 3.0 },
+            { nom: '32mm', od: 32, id: 26.0, wt: 3.0 },
+          ],
+        },
+        {
+          key: 'pex', name: 'PEX (Cross-linked Polyethylene)',
+          description: 'PEX barrier pipe',
+          roughness: 0.0007, maxVel: 1.0, order: 5,
+          sizes: [
+            { nom: '16mm', od: 16, id: 12.0, wt: 2.0 },
+            { nom: '20mm', od: 20, id: 16.0, wt: 2.0 },
+            { nom: '25mm', od: 25, id: 20.4, wt: 2.3 },
+            { nom: '32mm', od: 32, id: 26.0, wt: 3.0 },
+          ],
+        },
+      ];
+
+      for (const mat of pipeMaterialSeed) {
+        const existing = await query(
+          `SELECT id FROM pipe_materials WHERE company_id = 1 AND material_key = $1`,
+          [mat.key]
+        );
+        let matId;
+        if (existing.rows.length > 0) {
+          matId = existing.rows[0].id;
+        } else {
+          const ins = await query(
+            `INSERT INTO pipe_materials
+               (company_id, scope, material_key, name, description, roughness_mm, max_velocity, display_order)
+             VALUES (1, 'global', $1, $2, $3, $4, $5, $6)
+             RETURNING id`,
+            [mat.key, mat.name, mat.description, mat.roughness, mat.maxVel, mat.order]
+          );
+          matId = ins.rows[0].id;
+        }
+        // Seed sizes if not already present
+        const sizeCount = await query(
+          `SELECT COUNT(*) FROM pipe_material_sizes WHERE pipe_material_id = $1`, [matId]
+        );
+        if (parseInt(sizeCount.rows[0].count) === 0) {
+          for (let i = 0; i < mat.sizes.length; i++) {
+            const s = mat.sizes[i];
+            await query(
+              `INSERT INTO pipe_material_sizes
+                 (pipe_material_id, nominal_size, external_diameter, internal_diameter, wall_thickness, display_order)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [matId, s.nom, s.od, s.id, s.wt, i]
+            );
+          }
+        }
+      }
+      console.log('  Seeded global pipe materials for company_id = 1');
+
+      // ── 6. SEED GLOBAL FITTINGS for company_id = 1 ──────────────────────
+      const fittingSeed = [
+        { key: 'elbow_90',                  name: '90° Elbow',                        k: 0.9,  desc: 'Standard 90° bend',             order: 1  },
+        { key: 'elbow_45',                  name: '45° Elbow',                        k: 0.4,  desc: 'Standard 45° bend',             order: 2  },
+        { key: 'tee_through',               name: 'Tee (Straight Through)',            k: 0.6,  desc: 'Flow straight through tee',     order: 3  },
+        { key: 'tee_branch',                name: 'Tee (Branch)',                      k: 1.8,  desc: 'Flow through branch of tee',    order: 4  },
+        { key: 'gate_valve',                name: 'Gate Valve (Fully Open)',           k: 0.2,  desc: 'Fully open gate valve',         order: 5  },
+        { key: 'ball_valve',                name: 'Ball Valve (Fully Open)',           k: 0.05, desc: 'Fully open ball valve',         order: 6  },
+        { key: 'check_valve',               name: 'Check Valve',                       k: 2.0,  desc: 'Spring-loaded check valve',     order: 7  },
+        { key: 'reducer',                   name: 'Reducer',                           k: 0.5,  desc: 'Gradual reducer',               order: 8  },
+        { key: 'coupling',                  name: 'Coupling',                          k: 0.08, desc: 'Straight coupling',             order: 9  },
+        { key: 'radiator_valve_trv',        name: 'TRV (Thermostatic Radiator Valve)', k: 1.7,  desc: 'TRV fully open',               order: 10 },
+        { key: 'radiator_valve_lockshield', name: 'Lockshield Valve',                  k: 0.5,  desc: 'Lockshield valve fully open',  order: 11 },
+        { key: 'manifold_port',             name: 'Manifold Port',                     k: 1.2,  desc: 'Single manifold outlet',       order: 12 },
+        { key: 'y_strainer',                name: 'Y-Strainer',                        k: 1.5,  desc: 'Clean Y-strainer',             order: 13 },
+      ];
+
+      for (const f of fittingSeed) {
+        await query(
+          `INSERT INTO fittings (company_id, scope, fitting_key, name, k_value, description, display_order)
+           VALUES (1, 'global', $1, $2, $3, $4, $5)
+           ON CONFLICT (company_id, fitting_key) DO NOTHING`,
+          [f.key, f.name, f.k, f.desc, f.order]
+        );
+      }
+      console.log('  Seeded global fittings for company_id = 1');
+
+      // ── 7. MIGRATE EXISTING PIPE SECTIONS FROM JSON BLOB ────────────────
+      // Read pipe_sections JSON from design_params for every project.
+      // Resolve material key → pipe_material_id (via company's library).
+      // Resolve fitting type → fitting_id (via company's library).
+      // Legacy aliases: mlcp_riifo, mlcp_maincor → mlcp.
+      // If a material key cannot be resolved, default to copper_tableX and log.
+
+      const LEGACY_MATERIAL_MAP = {
+        mlcp_riifo:   'mlcp',
+        mlcp_maincor: 'mlcp',
+      };
+
+      const projects = await query(`
+        SELECT p.id AS project_id, p.company_id, dp.pipe_sections
+        FROM projects p
+        JOIN design_params dp ON dp.project_id = p.id
+        WHERE dp.pipe_sections IS NOT NULL
+          AND dp.pipe_sections != 'null'
+          AND dp.pipe_sections != '[]'
+      `);
+
+      let migratedProjects = 0;
+      let migratedSections = 0;
+      let warnings = 0;
+
+      for (const proj of projects.rows) {
+        let sections = proj.pipe_sections;
+        if (typeof sections === 'string') {
+          try { sections = JSON.parse(sections); } catch { continue; }
+        }
+        if (!Array.isArray(sections) || sections.length === 0) continue;
+
+        const companyId = proj.company_id;
+
+        for (let i = 0; i < sections.length; i++) {
+          const sec = sections[i];
+
+          // Resolve material key → pipe_material_id
+          let materialKey = sec.material || 'copper_tableX';
+          if (LEGACY_MATERIAL_MAP[materialKey]) materialKey = LEGACY_MATERIAL_MAP[materialKey];
+
+          const matRow = await query(
+            `SELECT id FROM pipe_materials WHERE company_id = $1 AND material_key = $2`,
+            [companyId, materialKey]
+          );
+
+          let pipeMaterialId = null;
+          if (matRow.rows.length > 0) {
+            pipeMaterialId = matRow.rows[0].id;
+          } else {
+            // Fall back to company_id=1 global library (in case company libs not yet seeded)
+            const fallback = await query(
+              `SELECT id FROM pipe_materials WHERE company_id = 1 AND material_key = $1`,
+              [materialKey]
+            );
+            if (fallback.rows.length > 0) {
+              pipeMaterialId = fallback.rows[0].id;
+            } else {
+              // Last resort: copper_tableX from company 1
+              const copper = await query(
+                `SELECT id FROM pipe_materials WHERE company_id = 1 AND material_key = 'copper_tableX'`
+              );
+              pipeMaterialId = copper.rows[0]?.id ?? null;
+              console.warn(`    ⚠ Project ${proj.project_id} section "${sec.name}": material "${sec.material}" not found, defaulted to copper_tableX`);
+              warnings++;
+            }
+          }
+
+          // Insert pipe section
+          const secIns = await query(
+            `INSERT INTO pipe_sections (
+              project_id, pipe_material_id, name, nominal_size, length_m,
+              flow_rate, heat_load, velocity, pressure_drop,
+              straight_pipe_pressure_drop, fittings_pressure_drop,
+              fittings_method, fitting_percentage, water_temperature,
+              use_whole_property, include_in_index_circuit,
+              connected_rooms, display_order
+            ) VALUES (
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+            ) RETURNING id`,
+            [
+              proj.project_id,
+              pipeMaterialId,
+              sec.name || null,
+              sec.diameter || null,
+              sec.length || 0,
+              sec.flowRate || 0,
+              sec.heatLoad || 0,
+              sec.velocity || 0,
+              sec.pressureDrop || 0,
+              sec.straightPipePressureDrop || 0,
+              sec.fittingsPressureDrop || 0,
+              sec.fittingsMethod || 'percentage',
+              sec.fittingPercentage || 20,
+              sec.waterTemperature || 50,
+              sec.useWholeProperty ? true : false,
+              sec.includeInIndexCircuit ? true : false,
+              sec.connectedRooms ? JSON.stringify(sec.connectedRooms) : null,
+              i,
+            ]
+          );
+
+          const pipeSectionId = secIns.rows[0].id;
+
+          // Migrate fittings (only if fittingsMethod === 'detailed')
+          if (sec.fittingsMethod === 'detailed' && Array.isArray(sec.fittings)) {
+            for (const fitting of sec.fittings) {
+              const fRow = await query(
+                `SELECT id FROM fittings WHERE company_id = $1 AND fitting_key = $2`,
+                [companyId, fitting.type]
+              );
+              let fittingId = fRow.rows[0]?.id;
+              if (!fittingId) {
+                // Try global (company 1)
+                const fGlobal = await query(
+                  `SELECT id FROM fittings WHERE company_id = 1 AND fitting_key = $1`,
+                  [fitting.type]
+                );
+                fittingId = fGlobal.rows[0]?.id;
+              }
+              if (fittingId && fitting.quantity > 0) {
+                await query(
+                  `INSERT INTO pipe_section_fittings (pipe_section_id, fitting_id, quantity)
+                   VALUES ($1, $2, $3)`,
+                  [pipeSectionId, fittingId, fitting.quantity]
+                );
+              }
+            }
+          }
+
+          migratedSections++;
+        }
+
+        // Null out the blob — keep column for one release as safety net
+        await query(
+          `UPDATE design_params SET pipe_sections = NULL WHERE project_id = $1`,
+          [proj.project_id]
+        );
+
+        migratedProjects++;
+      }
+
+      console.log(`  Migrated ${migratedSections} pipe sections from ${migratedProjects} projects`);
+      if (warnings > 0) console.warn(`  ⚠ ${warnings} sections had unresolved materials — defaulted to copper_tableX`);
+    },
+  },
 ];
 
 async function runMigrations() {

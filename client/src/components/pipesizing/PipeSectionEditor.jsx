@@ -1,19 +1,63 @@
 // client/src/components/pipesizing/PipeSectionEditor.jsx
+// Receives pipeMaterials and fittings from project state (DB-sourced) rather than
+// importing static files. The static pipeMaterialData.js calculation functions are
+// still used for pressure drop — they accept raw property values, so no change needed.
 import { useState } from 'react';
-import { PIPE_MATERIALS, calculatePressureDrop, getPipeSize, suggestPipeSize, calculateFlowRate } from '../../utils/pipeMaterialData';
-import { FITTINGS_DATABASE, calculateFittingsPressureDrop, calculateFittingsAllowance, getAllFittingTypes } from '../../utils/fittingsDatabase';
+import { calculatePressureDrop, getPipeSize, suggestPipeSize, calculateFlowRate } from '../../utils/pipeMaterialData';
+import { calculateFittingsPressureDrop, calculateFittingsAllowance } from '../../utils/fittingsDatabase';
 import { calculateRoomTotal } from '../../utils/calculations';
 
-export default function PipeSectionEditor({ section, project, rooms, onSave, onCancel }) {
-  const [editedSection, setEditedSection] = useState(section || {
+export default function PipeSectionEditor({ section, project, rooms, pipeMaterials, fittings, onSave, onCancel }) {
+  // Build a lookup from material_key to material object (with sizes array)
+  // so the calculation functions can still use key-based lookups.
+  const materialsByKey = {};
+  for (const m of (pipeMaterials || [])) {
+    materialsByKey[m.material_key] = m;
+  }
+
+  // Find the default material (first in list, or copper_tableX fallback)
+  const defaultMaterial = pipeMaterials?.[0];
+  const defaultMaterialId = defaultMaterial?.id ?? null;
+  const defaultMaterialKey = defaultMaterial?.material_key ?? 'copper_tableX';
+
+  // When editing an existing section, resolve its pipe_material_id to an object.
+  // New sections default to the first available material.
+  const resolveInitialMaterial = () => {
+    if (section?.pipe_material_id) {
+      return pipeMaterials?.find(m => m.id === section.pipe_material_id) ?? defaultMaterial;
+    }
+    return defaultMaterial;
+  };
+
+  const [editedSection, setEditedSection] = useState(section ? {
+    ...section,
+    // Normalise DB field names to camelCase for the editor
+    includeInIndexCircuit: section.include_in_index_circuit ?? false,
+    useWholeProperty:      section.use_whole_property ?? false,
+    connectedRooms:        section.connected_rooms ?? [],
+    fittingsMethod:        section.fittings_method ?? 'percentage',
+    fittingPercentage:     section.fitting_percentage ?? 20,
+    waterTemperature:      section.water_temperature ?? 50,
+    lengthM:               section.length_m ?? section.length ?? 0,
+    nominalSize:           section.nominal_size ?? section.diameter ?? '',
+    pipeMaterialId:        section.pipe_material_id ?? defaultMaterialId,
+    // fittings on existing sections come from the DB join as an array of objects
+    fittings: (section.fittings || []).map(f => ({
+      fittingId: f.fittingId ?? f.fitting_id,
+      fittingKey: f.fittingKey ?? f.fitting_key,
+      name: f.name,
+      kValue: f.kValue ?? f.k_value,
+      quantity: f.quantity,
+    })),
+  } : {
     name: '',
     useWholeProperty: false,
     connectedRooms: [],
     heatLoad: 0,
     flowRate: 0,
-    material: 'copper_tableX',
-    diameter: '22mm',
-    length: 0,
+    pipeMaterialId: defaultMaterialId,
+    nominalSize: defaultMaterial?.sizes?.[1]?.nominalSize ?? '',
+    lengthM: 0,
     waterTemperature: 50,
     fittingsMethod: 'percentage',
     fittingPercentage: 20,
@@ -21,44 +65,28 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
     velocity: 0,
     pressureDrop: 0,
     straightPipePressureDrop: 0,
-    fittingsPressureDrop: 0
+    fittingsPressureDrop: 0,
+    includeInIndexCircuit: false,
   });
+
+  // Currently selected material object
+  const selectedMaterial = pipeMaterials?.find(m => m.id === editedSection.pipeMaterialId) ?? defaultMaterial;
+  const availableSizes = selectedMaterial?.sizes ?? [];
 
   // Get design delta T from project
   const designDeltaT = (project.designFlowTemp || 50) - (project.designReturnTemp || 40);
 
-  // Available pipe sizes for selected material
-  const availableSizes = PIPE_MATERIALS[editedSection.material]?.sizes || [];
-
   const handleChange = (field, value) => {
-    setEditedSection(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setEditedSection(prev => ({ ...prev, [field]: value }));
   };
 
   const handleWholePropertyToggle = (checked) => {
     if (checked) {
-      // Use heat pump output
       const heatLoad = project.heatPumpRatedOutput || 0;
       const flowRate = calculateFlowRate(heatLoad, designDeltaT);
-      
-      setEditedSection(prev => ({
-        ...prev,
-        useWholeProperty: true,
-        connectedRooms: [],
-        heatLoad: heatLoad,
-        flowRate: flowRate
-      }));
+      setEditedSection(prev => ({ ...prev, useWholeProperty: true, connectedRooms: [], heatLoad, flowRate }));
     } else {
-      // Reset to room selection
-      setEditedSection(prev => ({
-        ...prev,
-        useWholeProperty: false,
-        connectedRooms: [],
-        heatLoad: 0,
-        flowRate: 0
-      }));
+      setEditedSection(prev => ({ ...prev, useWholeProperty: false, connectedRooms: [], heatLoad: 0, flowRate: 0 }));
     }
   };
 
@@ -67,122 +95,134 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
     const newRooms = connectedRooms.includes(roomId)
       ? connectedRooms.filter(id => id !== roomId)
       : [...connectedRooms, roomId];
-    
-    // Calculate total heat load from connected rooms
-    // calculateRoomTotal returns Watts — convert to kW for flow rate calculation
     const totalHeatLoad = newRooms.reduce((sum, id) => {
       const room = rooms.find(r => r.id === id);
       if (!room) return sum;
       return sum + (calculateRoomTotal(room, project) / 1000);
     }, 0);
-    
-    // Calculate flow rate based on heat load
     const flowRate = calculateFlowRate(totalHeatLoad, designDeltaT);
-    
-    setEditedSection(prev => ({
-      ...prev,
-      connectedRooms: newRooms,
-      heatLoad: totalHeatLoad,
-      flowRate: flowRate,
-      useWholeProperty: false
-    }));
+    setEditedSection(prev => ({ ...prev, connectedRooms: newRooms, heatLoad: totalHeatLoad, flowRate, useWholeProperty: false }));
   };
 
-  const handleMaterialChange = (material) => {
-    const suggestion = suggestPipeSize(editedSection.flowRate, material);
-    setEditedSection(prev => ({
-      ...prev,
-      material: material,
-      diameter: suggestion.size
-    }));
+  const handleMaterialChange = (pipeMaterialId) => {
+    const mat = pipeMaterials?.find(m => m.id === parseInt(pipeMaterialId));
+    if (!mat) return;
+    // Build a temporary PIPE_MATERIALS-compatible object for suggestPipeSize
+    const matCompat = {
+      sizes: mat.sizes.map(s => ({ nominalSize: s.nominalSize, internalDiameter: s.internalDiameter })),
+      maxVelocity: mat.max_velocity,
+      roughness: mat.roughness_mm,
+    };
+    // Suggest a size based on current flow rate
+    let suggestedSize = mat.sizes[1]?.nominalSize ?? mat.sizes[0]?.nominalSize ?? '';
+    if (editedSection.flowRate > 0) {
+      for (const size of mat.sizes) {
+        const D = size.internalDiameter / 1000;
+        const A = Math.PI * Math.pow(D / 2, 2);
+        const v = (editedSection.flowRate / 1000) / A;
+        if (v <= mat.max_velocity) { suggestedSize = size.nominalSize; break; }
+      }
+    }
+    setEditedSection(prev => ({ ...prev, pipeMaterialId: parseInt(pipeMaterialId), nominalSize: suggestedSize }));
   };
 
   const handleAddFitting = () => {
-    const newFitting = {
-      type: 'elbow_90',
-      quantity: 1
-    };
+    const firstFitting = fittings?.[0];
+    if (!firstFitting) return;
     setEditedSection(prev => ({
       ...prev,
-      fittings: [...(prev.fittings || []), newFitting]
+      fittings: [...(prev.fittings || []), { fittingId: firstFitting.id, fittingKey: firstFitting.fitting_key, name: firstFitting.name, kValue: firstFitting.k_value, quantity: 1 }],
     }));
   };
 
   const handleUpdateFitting = (index, field, value) => {
     const updatedFittings = [...editedSection.fittings];
-    updatedFittings[index] = {
-      ...updatedFittings[index],
-      [field]: field === 'quantity' ? parseInt(value) || 0 : value
-    };
-    setEditedSection(prev => ({
-      ...prev,
-      fittings: updatedFittings
-    }));
+    if (field === 'fittingId') {
+      const f = fittings?.find(f => f.id === parseInt(value));
+      updatedFittings[index] = { ...updatedFittings[index], fittingId: parseInt(value), fittingKey: f?.fitting_key, name: f?.name, kValue: f?.k_value };
+    } else if (field === 'quantity') {
+      updatedFittings[index] = { ...updatedFittings[index], quantity: parseInt(value) || 0 };
+    }
+    setEditedSection(prev => ({ ...prev, fittings: updatedFittings }));
   };
 
   const handleDeleteFitting = (index) => {
-    setEditedSection(prev => ({
-      ...prev,
-      fittings: prev.fittings.filter((_, i) => i !== index)
-    }));
+    setEditedSection(prev => ({ ...prev, fittings: prev.fittings.filter((_, i) => i !== index) }));
   };
 
   const calculateAndSave = () => {
-    // Validate
-    if (!editedSection.length || editedSection.length <= 0) {
-      alert('Please enter a pipe length');
-      return;
+    if (!editedSection.lengthM || editedSection.lengthM <= 0) {
+      alert('Please enter a pipe length'); return;
     }
-    
     if (!editedSection.useWholeProperty && (!editedSection.connectedRooms || editedSection.connectedRooms.length === 0)) {
-      alert('Please select either "Use full heat pump output" or choose rooms to feed');
-      return;
+      alert('Please select either "Use full heat pump output" or choose rooms to feed'); return;
     }
 
-    // Get pipe size details
-    const pipeSize = getPipeSize(editedSection.diameter, editedSection.material);
-    if (!pipeSize) {
-      alert('Invalid pipe size selected');
-      return;
-    }
+    const mat = selectedMaterial;
+    if (!mat) { alert('Please select a pipe material'); return; }
 
-    // Calculate straight pipe pressure drop
+    const size = mat.sizes?.find(s => s.nominalSize === editedSection.nominalSize);
+    if (!size) { alert('Invalid pipe size selected'); return; }
+
+    // Use Darcy-Weisbach via calculatePressureDrop — pass internal diameter directly
     const straightResult = calculatePressureDrop(
       editedSection.flowRate,
-      pipeSize.internalDiameter,
-      editedSection.length,
-      editedSection.material,
-      editedSection.waterTemperature || 50 // Use selected temperature
+      size.internalDiameter,
+      editedSection.lengthM,
+      mat.material_key,
+      editedSection.waterTemperature || 50,
     );
 
     let fittingsPressureDrop = 0;
-
     if (editedSection.fittingsMethod === 'percentage') {
-      fittingsPressureDrop = calculateFittingsAllowance(
-        straightResult.pressureDrop,
-        editedSection.fittingPercentage
-      );
+      fittingsPressureDrop = calculateFittingsAllowance(straightResult.pressureDrop, editedSection.fittingPercentage);
     } else {
+      // Build K-value array from selected fittings
+      const fittingsList = (editedSection.fittings || []).map(f => ({ type: f.fittingKey, quantity: f.quantity, kValue: f.kValue }));
+      fittingsPressureDrop = fittingsList.reduce((sum, f) => sum + (f.kValue * f.quantity), 0);
+      fittingsPressureDrop = fittingsPressureDrop * (mat.max_velocity ? straightResult.velocity ** 2 / 2 : 0);
+      // Re-use calculateFittingsPressureDrop with adapted format
       fittingsPressureDrop = calculateFittingsPressureDrop(
         straightResult.velocity,
-        editedSection.fittings || []
+        (editedSection.fittings || []).map(f => ({ type: f.fittingKey, quantity: f.quantity }))
       );
     }
 
-    const totalPressureDrop = straightResult.pressureDrop + fittingsPressureDrop;
-
     onSave({
       ...editedSection,
-      velocity: straightResult.velocity,
-      straightPipePressureDrop: straightResult.pressureDrop,
-      fittingsPressureDrop: fittingsPressureDrop,
-      pressureDrop: totalPressureDrop,
-      isVelocityOK: straightResult.isVelocityOK,
-      maxVelocity: straightResult.maxVelocity
+      // Ensure DB field names are correct on save
+      pipe_material_id:            editedSection.pipeMaterialId,
+      nominal_size:                editedSection.nominalSize,
+      length_m:                    editedSection.lengthM,
+      use_whole_property:          editedSection.useWholeProperty,
+      include_in_index_circuit:    editedSection.includeInIndexCircuit,
+      connected_rooms:             editedSection.connectedRooms,
+      fittings_method:             editedSection.fittingsMethod,
+      fitting_percentage:          editedSection.fittingPercentage,
+      water_temperature:           editedSection.waterTemperature,
+      velocity:                    straightResult.velocity,
+      straight_pipe_pressure_drop: straightResult.pressureDrop,
+      fittings_pressure_drop:      fittingsPressureDrop,
+      pressure_drop:               straightResult.pressureDrop + fittingsPressureDrop,
+      isVelocityOK:                straightResult.isVelocityOK,
+      maxVelocity:                 straightResult.maxVelocity,
     });
   };
 
-  const suggestion = suggestPipeSize(editedSection.flowRate, editedSection.material);
+  // Pipe size suggestion for the currently selected material
+  const suggestSize = () => {
+    const mat = selectedMaterial;
+    if (!mat || !editedSection.flowRate) return null;
+    for (const size of (mat.sizes || [])) {
+      const D = size.internalDiameter / 1000;
+      const A = Math.PI * Math.pow(D / 2, 2);
+      const v = (editedSection.flowRate / 1000) / A;
+      if (v <= mat.max_velocity) return { size: size.nominalSize, velocity: v, isAcceptable: true };
+    }
+    const last = mat.sizes?.[mat.sizes.length - 1];
+    return last ? { size: last.nominalSize, isAcceptable: false } : null;
+  };
+  const suggestion = suggestSize();
 
   return (
     <div className="border-2 border-blue-500 rounded-lg p-6 bg-blue-50 space-y-6">
@@ -364,13 +404,13 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
           <div>
             <label className="block text-sm font-semibold mb-1">Pipe Material</label>
             <select
-              value={editedSection.material}
+              value={editedSection.pipeMaterialId || ''}
               onChange={(e) => handleMaterialChange(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 py-2"
             >
-              {Object.keys(PIPE_MATERIALS).map(key => (
-                <option key={key} value={key}>
-                  {PIPE_MATERIALS[key].name}
+              {(pipeMaterials || []).map(mat => (
+                <option key={mat.id} value={mat.id}>
+                  {mat.name}{mat.scope === 'global' ? '' : ' ★'}
                 </option>
               ))}
             </select>
@@ -379,8 +419,8 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
           <div>
             <label className="block text-sm font-semibold mb-1">Diameter</label>
             <select
-              value={editedSection.diameter}
-              onChange={(e) => handleChange('diameter', e.target.value)}
+              value={editedSection.nominalSize || ''}
+              onChange={(e) => handleChange('nominalSize', e.target.value)}
               className="w-full border border-gray-300 rounded px-3 py-2"
             >
               {availableSizes.map(size => (
@@ -397,8 +437,8 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
               type="number"
               step="0.1"
               min="0"
-              value={editedSection.length || ''}
-              onChange={(e) => handleChange('length', parseFloat(e.target.value) || 0)}
+              value={editedSection.lengthM || ''}
+              onChange={(e) => handleChange('lengthM', parseFloat(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2"
             />
           </div>
@@ -504,13 +544,13 @@ export default function PipeSectionEditor({ section, project, rooms, onSave, onC
                 {editedSection.fittings.map((fitting, index) => (
                   <div key={index} className="flex items-center gap-2 bg-gray-50 p-2 rounded">
                     <select
-                      value={fitting.type}
-                      onChange={(e) => handleUpdateFitting(index, 'type', e.target.value)}
+                      value={fitting.fittingId || ''}
+                      onChange={(e) => handleUpdateFitting(index, 'fittingId', e.target.value)}
                       className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
                     >
-                      {getAllFittingTypes().map(type => (
-                        <option key={type.id} value={type.id}>
-                          {type.name} (K={type.kValue})
+                      {(fittings || []).map(f => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} (K={f.k_value})
                         </option>
                       ))}
                     </select>

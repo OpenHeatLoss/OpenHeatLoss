@@ -4,41 +4,12 @@ import PipeSectionEditor from './PipeSectionEditor';
 import { PIPE_MATERIALS } from '../../utils/pipeMaterialData';
 import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
 
-export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSave }) {
-  const [sections, setSections] = useState(() => {
-    if (!project.pipeSections) return [];
-    if (Array.isArray(project.pipeSections)) return project.pipeSections;
-    // Handle case where it might be a JSON string
-    if (typeof project.pipeSections === 'string') {
-      try {
-        const parsed = JSON.parse(project.pipeSections);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-  
-  // Sync sections when project.pipeSections changes (e.g., when loading a different project)
-  useEffect(() => {
-    let newSections = [];
-    
-    if (project.pipeSections) {
-      if (Array.isArray(project.pipeSections)) {
-        newSections = project.pipeSections;
-      } else if (typeof project.pipeSections === 'string') {
-        try {
-          const parsed = JSON.parse(project.pipeSections);
-          newSections = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          newSections = [];
-        }
-      }
-    }
-    
-    setSections(newSections);
-  }, [project.pipeSections]);
+export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSave }) {
+  // Pipe sections now come from project.pipeSections (loaded from DB via loadProject).
+  // No local useState for sections — project state is the single source of truth.
+  const sections = project.pipeSections || [];
+  const pipeMaterials = project.pipeMaterials || [];
+  const fittings = project.fittings || [];
   
   const [editingSection, setEditingSection] = useState(null);
   const [editingSectionIndex, setEditingSectionIndex] = useState(null);
@@ -59,20 +30,8 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSa
   };
 
   const handleSaveSection = (updatedSection) => {
-    let updatedSections;
-    
-    if (editingSectionIndex !== null) {
-      // Update existing section
-      updatedSections = [...sections];
-      updatedSections[editingSectionIndex] = updatedSection;
-    } else {
-      // Add new section
-      updatedSections = [...sections, updatedSection];
-    }
-    
-    setSections(updatedSections);
-    onUpdate('pipeSections', updatedSections);
-    onSavePipeSections?.(updatedSections);
+    const mode = (editingSectionIndex !== null && updatedSection.id) ? 'update' : 'create';
+    onSavePipeSection?.(updatedSection, mode);
     setShowSectionEditor(false);
     setEditingSection(null);
     setEditingSectionIndex(null);
@@ -85,24 +44,21 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSa
   };
 
   const handleDeleteSection = (index) => {
+    const section = sections[index];
+    if (!section) return;
     if (confirm('Are you sure you want to delete this pipe section?')) {
-      const updatedSections = sections.filter((_, i) => i !== index);
-      setSections(updatedSections);
-      onUpdate('pipeSections', updatedSections);
-      onSavePipeSections?.(updatedSections);
+      onSavePipeSection?.(section, 'delete');
     }
   };
 
-  // Toggle index circuit inclusion for a section
+  // Toggle index circuit inclusion — updates via normalised API
   const toggleIndexCircuitInclusion = (index) => {
-    const updatedSections = [...sections];
-    updatedSections[index] = {
-      ...updatedSections[index],
-      includeInIndexCircuit: !updatedSections[index].includeInIndexCircuit
-    };
-    setSections(updatedSections);
-    onUpdate('pipeSections', updatedSections);
-    onSavePipeSections?.(updatedSections);
+    const section = sections[index];
+    if (!section) return;
+    onSavePipeSection?.({
+      ...section,
+      includeInIndexCircuit: !section.include_in_index_circuit,
+    }, 'update');
   };
 
   // Export pipe sizing report as PDF
@@ -261,6 +217,8 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSa
           section={editingSection}
           project={project}
           rooms={project.rooms || []}
+          pipeMaterials={pipeMaterials}
+          fittings={fittings}
           onSave={handleSaveSection}
           onCancel={handleCancelSection}
         />
@@ -430,6 +388,8 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSections, onSa
               section={null}
               project={project}
               rooms={project.rooms || []}
+              pipeMaterials={pipeMaterials}
+              fittings={fittings}
               onSave={handleSaveSection}
               onCancel={handleCancelSection}
             />

@@ -100,22 +100,37 @@ export function calculateSystemVolume(project) {
 
   // ── 2. Pipework ───────────────────────────────────────────────────────────
   // Each section: volume = π r² × length, where r = internal_diameter / 2.
-  // Pipe lengths are stored in metres.
+  // Pipe lengths are stored in metres (length_m from DB, legacy: length).
+  // Material internal diameter comes from the DB join (via material_key lookup
+  // or directly from the sizes array on the section if available).
   let pipeworkLitres = 0;
   const pipeworkBreakdown = [];
 
   for (const section of pipeSections) {
-    const idMm   = getPipeInternalDiameterMm(section.material, section.diameter);
-    const length = section.length || 0;
-    if (idMm <= 0 || length <= 0) continue;
+    // Support both DB field names (length_m, nominal_size, material_key)
+    // and legacy camelCase names (length, diameter, material) for compatibility.
+    const lengthM = section.length_m ?? section.length ?? 0;
+    const nominalSize = section.nominal_size ?? section.diameter ?? '';
+    const materialKey = section.material_key ?? section.material ?? 'copper_tableX';
 
-    // Multiply by 2 for flow + return leg. Pipe length entered by the user
-    // is the single-pipe run — the system contains both flow and return.
-    const litres   = cylinderVolumeLitres(idMm, length) * 2;
+    // Try to get internal diameter from the section's joined material data first,
+    // then fall back to the static PIPE_MATERIALS lookup.
+    let idMm = 0;
+    if (section.sizes && Array.isArray(section.sizes)) {
+      const sizeRow = section.sizes.find(s => s.nominalSize === nominalSize);
+      if (sizeRow) idMm = sizeRow.internalDiameter;
+    }
+    if (!idMm) {
+      idMm = getPipeInternalDiameterMm(materialKey, nominalSize);
+    }
+
+    if (idMm <= 0 || lengthM <= 0) continue;
+
+    const litres = cylinderVolumeLitres(idMm, lengthM) * 2;
     pipeworkLitres += litres;
 
     pipeworkBreakdown.push({
-      name:   `${section.name || 'Section'} — ${section.diameter} × ${length}m (flow + return)`,
+      name: `${section.name || 'Section'} — ${nominalSize} × ${lengthM}m (flow + return)`,
       litres,
     });
   }

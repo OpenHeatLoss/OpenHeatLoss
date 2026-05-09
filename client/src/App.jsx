@@ -15,7 +15,6 @@ import MCS031PerformanceEstimator from './components/mcs/MCS031PerformanceEstima
 import MCS020SoundCalculator from './components/mcs/MCS020SoundCalculator';
 import QuoteBuilder from './components/quote/QuoteBuilder';
 import SettingsPage from './components/settings/SettingsPage';
-import AdminPage from './components/admin/AdminPage';
 import { getMCSDataFromPostcode } from './utils/mcsData';
 
 function App() {
@@ -29,12 +28,11 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan, isAdmin }
+  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan }
   const [currentCompany, setCurrentCompany] = useState(null); // { id, name, mcs_number, ... }
   const [showAuthModal, setShowAuthModal] = useState(null);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [resetToken, setResetToken] = useState(null); // set from ?reset= query param on load
 
   // Derived: pro and beta users can access the project dashboard.
   // Set plan = 'beta' in Railway Postgres to grant early-access engineers dashboard access.
@@ -45,17 +43,6 @@ function App() {
   // 2. If yes  → load their most recent project, registered mode
   // 3. If no   → check for / create anonymous session project
   useEffect(() => {
-    // Check for password reset link (?reset=TOKEN) before anything else.
-    // If present, open the reset modal immediately — user doesn't need to be logged in.
-    const params = new URLSearchParams(window.location.search);
-    const resetParam = params.get('reset');
-    if (resetParam) {
-      setResetToken(resetParam);
-      // Clean the token from the URL so it doesn't persist on refresh
-      window.history.replaceState({}, '', window.location.pathname);
-      // Still run the boot sequence so the rest of the app initialises normally
-    }
-
     const boot = async () => {
       try {
         // Step 1: are we already authenticated?
@@ -460,6 +447,27 @@ function App() {
     }
     setCurrentProject(project);
     if (!preserveTab) setActiveTab('project');
+
+    // Load pipe sections, pipe materials and fittings separately from their
+    // new normalised tables. These are parallel fetches — independent of getProject.
+    // Only load for registered users (anonymous users don't have company context for libraries).
+    if (currentUser) {
+      try {
+        const [sectionsData, materialsData, fittingsData] = await Promise.all([
+          api.getPipeSections(id),
+          api.getPipeMaterials(),
+          api.getFittings(),
+        ]);
+        setCurrentProject(prev => ({
+          ...prev,
+          pipeSections:  Array.isArray(sectionsData)  ? sectionsData  : [],
+          pipeMaterials: Array.isArray(materialsData)  ? materialsData : [],
+          fittings:      Array.isArray(fittingsData)   ? fittingsData  : [],
+        }));
+      } catch (err) {
+        console.error('Failed to load pipe data:', err);
+      }
+    }
     } catch (error) {
             console.error('Error loading project:', error);
       }
@@ -591,7 +599,7 @@ function App() {
       mcsSoundAssessments:    currentProject.mcsSoundAssessments    || [],
       mcsSoundSnapshot:       currentProject.mcsSoundSnapshot       || null,
       mcsCalculationSnapshot: currentProject.mcsCalculationSnapshot || null,
-      pipeSections:           currentProject.pipeSections           || [],
+      pipeSections:           null,   // now managed via /api/pipe-sections — not stored in design_params
       circuits:               currentProject.circuits               || null,
       heatPumpManufacturer:   currentProject.heatPumpManufacturer,
       heatPumpModel:          currentProject.heatPumpModel,
@@ -1109,16 +1117,24 @@ const deleteProject = async (id) => {
     }
   };
 
-  // Persists pipeSections immediately so loadProject calls from other tabs
-  // don't reset sections the user has just added or edited.
-  const savePipeSections = async (pipeSections) => {
+  // savePipeSection — persists a single pipe section to the normalised pipe_sections table.
+  // Called by PipeSizing after every add/edit/delete. Returns the updated sections array.
+  // The sections array in React state is updated by reloading from the server response.
+  const savePipeSection = async (sectionData, mode = 'create') => {
     try {
-      await api.updateDesignParams(currentProject.id, {
-        ...currentProject,
-        pipeSections,
-      });
+      let updatedSections;
+      if (mode === 'create') {
+        updatedSections = await api.createPipeSection(currentProject.id, sectionData);
+      } else if (mode === 'update') {
+        updatedSections = await api.updatePipeSection(sectionData.id, sectionData);
+      } else if (mode === 'delete') {
+        updatedSections = await api.deletePipeSection(sectionData.id);
+      }
+      if (Array.isArray(updatedSections)) {
+        setCurrentProject(prev => ({ ...prev, pipeSections: updatedSections }));
+      }
     } catch (error) {
-      console.error('Error saving pipe sections:', error);
+      console.error('Error saving pipe section:', error);
     }
   };
 
@@ -1221,20 +1237,9 @@ const deleteProject = async (id) => {
     }
   };
 
-  const [showAdmin, setShowAdmin] = useState(false);
-
   if (showSettings) {
     return (
       <SettingsPage onBack={() => setShowSettings(false)} onDeleteProject={handleDeleteProject} />
-    );
-  }
-
-  if (showAdmin && currentUser?.isAdmin) {
-    return (
-      <AdminPage
-        currentUser={currentUser}
-        onBack={() => setShowAdmin(false)}
-      />
     );
   }
 
@@ -1260,14 +1265,6 @@ const deleteProject = async (id) => {
                 </div>
               </div>
               <div className="flex gap-3 items-center">
-                {currentUser?.isAdmin && (
-                  <button
-                    onClick={() => setShowAdmin(true)}
-                    className="bg-red-700 text-white py-2 px-4 rounded-lg hover:bg-red-800 text-sm font-semibold transition"
-                  >
-                    ⚙ Admin
-                  </button>
-                )}
                 <button
                   onClick={() => setShowSettings(true)}
                   className="bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-800 text-sm font-semibold transition"
@@ -1634,7 +1631,7 @@ const deleteProject = async (id) => {
               />
             )}
             {activeTab === 'pipe-sizing' && (
-              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSections={savePipeSections} onSave={saveDesignParams} />
+              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSection={savePipeSection} onSave={saveDesignParams} />
             )}
             {activeTab === 'quote' && (
               <QuoteBuilder project={currentProject} />
@@ -1683,23 +1680,15 @@ const deleteProject = async (id) => {
           onClose={() => setShowAuthModal(null)}
         />
       )}
-
-      {/* Password reset modal — shown when user arrives via ?reset=TOKEN link */}
-      {resetToken && (
-        <ResetPasswordModal
-          token={resetToken}
-          onClose={() => setResetToken(null)}
-          onSuccess={() => { setResetToken(null); setAuthError(''); setShowAuthModal('login'); }}
-        />
-      )}
     </div>
   );
 }
 
 // =============================================================================
 // AUTH MODAL
-// Handles register and login modes. Kept in App.jsx — small and tightly
-// coupled to auth state. Forgot password flow handled by ForgotPasswordModal.
+// Handles both register and login in a single component, toggled by `mode`.
+// Kept in App.jsx to avoid an extra file — it's small and tightly coupled
+// to the auth state that lives here.
 // =============================================================================
 function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, onClose }) {
   const [name, setName]         = useState('');
@@ -1707,7 +1696,6 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
   const [password, setPassword] = useState('');
   const [confirm, setConfirm]   = useState('');
   const [localError, setLocalError] = useState('');
-  const [showForgot, setShowForgot] = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -1727,10 +1715,6 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
   };
 
   const displayError = localError || error;
-
-  if (showForgot) {
-    return <ForgotPasswordModal onBack={() => setShowForgot(false)} onClose={onClose} />;
-  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1825,17 +1809,6 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
               ? (isRegister ? 'Creating account…' : 'Logging in…')
               : (isRegister ? 'Create account & save project' : 'Log in')}
           </button>
-
-          {!isRegister && (
-            <p className="text-center">
-              <button
-                onClick={() => setShowForgot(true)}
-                className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition"
-              >
-                Forgot your password?
-              </button>
-            </p>
-          )}
         </div>
 
         {/* Footer — switch mode */}
@@ -1859,184 +1832,6 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
               </button>
             </>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// FORGOT PASSWORD MODAL
-// Shown when user clicks "Forgot your password?" in login mode.
-// Always shows a success message (prevents email enumeration).
-// =============================================================================
-function ForgotPasswordModal({ onBack, onClose }) {
-  const [email, setEmail]     = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent]       = useState(false);
-  const [error, setError]     = useState('');
-
-  const handleSubmit = async () => {
-    if (!email.trim()) { setError('Please enter your email address'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      setSent(true);
-    } catch {
-      setError('Network error — please try again');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-bold text-gray-900">Reset your password</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-        </div>
-        <div className="p-6 space-y-4">
-          {sent ? (
-            <div className="text-center space-y-3">
-              <div className="text-4xl">✉️</div>
-              <p className="font-semibold text-gray-900">Check your inbox</p>
-              <p className="text-sm text-gray-500">
-                If an account exists for that email, we've sent a reset link.
-                It expires in 1 hour.
-              </p>
-              <button
-                onClick={onClose}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition"
-              >
-                Done
-              </button>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm text-gray-600">
-                Enter your email address and we'll send you a link to reset your password.
-              </p>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Email address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  placeholder="jane@example.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
-                />
-              </div>
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-                  {error}
-                </div>
-              )}
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition"
-              >
-                {loading ? 'Sending…' : 'Send reset link'}
-              </button>
-              <p className="text-center">
-                <button onClick={onBack} className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition">
-                  ← Back to log in
-                </button>
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// RESET PASSWORD MODAL
-// Shown when user arrives via ?reset=TOKEN link.
-// Token is passed in from App state; on success the modal closes and
-// the login modal opens so they can immediately sign in.
-// =============================================================================
-function ResetPasswordModal({ token, onClose, onSuccess }) {
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm]   = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-
-  const handleSubmit = async () => {
-    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
-    if (password !== confirm) { setError('Passwords do not match'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Reset failed — the link may have expired'); return; }
-      onSuccess();
-    } catch {
-      setError('Network error — please try again');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Set a new password</h2>
-            <p className="text-sm text-gray-500 mt-1">Choose something secure — at least 8 characters.</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">New password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm new password</label>
-            <input
-              type="password"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              placeholder="Repeat password"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition"
-          >
-            {loading ? 'Saving…' : 'Set new password'}
-          </button>
         </div>
       </div>
     </div>
