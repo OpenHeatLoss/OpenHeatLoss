@@ -1601,7 +1601,7 @@ const MIGRATIONS = [
         FROM projects p
         LEFT JOIN clients c           ON c.id = p.client_id
         LEFT JOIN project_addresses pa ON pa.project_id = p.id
-                                       AND pa.is_primary = TRUE
+                                       AND pa.is_primary = 1
         LEFT JOIN addresses a          ON a.id = pa.address_id
         LEFT JOIN design_params dp     ON dp.project_id = p.id
         LEFT JOIN commissioning com    ON com.project_id = p.id
