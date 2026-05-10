@@ -1498,6 +1498,119 @@ const MIGRATIONS = [
       console.log('  Migration 011 complete: materials library, job materials, quote snapshots, labour rate card');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // MIGRATION 012 — BUS Grant lifecycle tracking on projects
+  //
+  // Adds eight columns to `projects` covering the full BUS Grant workflow:
+  //   application_made → approved (voucher + expiry) → redemption_made
+  //   → redeemed (paid date + actual amount)
+  //
+  // Also rebuilds v_project_dashboard to surface grant status/expiry so the
+  // dashboard card can show the right badge without a separate query.
+  // ---------------------------------------------------------------------------
+  {
+    version: '012',
+    description: 'BUS Grant lifecycle tracking on projects',
+    run: async () => {
+
+      // Grant status: one of the five lifecycle states.
+      // not_applicable is the default — no badge shown on dashboard card.
+      await addColumnIfMissing('projects', 'bus_grant_status',
+        `TEXT NOT NULL DEFAULT 'not_applicable'`);
+
+      // Expected grant amount — entered by engineer at application time.
+      // Stored separately from the actual paid amount so variance is visible.
+      await addColumnIfMissing('projects', 'bus_grant_amount',
+        'DOUBLE PRECISION');
+
+      // Ofgem/MCS voucher reference — populated when status = approved.
+      await addColumnIfMissing('projects', 'bus_grant_voucher_ref',
+        'TEXT');
+
+      // Voucher expiry date — 3 months from approval in practice.
+      // Dashboard shows a warning badge if approved and expiry is within 30 days.
+      await addColumnIfMissing('projects', 'bus_grant_voucher_expiry',
+        'DATE');
+
+      // Date the post-commissioning redemption application was submitted.
+      await addColumnIfMissing('projects', 'bus_grant_redemption_date',
+        'DATE');
+
+      // Date the grant payment was received.
+      await addColumnIfMissing('projects', 'bus_grant_paid_date',
+        'DATE');
+
+      // Actual amount received — may differ from bus_grant_amount (e.g. partial
+      // payment, or if the grant value changed between application and redemption).
+      await addColumnIfMissing('projects', 'bus_grant_paid_amount',
+        'DOUBLE PRECISION');
+
+      // Free-text notes — e.g. which Ofgem portal, contact name, any issues.
+      await addColumnIfMissing('projects', 'bus_grant_notes',
+        'TEXT');
+
+      // Rebuild v_project_dashboard to include grant fields.
+      // We DROP and recreate — views are schema objects, not data, so this is safe.
+      // The installation address join is corrected to use project_addresses (not
+      // client_addresses) so postcode reflects the installation site, not the
+      // client's home address.
+      await query(`DROP VIEW IF EXISTS v_project_dashboard`);
+      await query(`
+        CREATE VIEW v_project_dashboard AS
+        SELECT
+          p.id                                          AS project_id,
+          p.name                                        AS project_name,
+          p.status,
+          p.company_id,
+          p.client_id,
+          p.created_at,
+          p.updated_at,
+          c.first_name || ' ' || c.surname              AS client_name,
+          c.email,
+          c.telephone,
+          a.postcode,
+          a.address_line_1,
+          a.town,
+          dp.heat_pump_manufacturer || ' ' ||
+            COALESCE(dp.heat_pump_model, '')             AS heat_pump,
+          dp.design_flow_temp,
+          dp.heat_pump_rated_output,
+          (SELECT COUNT(*) FROM rooms r
+           WHERE r.project_id = p.id)                   AS room_count,
+          (SELECT q.reference FROM quotes q
+           WHERE q.project_id = p.id
+           ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_ref,
+          (SELECT q.status FROM quotes q
+           WHERE q.project_id = p.id
+           ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_status,
+          (SELECT q.client_pays FROM quotes q
+           WHERE q.project_id = p.id
+           ORDER BY q.created_at DESC LIMIT 1)          AS latest_quote_value,
+          CASE WHEN com.id IS NOT NULL THEN 1 ELSE 0
+          END                                           AS is_commissioned,
+          com.mcs_certificate_number,
+          p.bus_grant_status,
+          p.bus_grant_amount,
+          p.bus_grant_voucher_ref,
+          p.bus_grant_voucher_expiry,
+          p.bus_grant_redemption_date,
+          p.bus_grant_paid_date,
+          p.bus_grant_paid_amount,
+          p.bus_grant_notes
+        FROM projects p
+        LEFT JOIN clients c           ON c.id = p.client_id
+        LEFT JOIN project_addresses pa ON pa.project_id = p.id
+                                       AND pa.is_primary = TRUE
+        LEFT JOIN addresses a          ON a.id = pa.address_id
+        LEFT JOIN design_params dp     ON dp.project_id = p.id
+        LEFT JOIN commissioning com    ON com.project_id = p.id
+        ORDER BY p.updated_at DESC
+      `);
+
+      console.log('  Migration 012 complete: BUS Grant lifecycle columns + dashboard view rebuilt');
+    },
+  },
 ];
 
 async function runMigrations() {
