@@ -104,6 +104,182 @@ function AddressFields({ values, onChange, showWhat3words = false }) {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// BUS Grant lifecycle section
+// ---------------------------------------------------------------------------
+
+const BUS_GRANT_STATUSES = [
+  { value: 'not_applicable',   label: 'Not applicable',         colour: 'gray'   },
+  { value: 'application_made', label: 'Application made',       colour: 'amber'  },
+  { value: 'approved',         label: 'Approved — work can commence', colour: 'green'  },
+  { value: 'redemption_made',  label: 'Redemption application made', colour: 'blue'   },
+  { value: 'redeemed',         label: 'Redeemed',               colour: 'green'  },
+];
+
+function BusGrantSection({ project, onUpdate }) {
+  const status = project.busGrantStatus || 'not_applicable';
+  const isActive = status !== 'not_applicable';
+
+  const inputClass = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const labelClass = 'block text-sm font-semibold mb-1';
+
+  // Expiry warning — amber if within 30 days, red if past
+  let expiryWarning = null;
+  if (status === 'approved' && project.busGrantVoucherExpiry) {
+    const expiry = new Date(project.busGrantVoucherExpiry);
+    const today  = new Date();
+    const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) {
+      expiryWarning = { type: 'red',   text: `Voucher expired ${Math.abs(daysLeft)} days ago — contact Ofgem immediately` };
+    } else if (daysLeft <= 30) {
+      expiryWarning = { type: 'amber', text: `Voucher expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''} — installation must be completed` };
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 pb-2 border-b-2 border-gray-300">
+        <h2 className="text-xl font-bold">BUS Grant</h2>
+        {isActive && (
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded ${
+            status === 'redeemed'        ? 'bg-green-100 text-green-800' :
+            status === 'approved'        ? 'bg-green-100 text-green-700' :
+            status === 'redemption_made' ? 'bg-blue-100 text-blue-700'  :
+            status === 'application_made'? 'bg-amber-100 text-amber-800' :
+            'bg-gray-100 text-gray-600'
+          }`}>
+            {BUS_GRANT_STATUSES.find(s => s.value === status)?.label || status}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Status */}
+        <div className="col-span-2">
+          <label className={labelClass}>Grant status</label>
+          <select
+            value={status}
+            onChange={e => onUpdate('busGrantStatus', e.target.value)}
+            className={inputClass}
+          >
+            {BUS_GRANT_STATUSES.map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Expected grant amount — shown for all active statuses */}
+        {isActive && (
+          <div>
+            <label className={labelClass}>Expected grant amount £</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={project.busGrantAmount ?? ''}
+              onChange={e => onUpdate('busGrantAmount', parseFloat(e.target.value) || null)}
+              placeholder="e.g. 7500"
+              className={inputClass}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter the amount as confirmed in your Ofgem application.
+            </p>
+          </div>
+        )}
+
+        {/* Voucher fields — shown from approved onwards */}
+        {(status === 'approved' || status === 'redemption_made' || status === 'redeemed') && (
+          <>
+            <div>
+              <label className={labelClass}>Voucher reference</label>
+              <input
+                type="text"
+                value={project.busGrantVoucherRef || ''}
+                onChange={e => onUpdate('busGrantVoucherRef', e.target.value)}
+                placeholder="Ofgem voucher number"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Voucher expiry date</label>
+              <input
+                type="date"
+                value={project.busGrantVoucherExpiry || ''}
+                onChange={e => onUpdate('busGrantVoucherExpiry', e.target.value)}
+                className={inputClass}
+              />
+              {expiryWarning && (
+                <p className={`text-xs mt-1 font-medium ${expiryWarning.type === 'red' ? 'text-red-600' : 'text-amber-600'}`}>
+                  ⚠ {expiryWarning.text}
+                </p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Redemption date — shown from redemption_made onwards */}
+        {(status === 'redemption_made' || status === 'redeemed') && (
+          <div>
+            <label className={labelClass}>Redemption application date</label>
+            <input
+              type="date"
+              value={project.busGrantRedemptionDate || ''}
+              onChange={e => onUpdate('busGrantRedemptionDate', e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        )}
+
+        {/* Paid fields — shown only when redeemed */}
+        {status === 'redeemed' && (
+          <>
+            <div>
+              <label className={labelClass}>Date payment received</label>
+              <input
+                type="date"
+                value={project.busGrantPaidDate || ''}
+                onChange={e => onUpdate('busGrantPaidDate', e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Amount received £</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={project.busGrantPaidAmount ?? ''}
+                onChange={e => onUpdate('busGrantPaidAmount', parseFloat(e.target.value) || null)}
+                className={inputClass}
+              />
+              {project.busGrantAmount && project.busGrantPaidAmount &&
+               project.busGrantPaidAmount !== project.busGrantAmount && (
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠ Differs from expected amount (£{project.busGrantAmount.toFixed(2)})
+                </p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Notes — shown for all active statuses */}
+        {isActive && (
+          <div className="col-span-2">
+            <label className={labelClass}>Grant notes</label>
+            <textarea
+              rows={2}
+              value={project.busGrantNotes || ''}
+              onChange={e => onUpdate('busGrantNotes', e.target.value)}
+              placeholder="Ofgem portal login, contact name, any issues..."
+              className={`${inputClass} resize-none`}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey }) {
 
   // ── Customer contact details ──────────────────────────────────────────────
@@ -467,6 +643,9 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdate
           }
         />
       </div>
+
+      {/* ── BUS Grant ───────────────────────────────────────────────── */}
+      <BusGrantSection project={project} onUpdate={onUpdate} />
 
       {/* ── Design Parameters ───────────────────────────────────────── */}
       <div>

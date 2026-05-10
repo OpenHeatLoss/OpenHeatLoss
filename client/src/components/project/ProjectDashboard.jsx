@@ -77,6 +77,43 @@ function StatusBadge({ status }) {
   );
 }
 
+// Grant status badge — only shown when grant is active
+function GrantBadge({ project }) {
+  const status  = project.bus_grant_status;
+  if (!status || status === 'not_applicable') return null;
+
+  // Expiry warning calculation
+  let expiryUrgent = false;
+  let expiryLabel  = '';
+  if (status === 'approved' && project.bus_grant_voucher_expiry) {
+    const daysLeft = Math.ceil(
+      (new Date(project.bus_grant_voucher_expiry) - new Date()) / (1000 * 60 * 60 * 24)
+    );
+    if (daysLeft < 0) {
+      expiryUrgent = true;
+      expiryLabel  = ' · EXPIRED';
+    } else if (daysLeft <= 30) {
+      expiryUrgent = true;
+      expiryLabel  = ` · ${daysLeft}d`;
+    }
+  }
+
+  const config = {
+    application_made: { label: 'BUS: Applied',       cls: 'bg-amber-100 text-amber-800' },
+    approved:         { label: `BUS: Approved${expiryLabel}`, cls: expiryUrgent ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700' },
+    redemption_made:  { label: 'BUS: Redemption',    cls: 'bg-blue-100 text-blue-700'   },
+    redeemed:         { label: 'BUS: Redeemed ✓',    cls: 'bg-green-100 text-green-800' },
+  }[status];
+
+  if (!config) return null;
+
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded ${config.cls}`}>
+      {config.label}
+    </span>
+  );
+}
+
 // Individual project card within a pipeline column
 function ProjectCard({ project, onOpen, onStatusChange }) {
   const projectName = project.project_name || '—';
@@ -98,10 +135,15 @@ function ProjectCard({ project, onOpen, onStatusChange }) {
       </div>
 
       {/* Client name, postcode and heat pump model if known */}
-      <div className="text-xs text-gray-500 mb-3">
+      <div className="text-xs text-gray-500 mb-2">
         {clientName && <span>{clientName} · </span>}
         {postcode}
         {heatPump && <span> · {heatPump}</span>}
+      </div>
+
+      {/* Grant badge — only rendered when grant is active */}
+      <div className="mb-2">
+        <GrantBadge project={project} />
       </div>
 
       {/* Bottom row: updated date, status changer, open button */}

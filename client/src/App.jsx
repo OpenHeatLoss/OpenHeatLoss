@@ -204,6 +204,16 @@ function App() {
       designer: data.designer || '',
       briefNotes: data.brief_notes || '',
 
+      // BUS Grant lifecycle (migration 012)
+      busGrantStatus:         data.bus_grant_status          || 'not_applicable',
+      busGrantAmount:         data.bus_grant_amount          ?? null,
+      busGrantVoucherRef:     data.bus_grant_voucher_ref     || '',
+      busGrantVoucherExpiry:  data.bus_grant_voucher_expiry  || '',
+      busGrantRedemptionDate: data.bus_grant_redemption_date || '',
+      busGrantPaidDate:       data.bus_grant_paid_date       || '',
+      busGrantPaidAmount:     data.bus_grant_paid_amount     ?? null,
+      busGrantNotes:          data.bus_grant_notes           || '',
+
       // Client
       clientId:          cl.id || null,
       customerTitle:     cl.title || '',
@@ -535,6 +545,14 @@ function App() {
       status:     currentProject.status,
       designer:   currentProject.designer,
       briefNotes: currentProject.briefNotes,
+      busGrantStatus:         currentProject.busGrantStatus,
+      busGrantAmount:         currentProject.busGrantAmount,
+      busGrantVoucherRef:     currentProject.busGrantVoucherRef,
+      busGrantVoucherExpiry:  currentProject.busGrantVoucherExpiry,
+      busGrantRedemptionDate: currentProject.busGrantRedemptionDate,
+      busGrantPaidDate:       currentProject.busGrantPaidDate,
+      busGrantPaidAmount:     currentProject.busGrantPaidAmount,
+      busGrantNotes:          currentProject.busGrantNotes,
     });
 
     // Save 2: client fields (if client is linked)

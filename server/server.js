@@ -765,7 +765,7 @@ app.post('/api/projects', requireAuthOrAnon, async (req, res) => {
   }
 });
 
-// Update project core fields (name, status, designer, brief_notes)
+// Update project core fields (name, status, designer, brief_notes, BUS grant lifecycle)
 app.put('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
   try {
     await projects.update(req.params.id, req.body);

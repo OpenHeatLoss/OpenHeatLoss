@@ -108,3 +108,9 @@ client/src/components/quote/QuoteBuilder(c).jsx
 client/src/components/quote/QuoteBuilder(d).jsx
 client/src/components/quote/QuoteBuilder(e).jsx
 server/migrate(j).js
+client/src/App(m).jsx
+client/src/components/project/ProjectDashboard(a).jsx
+client/src/components/project/ProjectInfo(b).jsx
+client/src/components/quote/QuoteBuilder(f).jsx
+server/database(k).js
+server/server(o).js

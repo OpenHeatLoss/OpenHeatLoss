@@ -24,8 +24,6 @@ const PRICING_MODES = [
   { value: 'flat',      label: 'Flat figure' },
 ];
 
-const BUS_GRANT = 7500;
-
 const VAT_OPTIONS = [
   { value: 0,  label: '0% — domestic heat pump installation' },
   { value: 5,  label: '5%' },
@@ -465,6 +463,7 @@ function QuoteSummary({
   depositAmount, setDepositAmount,
   advanceAmount, setAdvanceAmount,
   hourlyRate, setHourlyRate,
+  busGrant,
 }) {
   const rows = CATEGORIES.map(cat => {
     const materialsTotal = categorySubtotal(materials, cat.key);
@@ -477,7 +476,7 @@ function QuoteSummary({
   const totalExVat  = rows.reduce((s, r) => s + r.quotePrice, 0);
   const vatAmount   = totalExVat * (vatRate / 100);
   const totalIncVat = totalExVat + vatAmount;
-  const clientPays  = Math.max(0, totalIncVat - BUS_GRANT);
+  const clientPays  = Math.max(0, totalIncVat - busGrant);
 
   const max25Pct    = totalIncVat * 0.25;
   const max60Pct    = totalIncVat * 0.60;
@@ -611,10 +610,12 @@ function QuoteSummary({
               <span>£{row.value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           ))}
-          <div className="flex justify-between text-sm text-green-700">
-            <span>BUS grant (ASHP)</span>
-            <span>− £{BUS_GRANT.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
-          </div>
+          {busGrant > 0 && (
+            <div className="flex justify-between text-sm text-green-700">
+              <span>BUS grant</span>
+              <span>− £{busGrant.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-base text-blue-700 pt-1 border-t border-gray-200">
             <span>Client pays</span>
             <span>£{clientPays.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1127,7 +1128,9 @@ export default function QuoteBuilder({ project }) {
       const totalExVat  = rows.reduce((s, v) => s + v, 0);
       const vatAmount   = totalExVat * (vatRate / 100);
       const totalIncVat = totalExVat + vatAmount;
-      const clientPays  = Math.max(0, totalIncVat - BUS_GRANT);
+      const busGrantAmt = project.busGrantStatus !== 'not_applicable'
+        ? (project.busGrantAmount || 0) : 0;
+      const clientPays  = Math.max(0, totalIncVat - busGrantAmt);
 
       // Build category_overrides object — only store non-null overrides
       const overridesForSave = {};
@@ -1143,7 +1146,7 @@ export default function QuoteBuilder({ project }) {
         totalExVat,
         vatAmount,
         totalIncVat,
-        busGrant:           BUS_GRANT,
+        busGrant:           busGrantAmt,
         clientPays,
         depositAmount,
         hourlyRate,
@@ -1319,7 +1322,9 @@ export default function QuoteBuilder({ project }) {
     const totalExVat  = rows.reduce((s, v) => s + v, 0);
     const vatAmount   = totalExVat * (vatRate / 100);
     const totalIncVat = totalExVat + vatAmount;
-    const clientPays  = Math.max(0, totalIncVat - BUS_GRANT);
+    const busGrantAmt = project.busGrantStatus !== 'not_applicable'
+      ? (project.busGrantAmount || 0) : 0;
+    const clientPays  = Math.max(0, totalIncVat - busGrantAmt);
 
     const snapshotData = {
       quote: { reference, preparedBy, markupPct, surveyBasis, validDays },
@@ -1342,7 +1347,7 @@ export default function QuoteBuilder({ project }) {
         exVat:     totalExVat,
         vatAmount,
         incVat:    totalIncVat,
-        busGrant:  BUS_GRANT,
+        busGrant:  busGrantAmt,
         clientPays,
       },
     };
@@ -1513,6 +1518,9 @@ export default function QuoteBuilder({ project }) {
         setAdvanceAmount={setAdvanceAmount}
         hourlyRate={hourlyRate}
         setHourlyRate={setHourlyRate}
+        busGrant={project.busGrantStatus !== 'not_applicable' && project.busGrantStatus
+          ? (project.busGrantAmount || 0)
+          : 0}
       />
 
       {/* ── SNAPSHOT HISTORY ── */}

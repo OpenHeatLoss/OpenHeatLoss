@@ -664,9 +664,31 @@ const projects = {
   update: (id, data) => runQuery(`
     UPDATE projects
     SET name = $1, status = $2, designer = $3, brief_notes = $4,
+        bus_grant_status         = $5,
+        bus_grant_amount         = $6,
+        bus_grant_voucher_ref    = $7,
+        bus_grant_voucher_expiry = $8,
+        bus_grant_redemption_date= $9,
+        bus_grant_paid_date      = $10,
+        bus_grant_paid_amount    = $11,
+        bus_grant_notes          = $12,
         updated_at = NOW()
-    WHERE id = $5`,
-    [data.name, data.status, data.designer, data.briefNotes, id]
+    WHERE id = $13`,
+    [
+      data.name,
+      data.status,
+      data.designer,
+      data.briefNotes,
+      data.busGrantStatus          || 'not_applicable',
+      data.busGrantAmount          ?? null,
+      data.busGrantVoucherRef      || null,
+      data.busGrantVoucherExpiry   || null,
+      data.busGrantRedemptionDate  || null,
+      data.busGrantPaidDate        || null,
+      data.busGrantPaidAmount      ?? null,
+      data.busGrantNotes           || null,
+      id,
+    ]
   ),
 
   delete: (id) => runQuery('DELETE FROM projects WHERE id = $1', [id]),
