@@ -277,23 +277,43 @@ function MaterialsCategory({
   category, items, libraryItems, rateCard, onAddItem, onAddFromLibrary,
   onAddFromRateCard, onUpdate, onDelete, onSaveToLibrary, defaultOpen,
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? false);
+  const [open,        setOpen]        = useState(defaultOpen ?? false);
+  const [showLibPick, setShowLibPick] = useState(false);
+  const [showRcPick,  setShowRcPick]  = useState(false);
+
   const catItems = items.filter(m => m.parent_category === category.key);
   const subtotal = catItems.reduce((s, m) => s + (m.total_cost || 0), 0);
 
-  // Build rate card quick-add options for labour categories:
-  // Day rate and hourly rate as synthetic items, plus all standard task items.
+  const catLibItems   = libraryItems.filter(l => l.category_key === category.key);
   const rateCardOptions = (category.itemType === 'labour' && rateCard) ? [
-    ...(rateCard.day_rate  > 0 ? [{ description: 'Day rate',    unit: 'day',  rate: rateCard.day_rate  }] : []),
+    ...(rateCard.day_rate    > 0 ? [{ description: 'Day rate',    unit: 'day',  rate: rateCard.day_rate    }] : []),
     ...(rateCard.hourly_rate > 0 ? [{ description: 'Hourly rate', unit: 'hour', rate: rateCard.hourly_rate }] : []),
     ...(Array.isArray(rateCard.items) ? rateCard.items : []),
   ] : [];
+
+  // Close pickers when category collapses
+  const handleToggleOpen = () => {
+    setOpen(o => {
+      if (o) { setShowLibPick(false); setShowRcPick(false); }
+      return !o;
+    });
+  };
+
+  const handlePickLib = (item) => {
+    onAddFromLibrary(category.key, item);
+    setShowLibPick(false);
+  };
+
+  const handlePickRc = (item) => {
+    onAddFromRateCard(category.key, item);
+    setShowRcPick(false);
+  };
 
   return (
     <div className="border border-gray-200 rounded-lg mb-2">
       {/* Category header */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={handleToggleOpen}
         className={`w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left ${open ? 'rounded-t-lg' : 'rounded-lg'}`}
       >
         <div className="flex items-center gap-3">
@@ -316,7 +336,7 @@ function MaterialsCategory({
       </button>
 
       {open && (
-        <div className="bg-white">
+        <div className="bg-white rounded-b-lg">
           {/* Column headers */}
           {catItems.length > 0 && (
             <div className="grid grid-cols-12 gap-1.5 px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -350,82 +370,87 @@ function MaterialsCategory({
           </div>
 
           {/* Add controls */}
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3 flex-wrap rounded-b-lg bg-white">
+          <div className="px-4 pt-3 pb-2 border-t border-gray-100 flex items-center gap-3 flex-wrap">
             <button
-              onClick={() => onAddItem(category.key)}
+              onClick={() => { onAddItem(category.key); setShowLibPick(false); setShowRcPick(false); }}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               + Add item
             </button>
 
-            {/* From library dropdown */}
-            {libraryItems.filter(l => l.category_key === category.key).length > 0 && (
-              <div className="relative group/lib">
-                <button className="text-sm text-gray-500 hover:text-gray-700 font-medium">
-                  + From library ▾
-                </button>
-                <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-48 hidden group-hover/lib:block">
-                  {libraryItems
-                    .filter(l => l.category_key === category.key)
-                    .map(l => (
-                      <button
-                        key={l.id}
-                        onClick={() => onAddFromLibrary(category.key, l)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"
-                      >
-                        <div className="font-medium text-gray-700">{l.description}</div>
-                        <div className="text-xs text-gray-400">
-                          £{l.default_unit_cost?.toFixed(2)} · {l.pricing_mode}
-                          {l.unit_label ? ` · ${l.unit_label}` : ''}
-                        </div>
-                      </button>
-                    ))
-                  }
-                </div>
-              </div>
+            {catLibItems.length > 0 && (
+              <button
+                onClick={() => { setShowLibPick(v => !v); setShowRcPick(false); }}
+                className={`text-sm font-medium transition ${showLibPick ? 'text-gray-700' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                + From library {showLibPick ? '▲' : '▾'}
+              </button>
             )}
 
-            {/* From rate card dropdown — labour categories only */}
             {rateCardOptions.length > 0 && (
-              <div className="relative group/rc">
-                <button className="text-sm text-purple-600 hover:text-purple-700 font-medium">
-                  + From rate card ▾
-                </button>
-                <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-56 hidden group-hover/rc:block">
-                  {/* Rate card header — shows current rates at a glance */}
-                  <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Current rate card
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      Effective {new Date(rateCard.effective_from).toLocaleDateString('en-GB', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
-                    </div>
-                  </div>
-                  {rateCardOptions.map((item, i) => (
-                    <button
-                      key={i}
-                      onClick={() => onAddFromRateCard(category.key, item)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-50 last:border-0"
-                    >
-                      <div className="font-medium text-gray-700">{item.description}</div>
-                      <div className="text-xs text-gray-400">
-                        £{(item.rate || 0).toFixed(2)} / {item.unit}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <button
+                onClick={() => { setShowRcPick(v => !v); setShowLibPick(false); }}
+                className={`text-sm font-medium transition ${showRcPick ? 'text-purple-700' : 'text-purple-600 hover:text-purple-700'}`}
+              >
+                + From rate card {showRcPick ? '▲' : '▾'}
+              </button>
             )}
 
-            {/* Nudge if labour category but no rate card set up */}
             {category.itemType === 'labour' && !rateCard && (
               <span className="text-xs text-gray-400 italic">
                 No rate card — set one up in Settings
               </span>
             )}
           </div>
+
+          {/* Library picker — inline expansion */}
+          {showLibPick && catLibItems.length > 0 && (
+            <div className="mx-4 mb-3 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Company library — {category.label}
+              </div>
+              {catLibItems.map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => handlePickLib(l)}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0 flex items-center justify-between gap-4"
+                >
+                  <span className="font-medium text-gray-700">{l.description}</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    £{(l.default_unit_cost || 0).toFixed(2)}
+                    {l.unit_label ? ` / ${l.unit_label}` : ''}
+                    {' · '}{l.pricing_mode}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Rate card picker — inline expansion */}
+          {showRcPick && rateCardOptions.length > 0 && (
+            <div className="mx-4 mb-3 border border-purple-200 rounded-lg overflow-hidden">
+              <div className="px-3 py-2 bg-purple-50 border-b border-purple-200 text-xs font-semibold text-purple-700 uppercase tracking-wide flex items-center justify-between">
+                <span>Rate card</span>
+                <span className="font-normal text-purple-500 normal-case">
+                  Effective {new Date(rateCard.effective_from).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </span>
+              </div>
+              {rateCardOptions.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => handlePickRc(item)}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-purple-50 border-b border-gray-50 last:border-0 flex items-center justify-between gap-4"
+                >
+                  <span className="font-medium text-gray-700">{item.description}</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    £{(item.rate || 0).toFixed(2)} / {item.unit}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
