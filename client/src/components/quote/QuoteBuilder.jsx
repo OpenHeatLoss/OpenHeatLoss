@@ -556,11 +556,11 @@ function QuoteSummary({
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">£</span>
                     <input
                       type="number"
-                      value={isOverridden ? row.quotePrice : row.withMarkup}
+                      value={isOverridden ? row.quotePrice.toFixed(2) : row.withMarkup.toFixed(2)}
                       onChange={e => setCategoryOverride(row.key, parseFloat(e.target.value) || 0)}
                       min="0"
-                      step="1"
-                      placeholder={row.withMarkup.toFixed(0)}
+                      step="0.01"
+                      placeholder={row.withMarkup.toFixed(2)}
                       className={`w-full text-sm text-right border rounded pl-5 pr-2 py-1 focus:ring-1 focus:ring-blue-500 ${
                         isOverridden
                           ? 'border-amber-300 bg-amber-50 font-medium'

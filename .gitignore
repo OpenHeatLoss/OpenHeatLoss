@@ -106,3 +106,4 @@ client/src/components/settings/SettingsPage(d).jsx
 client/src/components/quote/QuoteBuilder(b).jsx
 client/src/components/quote/QuoteBuilder(c).jsx
 client/src/components/quote/QuoteBuilder(d).jsx
+client/src/components/quote/QuoteBuilder(e).jsx
