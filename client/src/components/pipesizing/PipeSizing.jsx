@@ -102,21 +102,59 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
         }
       }
 
+      // Normalise a DB section row to the shape the PDF generator expects.
+      // Sections come from pipeSections.getForProject() which returns raw DB
+      // snake_case columns. The Python script expects camelCase field names.
+      const normaliseSectionForPdf = (s) => ({
+        name:                 s.name || '',
+        material:             s.material_key || s.material || '',   // PDF uses this for MATERIAL_NAMES lookup
+        materialName:         s.material_name || s.materialName || '',
+        diameter:             s.nominal_size  || s.diameter   || '',
+        length:               s.length_m      ?? s.length     ?? 0,
+        flowRate:             s.flow_rate     ?? s.flowRate   ?? 0,
+        velocity:             s.velocity      ?? 0,
+        pressureDrop:         s.pressure_drop ?? s.pressureDrop ?? 0,
+        includeInIndexCircuit: !!(s.include_in_index_circuit ?? s.includeInIndexCircuit),
+      });
+
+      // Build location string from address fields (project.location doesn't exist
+      // after the address table migration — fields live as customerTown etc.)
+      const locationParts = [
+        project.customerAddressLine1,
+        project.customerTown,
+        project.customerPostcode,
+      ].filter(Boolean);
+      const location = locationParts.join(', ');
+
+      // Normalise all sections for the PDF
+      const pdfSections = sections.map(normaliseSectionForPdf);
+
+      // Rebuild indexCircuit from normalised sections so its nested sections
+      // array also has the correct field names for the PDF.
+      const pdfIndexCircuitSections = pdfSections.filter(s => s.includeInIndexCircuit);
+      const pdfIndexCircuit = pdfIndexCircuitSections.length > 0 ? {
+        sections:          pdfIndexCircuitSections,
+        totalPressureDrop: pdfIndexCircuitSections.reduce((sum, s) => sum + s.pressureDrop, 0),
+        totalLength:       pdfIndexCircuitSections.reduce((sum, s) => sum + s.length, 0),
+        flowRate:          pdfIndexCircuitSections.reduce((max, s) => Math.max(max, s.flowRate), 0),
+        name:              'Index Circuit',
+      } : null;
+
       // Prepare data for PDF
       const pdfData = {
-        projectName: project.name || 'Untitled Project',
-        location: project.location || '',
-        designer: project.designer || '',
-        customerName: project.customerFirstName && project.customerSurname 
+        projectName:      project.name || 'Untitled Project',
+        location,
+        designer:         project.designer || '',
+        customerName:     project.customerFirstName && project.customerSurname 
           ? `${project.customerTitle || ''} ${project.customerFirstName} ${project.customerSurname}`.trim()
           : '',
-        heatPumpOutput: project.heatPumpRatedOutput || 0,
-        designFlowTemp: project.designFlowTemp || 50,
+        heatPumpOutput:   project.heatPumpRatedOutput || 0,
+        designFlowTemp:   project.designFlowTemp  || 50,
         designReturnTemp: project.designReturnTemp || 40,
-        systemFlowRate: systemFlowRate,
-        sections: sections,
-        indexCircuit: indexCircuit,
-        systemVolume: sysVol,
+        systemFlowRate,
+        sections:         pdfSections,
+        indexCircuit:     pdfIndexCircuit,
+        systemVolume:     sysVol,
         radiatorFlowRates,
       };
       
