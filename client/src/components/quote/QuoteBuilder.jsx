@@ -274,12 +274,20 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
 
 // One category section — collapsible, shows subtotal in header
 function MaterialsCategory({
-  category, items, libraryItems, onAddItem, onAddFromLibrary,
-  onUpdate, onDelete, onSaveToLibrary, defaultOpen,
+  category, items, libraryItems, rateCard, onAddItem, onAddFromLibrary,
+  onAddFromRateCard, onUpdate, onDelete, onSaveToLibrary, defaultOpen,
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const catItems = items.filter(m => m.parent_category === category.key);
   const subtotal = catItems.reduce((s, m) => s + (m.total_cost || 0), 0);
+
+  // Build rate card quick-add options for labour categories:
+  // Day rate and hourly rate as synthetic items, plus all standard task items.
+  const rateCardOptions = (category.itemType === 'labour' && rateCard) ? [
+    ...(rateCard.day_rate  > 0 ? [{ description: 'Day rate',    unit: 'day',  rate: rateCard.day_rate  }] : []),
+    ...(rateCard.hourly_rate > 0 ? [{ description: 'Hourly rate', unit: 'hour', rate: rateCard.hourly_rate }] : []),
+    ...(Array.isArray(rateCard.items) ? rateCard.items : []),
+  ] : [];
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
@@ -342,13 +350,15 @@ function MaterialsCategory({
           </div>
 
           {/* Add controls */}
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3">
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
             <button
               onClick={() => onAddItem(category.key)}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               + Add item
             </button>
+
+            {/* From library dropdown */}
             {libraryItems.filter(l => l.category_key === category.key).length > 0 && (
               <div className="relative group/lib">
                 <button className="text-sm text-gray-500 hover:text-gray-700 font-medium">
@@ -373,6 +383,47 @@ function MaterialsCategory({
                   }
                 </div>
               </div>
+            )}
+
+            {/* From rate card dropdown — labour categories only */}
+            {rateCardOptions.length > 0 && (
+              <div className="relative group/rc">
+                <button className="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                  + From rate card ▾
+                </button>
+                <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-56 hidden group-hover/rc:block">
+                  {/* Rate card header — shows current rates at a glance */}
+                  <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Current rate card
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      Effective {new Date(rateCard.effective_from).toLocaleDateString('en-GB', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                  {rateCardOptions.map((item, i) => (
+                    <button
+                      key={i}
+                      onClick={() => onAddFromRateCard(category.key, item)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-50 last:border-0"
+                    >
+                      <div className="font-medium text-gray-700">{item.description}</div>
+                      <div className="text-xs text-gray-400">
+                        £{(item.rate || 0).toFixed(2)} / {item.unit}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Nudge if labour category but no rate card set up */}
+            {category.itemType === 'labour' && !rateCard && (
+              <span className="text-xs text-gray-400 italic">
+                No rate card — set one up in Settings
+              </span>
             )}
           </div>
         </div>
@@ -961,6 +1012,7 @@ export default function QuoteBuilder({ project }) {
   // Materials list state
   const [materials,      setMaterials]     = useState([]);
   const [libraryItems,   setLibraryItems]  = useState([]);
+  const [currentRateCard, setCurrentRateCard] = useState(null);
   const [importing,      setImporting]     = useState(null); // 'radiators' | 'pipe'
 
   // UI state
@@ -973,11 +1025,12 @@ export default function QuoteBuilder({ project }) {
     async function load() {
       setLoading(true);
       try {
-        // Load quote + materials + library in parallel
-        const [quoteData, materialsData, libraryData] = await Promise.all([
+        // Load quote + materials + library + rate card in parallel
+        const [quoteData, materialsData, libraryData, rateCardData] = await Promise.all([
           api.getQuote(project.id),
           api.getMaterials(project.id),
           api.getMaterialsLibrary().catch(() => []),
+          api.getCurrentLabourRateCard().catch(() => null),
         ]);
 
         let quote = quoteData;
@@ -1016,6 +1069,15 @@ export default function QuoteBuilder({ project }) {
 
         setMaterials(Array.isArray(materialsData) ? materialsData : []);
         setLibraryItems(Array.isArray(libraryData) ? libraryData : []);
+
+        // Store the full rate card object for the UI pickers
+        if (rateCardData) {
+          setCurrentRateCard(rateCardData);
+          // If this quote has no rate card recorded yet, link it to the current one
+          if (!quote.rate_card_id && rateCardData.id) {
+            setRateCardId(rateCardData.id);
+          }
+        }
       } catch (err) {
         console.error('Error loading quote:', err);
       } finally {
@@ -1122,6 +1184,30 @@ export default function QuoteBuilder({ project }) {
     }
   };
 
+  // Add a standard task or day/hourly rate line from the rate card.
+  // rateItem shape: { description, unit, rate } — from labour_rate_items rows,
+  // or a synthetic { description: 'Day rate', unit: 'day', rate: card.day_rate }
+  const handleAddFromRateCard = async (categoryKey, rateItem) => {
+    try {
+      const isTimeUnit = rateItem.unit === 'day' || rateItem.unit === 'hour';
+      await api.createMaterial(project.id, {
+        parentCategory: categoryKey,
+        description:    rateItem.description,
+        pricingMode:    'unit',
+        unitLabel:      rateItem.unit === 'day'  ? 'day'
+                      : rateItem.unit === 'hour' ? 'hr'
+                      : 'each',
+        quantity:       1,
+        unitCost:       rateItem.rate || 0,
+        source:         'manual', // rate card items are a starting point, not a locked reference
+      });
+      const updated = await api.getMaterials(project.id);
+      setMaterials(Array.isArray(updated) ? updated : []);
+    } catch (err) {
+      console.error('Failed to add from rate card:', err);
+    }
+  };
+
   const handleUpdateItem = useCallback(async (id, patch) => {
     await api.updateMaterial(id, patch);
     // Update local state immediately so totals recalculate without a round-trip
@@ -1221,7 +1307,12 @@ export default function QuoteBuilder({ project }) {
         total_cost:      m.total_cost,
       })),
       categoryOverrides,
-      rateCard: rateCardId ? { id: rateCardId } : null,
+      rateCard: currentRateCard ? {
+        id:             currentRateCard.id,
+        effective_from: currentRateCard.effective_from,
+        day_rate:       currentRateCard.day_rate,
+        hourly_rate:    currentRateCard.hourly_rate,
+      } : null,
       totals: {
         exVat:     totalExVat,
         vatAmount,
@@ -1370,8 +1461,10 @@ export default function QuoteBuilder({ project }) {
             category={cat}
             items={materials}
             libraryItems={libraryItems}
+            rateCard={currentRateCard}
             onAddItem={handleAddItem}
             onAddFromLibrary={handleAddFromLibrary}
+            onAddFromRateCard={handleAddFromRateCard}
             onUpdate={handleUpdateItem}
             onDelete={handleDeleteItem}
             onSaveToLibrary={handleSaveToLibrary}
