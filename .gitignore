@@ -100,3 +100,6 @@ client/src/utils/api(b).js
 server/database(j).js
 server/server(n).js
 client/src/components/quote/QuoteBuilder(a).jsx
+client/src/App(l).jsx
+client/src/components/project/ProjectInfo(a).jsx
+client/src/components/settings/SettingsPage(d).jsx

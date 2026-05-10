@@ -104,7 +104,7 @@ function AddressFields({ values, onChange, showWhat3words = false }) {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdateClientAddress, onSaveInstallAddress }) {
+export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey }) {
 
   // ── Customer contact details ──────────────────────────────────────────────
   const [editingContact, setEditingContact] = useState(false);
@@ -288,7 +288,17 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdate
 
       {/* ── Project Information ─────────────────────────────────────── */}
       <div>
-        <h2 className="text-xl font-bold mb-4 pb-2 border-b-2 border-gray-300">Project Information</h2>
+        <div className="flex items-center justify-between mb-4 pb-2 border-b-2 border-gray-300">
+          <h2 className="text-xl font-bold">Project Information</h2>
+          {onLaunchSurvey && (
+            <button
+              onClick={onLaunchSurvey}
+              className="bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium px-4 py-1.5 rounded transition"
+            >
+              Launch survey form
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold mb-1">Project Name</label>

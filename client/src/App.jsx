@@ -1307,6 +1307,12 @@ const deleteProject = async (id) => {
                   <PlusIcon />
                   New Project
                 </button>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 text-sm font-semibold transition"
+                >
+                  Log out
+                </button>
               </div>
             </div>
 
@@ -1512,22 +1518,6 @@ const deleteProject = async (id) => {
 
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                const addr = [currentProject.customerAddressLine1, currentProject.customerTown]
-                             .filter(Boolean).join(', ');
-                const params = new URLSearchParams({
-                  projectId: currentProject.id,
-                  client:    [currentProject.customerFirstName, currentProject.customerSurname].filter(Boolean).join(' '),
-                  address:   addr,
-                  postcode:  currentProject.customerPostcode || '',
-                });
-                window.open(`/survey.html?${params.toString()}`, '_blank');
-              }}
-              className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded transition text-sm"
-            >
-              Survey
-            </button>
-            <button
               onClick={isAnonymous
                 ? () => { setAuthError(''); setShowAuthModal('register'); }
                 : saveProject}
@@ -1576,7 +1566,7 @@ const deleteProject = async (id) => {
                 { key: 'summary',    label: 'Heat Loss Summary' },
                 { key: 'radiators',  label: 'Emitter Sizing' },
                 { key: 'pipe-sizing',label: 'Pipe Sizing' },
-                { key: 'quote',      label: 'Quote' },
+                { key: 'quote',      label: 'Materials & Quote' },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -1602,6 +1592,17 @@ const deleteProject = async (id) => {
                 onUpdateBatch={updateProjectBatch}
                 onUpdateClientAddress={handleUpdateClientAddress}
                 onSaveInstallAddress={handleSaveInstallAddress}
+                onLaunchSurvey={() => {
+                  const addr = [currentProject.customerAddressLine1, currentProject.customerTown]
+                               .filter(Boolean).join(', ');
+                  const params = new URLSearchParams({
+                    projectId: currentProject.id,
+                    client:    [currentProject.customerFirstName, currentProject.customerSurname].filter(Boolean).join(' '),
+                    address:   addr,
+                    postcode:  currentProject.customerPostcode || '',
+                  });
+                  window.open(`/survey.html?${params.toString()}`, '_blank');
+                }}
               />
             )}
             {activeTab === 'mcs031' && (
