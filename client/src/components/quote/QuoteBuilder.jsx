@@ -290,11 +290,11 @@ function MaterialsCategory({
   ] : [];
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
+    <div className="border border-gray-200 rounded-lg mb-2">
       {/* Category header */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left"
+        className={`w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left ${open ? 'rounded-t-lg' : 'rounded-lg'}`}
       >
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-700">{category.label}</span>
@@ -350,7 +350,7 @@ function MaterialsCategory({
           </div>
 
           {/* Add controls */}
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-3 flex-wrap rounded-b-lg bg-white">
             <button
               onClick={() => onAddItem(category.key)}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
