@@ -280,7 +280,7 @@ function BusGrantSection({ project, onUpdate }) {
   );
 }
 
-export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey }) {
+export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveContact, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey }) {
 
   // ── Customer contact details ──────────────────────────────────────────────
   const [editingContact, setEditingContact] = useState(false);
@@ -301,9 +301,16 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdate
 
   const saveContact = async () => {
     setSavingContact(true);
-    if (onUpdateBatch) onUpdateBatch(contactDraft);
-    setSavingContact(false);
-    setEditingContact(false);
+    try {
+      if (onSaveContact) {
+        await onSaveContact(contactDraft);
+      } else if (onUpdateBatch) {
+        onUpdateBatch(contactDraft);
+      }
+      setEditingContact(false);
+    } finally {
+      setSavingContact(false);
+    }
   };
 
   // ── Client contact address ────────────────────────────────────────────────
@@ -324,11 +331,13 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onUpdate
   };
 
   const saveClientAddr = async () => {
-    if (!clientAddr?.id) return;
     setSavingClientAddr(true);
-    await onUpdateClientAddress(clientAddr.id, clientAddrDraft);
-    setSavingClientAddr(false);
-    setEditingClientAddr(false);
+    try {
+      await onUpdateClientAddress(clientAddr?.id || null, clientAddrDraft, project.clientId);
+      setEditingClientAddr(false);
+    } finally {
+      setSavingClientAddr(false);
+    }
   };
 
   // ── Installation address ──────────────────────────────────────────────────

@@ -675,8 +675,34 @@ const deleteProject = async (id) => {
     setCurrentProject(prev => ({ ...prev, ...updates }));
   };
 
-  const handleUpdateClientAddress = async (addressId, data) => {
-    await api.updateAddress(addressId, data);
+  const handleUpdateClientAddress = async (addressId, data, clientId) => {
+    if (addressId) {
+      await api.updateAddress(addressId, data);
+    } else if (clientId) {
+      // No client address row yet — create one and link it to the client
+      await api.addClientAddress(clientId, {
+        ...data,
+        addressType: 'home',
+        isPrimary:   true,
+      });
+    }
+    await loadProject(currentProject.id, true);
+  };
+
+  const handleSaveContact = async (contactDraft) => {
+    // Update local state immediately so UI feels instant
+    updateProjectBatch(contactDraft);
+    // Persist to DB via the clients API
+    if (currentProject.clientId) {
+      await api.updateClient(currentProject.clientId, {
+        title:     contactDraft.customerTitle,
+        firstName: contactDraft.customerFirstName,
+        surname:   contactDraft.customerSurname,
+        email:     contactDraft.customerEmail,
+        telephone: contactDraft.customerTelephone,
+        mobile:    contactDraft.customerMobile,
+      });
+    }
     await loadProject(currentProject.id, true);
   };
 
@@ -1672,6 +1698,7 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdate={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                onSaveContact={handleSaveContact}
                 onUpdateClientAddress={handleUpdateClientAddress}
                 onSaveInstallAddress={handleSaveInstallAddress}
                 onLaunchSurvey={() => {
