@@ -794,7 +794,6 @@ const deleteProject = async (id) => {
         mcsOutdoorLowTemp: mcs.lowTemp,
       }));
     }
-    }
     await loadProject(currentProject.id, true);
   };
 
