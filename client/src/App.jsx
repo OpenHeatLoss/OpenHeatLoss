@@ -459,12 +459,11 @@ function App() {
         project.externalTemp      = mcs.lowTemp;
         project.mcsDegreeDays     = mcs.degreeDays;
         project.mcsOutdoorLowTemp = mcs.lowTemp;
-        api.updateDesignParams(id, {
-          ...project,
+        api.updateDesignParams(id, buildDesignParamsPayload(project, {
           externalTemp:      mcs.lowTemp,
           mcsDegreeDays:     mcs.degreeDays,
           mcsOutdoorLowTemp: mcs.lowTemp,
-        }).catch(err => console.error('MCS auto-apply failed:', err));
+        })).catch(err => console.error('MCS auto-apply failed:', err));
       }
     }
     setCurrentProject(project);
@@ -681,16 +680,83 @@ const deleteProject = async (id) => {
     await loadProject(currentProject.id, true);
   };
 
+  // Builds the safe design params payload from a project object.
+  // Never spread the whole project — rooms, radiatorSpecs, pipeSections etc.
+  // will cause a 413 Content Too Large on projects with real data.
+  const buildDesignParamsPayload = (proj, overrides = {}) => ({
+    externalTemp:      proj.externalTemp,
+    annualAvgTemp:     proj.annualAvgTemp,
+    airDensity:        proj.airDensity,
+    specificHeat:      proj.specificHeat,
+    designFlowTemp:    proj.designFlowTemp,
+    designReturnTemp:  proj.designReturnTemp,
+    mcsPostcodePrefix: proj.mcsPostcodePrefix,
+    mcsDegreeDays:     proj.mcsDegreeDays,
+    mcsOutdoorLowTemp: proj.mcsOutdoorLowTemp,
+    mcsHeatPumpType:       proj.mcsHeatPumpType,
+    mcsEmitterType:        proj.mcsEmitterType,
+    mcsSystemProvides:     proj.mcsSystemProvides,
+    mcsCylinderVolume:     proj.mcsCylinderVolume,
+    mcsPasteurizationFreq: proj.mcsPasteurizationFreq,
+    mcsUFHType:            proj.mcsUFHType,
+    mcsBedrooms:           proj.mcsBedrooms,
+    mcsOccupants:          proj.mcsOccupants,
+    useSAPVentilation:        proj.useSAPVentilation,
+    buildingCategory:         proj.buildingCategory,
+    dwellingType:             proj.dwellingType,
+    numberOfStoreys:          proj.numberOfStoreys,
+    shelterFactor:            proj.shelterFactor,
+    numberOfBedrooms:         proj.numberOfBedrooms,
+    hasBlowerTest:            proj.hasBlowerTest,
+    sapAgeBand:               proj.sapAgeBand,
+    airPermeabilityQ50:       proj.airPermeabilityQ50,
+    numberOfChimneys:         proj.numberOfChimneys,
+    numberOfOpenFlues:        proj.numberOfOpenFlues,
+    numberOfIntermittentFans: proj.numberOfIntermittentFans,
+    numberOfPassiveVents:     proj.numberOfPassiveVents,
+    ventilationSystemType:    proj.ventilationSystemType,
+    mvhrEfficiency:           proj.mvhrEfficiency,
+    ventilationMethod:      proj.ventilationMethod,
+    airPermeabilityMethod:  proj.airPermeabilityMethod,
+    q50:                    proj.q50,
+    sapStructural:          proj.sapStructural,
+    sapFloor:               proj.sapFloor,
+    sapWindowDraughtPct:    proj.sapWindowDraughtPct,
+    sapDraughtLobby:        proj.sapDraughtLobby,
+    buildingStoreys:        proj.buildingStoreys,
+    buildingShielding:      proj.buildingShielding,
+    referenceTemp:          proj.referenceTemp,
+    mcsHeatPumpSoundPower:  proj.mcsHeatPumpSoundPower,
+    mcsSoundAssessments:    proj.mcsSoundAssessments    || [],
+    mcsSoundSnapshot:       proj.mcsSoundSnapshot       || null,
+    mcsCalculationSnapshot: proj.mcsCalculationSnapshot || null,
+    pipeSections:           null,
+    circuits:               proj.circuits               || null,
+    heatPumpManufacturer:   proj.heatPumpManufacturer,
+    heatPumpModel:          proj.heatPumpModel,
+    heatPumpRatedOutput:    proj.heatPumpRatedOutput,
+    heatPumpMinModulation:  proj.heatPumpMinModulation  ?? 0,
+    heatPumpFlowTemp:       proj.heatPumpFlowTemp,
+    heatPumpReturnTemp:     proj.heatPumpReturnTemp,
+    epcSpaceHeatingDemand:  proj.epcSpaceHeatingDemand,
+    epcHotWaterDemand:      proj.epcHotWaterDemand,
+    epcTotalFloorArea:      proj.epcTotalFloorArea,
+    heatPumpInternalVolume: proj.heatPumpInternalVolume ?? 0,
+    bufferVesselVolume:     proj.bufferVesselVolume     ?? 0,
+    en14511TestPoints:      proj.en14511TestPoints      || [],
+    defrostPct:             proj.defrostPct             ?? 5,
+    ...overrides,
+  });
+
   const applyMCSFromPostcode = async (projectId, postcode) => {
     if (!postcode) return;
     const mcs = getMCSDataFromPostcode(postcode);
     if (!mcs) return;
-    await api.updateDesignParams(projectId, {
-      ...currentProject,
+    await api.updateDesignParams(projectId, buildDesignParamsPayload(currentProject, {
       externalTemp:      mcs.lowTemp,
       mcsDegreeDays:     mcs.degreeDays,
       mcsOutdoorLowTemp: mcs.lowTemp,
-    });
+    }));
   };
 
   const handleSaveInstallAddress = async (installDraft) => {
@@ -722,12 +788,12 @@ const deleteProject = async (id) => {
     // Apply MCS design temperature from postcode if available
     const mcs = getMCSDataFromPostcode(installDraft.customerPostcode);
     if (mcs) {
-      await api.updateDesignParams(currentProject.id, {
-        ...currentProject,
+      await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject, {
         externalTemp:      mcs.lowTemp,
         mcsDegreeDays:     mcs.degreeDays,
         mcsOutdoorLowTemp: mcs.lowTemp,
-      });
+      }));
+    }
     }
     await loadProject(currentProject.id, true);
   };
@@ -1174,10 +1240,9 @@ const deleteProject = async (id) => {
   // Pass a partial object — it is merged with currentProject before saving.
   const saveDesignParams = async (fields) => {
     try {
-      await api.updateDesignParams(currentProject.id, {
-        ...currentProject,
-        ...fields,
-      });
+      await api.updateDesignParams(currentProject.id,
+        buildDesignParamsPayload(currentProject, fields)
+      );
     } catch (error) {
       console.error('Error saving design params:', error);
     }

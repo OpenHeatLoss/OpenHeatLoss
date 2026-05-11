@@ -114,3 +114,4 @@ client/src/components/project/ProjectInfo(b).jsx
 client/src/components/quote/QuoteBuilder(f).jsx
 server/database(k).js
 server/server(o).js
+client/src/App(n).jsx
