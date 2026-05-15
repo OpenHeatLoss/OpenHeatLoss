@@ -67,7 +67,7 @@ function DeltaTInput({ value, defaultValue, onChange, onCommit }) {
 // project library directly from the element row, pre-set to the element's
 // category. Mirrors the FloorUValueInlineCalculator pattern.
 // ---------------------------------------------------------------------------
-function AddUValueInlineForm({ elementType, onSave, onClose }) {
+function AddUValueInlineForm({ elementType, onSave, onApply, onClose }) {
   const [name, setName] = useState('');
   const [uValue, setUValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -80,7 +80,9 @@ function AddUValueInlineForm({ elementType, onSave, onClose }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ elementCategory: elementType, name: name.trim(), uValue: parsed, notes: '' });
+      const savedUValue = await onSave({ elementCategory: elementType, name: name.trim(), uValue: parsed, notes: '' });
+      // Auto-apply the saved value to the element that opened this form
+      if (savedUValue != null) onApply(savedUValue);
       onClose();
     } catch {
       setError('Save failed — please try again.');
@@ -128,7 +130,7 @@ function AddUValueInlineForm({ elementType, onSave, onClose }) {
         >
           {saving ? 'Saving…' : 'Save to library & apply'}
         </button>
-        <span className="text-xs text-gray-400">Saved values appear in the library picker above and in the U-value library tab.</span>
+        <span className="text-xs text-gray-400">Saved &amp; applied automatically. To look up RdSAP standard values, use the U-value library tab.</span>
       </div>
     </div>
   );
@@ -410,11 +412,8 @@ function ElementRow({
         <div className="col-span-10 mb-2">
           <AddUValueInlineForm
             elementType={element.elementType}
-            onSave={async (uValData) => {
-              await onAddUValue(uValData);
-              // After save, loadProject refreshes uValueLibrary — the new entry
-              // will appear in the "Apply from library" dropdown automatically.
-            }}
+            onSave={onAddUValue}
+            onApply={(savedUValue) => onUpdate(room.id, element.id, 'uValue', savedUValue)}
             onClose={() => setOpenAddUValueElementId(null)}
           />
         </div>

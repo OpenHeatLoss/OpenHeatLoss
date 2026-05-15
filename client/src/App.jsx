@@ -846,10 +846,13 @@ const deleteProject = async (id) => {
 
   const addUValueFromCalculator = async ({ elementCategory, name, uValue, notes }) => {
   try {
-    await api.createUValue({ projectId: currentProject.id, elementCategory, name, uValue, notes });
+    const record = await api.createUValue({ projectId: currentProject.id, elementCategory, name, uValue, notes });
     await loadProject(currentProject.id, true);
+    // Return the saved u_value so callers can auto-apply it to an element
+    return record?.u_value ?? uValue;
   } catch (error) {
     console.error('Error adding U-value from calculator:', error);
+    return null;
   }
 };
 

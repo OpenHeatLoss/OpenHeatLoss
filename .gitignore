@@ -122,3 +122,5 @@ client/src/App(p).jsx
 client/src/components/rooms/ElementEditor(a).jsx
 client/src/components/rooms/RoomEditor(b).jsx
 client/src/components/rooms/RoomList(a).jsx
+client/src/App(q).jsx
+client/src/components/rooms/ElementEditor(b).jsx
