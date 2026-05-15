@@ -174,7 +174,9 @@ function App() {
       // Dashboard-eligible users (beta/pro) land on the dashboard — don't
       // auto-load a project. Free users load the claimed anonymous project.
       const hasDashboard = data.user.plan === 'pro' || data.user.plan === 'beta';
-      if (!hasDashboard && data.projectId) {
+      if (hasDashboard) {
+        setCurrentProject(null);  // clear any anonymous project loaded before login
+      } else if (data.projectId) {
         await loadProject(data.projectId);
       }
     } catch (err) {
