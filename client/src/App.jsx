@@ -171,7 +171,10 @@ function App() {
         const companyRes = await fetch('/api/company');
         if (companyRes.ok) setCurrentCompany(await companyRes.json());
       } catch { /* non-fatal */ }
-      if (data.projectId) {
+      // Dashboard-eligible users (beta/pro) land on the dashboard — don't
+      // auto-load a project. Free users load the claimed anonymous project.
+      const hasDashboard = data.user.plan === 'pro' || data.user.plan === 'beta';
+      if (!hasDashboard && data.projectId) {
         await loadProject(data.projectId);
       }
     } catch (err) {
@@ -1740,6 +1743,7 @@ const deleteProject = async (id) => {
                 onUpdateElement={updateElement}
                 onUpdateElementBatch={updateElementBatch}
                 onDeleteElement={deleteElement}
+                onAddUValue={addUValueFromCalculator}
                 onAddEmitter={addEmitter}
                 onUpdateEmitter={updateEmitter}
                 onDeleteEmitter={deleteEmitter}

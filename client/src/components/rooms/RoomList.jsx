@@ -14,6 +14,7 @@ export default function RoomList({
   onUpdateElement,
   onUpdateElementBatch,
   onDeleteElement,
+  onAddUValue,
   onAddEmitter,
   onUpdateEmitter,
   onDeleteEmitter,
@@ -152,6 +153,7 @@ export default function RoomList({
                       onUpdateElement={onUpdateElement}
                       onUpdateElementBatch={onUpdateElementBatch}
                       onDeleteElement={onDeleteElement}
+                      onAddUValue={onAddUValue}
                       onAddEmitter={onAddEmitter}
                       onUpdateEmitter={onUpdateEmitter}
                       onDeleteEmitter={onDeleteEmitter}

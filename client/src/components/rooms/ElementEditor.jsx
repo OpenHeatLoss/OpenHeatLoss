@@ -61,6 +61,79 @@ function DeltaTInput({ value, defaultValue, onChange, onCommit }) {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// AddUValueInlineForm — lightweight inline form to add a U-value to the
+// project library directly from the element row, pre-set to the element's
+// category. Mirrors the FloorUValueInlineCalculator pattern.
+// ---------------------------------------------------------------------------
+function AddUValueInlineForm({ elementType, onSave, onClose }) {
+  const [name, setName] = useState('');
+  const [uValue, setUValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    const parsed = parseFloat(uValue);
+    if (!name.trim()) { setError('Please enter a name for this construction.'); return; }
+    if (isNaN(parsed) || parsed <= 0) { setError('Please enter a valid U-value greater than 0.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ elementCategory: elementType, name: name.trim(), uValue: parsed, notes: '' });
+      onClose();
+    } catch {
+      setError('Save failed — please try again.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="col-span-10 mt-1 mb-2 bg-blue-50 border border-blue-300 rounded-lg p-3">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-sm font-semibold text-blue-900">Add U-value to library — {elementType}</span>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xs">✕ Close</button>
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="col-span-2">
+          <label className="block font-semibold mb-1 text-gray-700">Construction name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Cavity wall, unfilled, 1970s"
+            autoFocus
+            className="w-full border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-400 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block font-semibold mb-1 text-gray-700">U-value (W/m²·K)</label>
+          <input
+            type="number"
+            step="0.001"
+            min="0.001"
+            value={uValue}
+            onChange={e => setUValue(e.target.value)}
+            placeholder="e.g. 0.280"
+            className="w-full border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-400 text-sm"
+          />
+        </div>
+      </div>
+      {error && <div className="text-xs text-red-600 mt-1">{error}</div>}
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 font-semibold text-sm transition disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save to library & apply'}
+        </button>
+        <span className="text-xs text-gray-400">Saved values appear in the library picker above and in the U-value library tab.</span>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ElementRow — one row per element, holds local state for typed number inputs
 // ---------------------------------------------------------------------------
@@ -72,9 +145,12 @@ function ElementRow({
   refTemp,
   openCalcElementId,
   setOpenCalcElementId,
+  openAddUValueElementId,
+  setOpenAddUValueElementId,
   onUpdate,
   onUpdateBatch,
   onDelete,
+  onAddUValue,
 }) {
   const designDeltaT   = room.internalTemp - (project.externalTemp ?? -3);
   const refDeltaT      = room.internalTemp - refTemp;
@@ -237,6 +313,18 @@ function ElementRow({
               {openCalcElementId === element.id ? '▲ Close calc' : '🧮 Calculate…'}
             </button>
           )}
+          <button
+            onClick={() => setOpenAddUValueElementId(
+              openAddUValueElementId === element.id ? null : element.id
+            )}
+            className={`mt-0.5 w-full text-xs px-1 py-0.5 rounded border transition ${
+              openAddUValueElementId === element.id
+                ? 'bg-blue-100 border-blue-400 text-blue-700'
+                : 'bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100'
+            }`}
+          >
+            {openAddUValueElementId === element.id ? '▲ Cancel' : '+ Add U-value…'}
+          </button>
         </div>
 
         {/* Design ΔT */}
@@ -316,6 +404,21 @@ function ElementRow({
           />
         </div>
       )}
+
+      {/* Add U-value inline form — spans full row */}
+      {openAddUValueElementId === element.id && (
+        <div className="col-span-10 mb-2">
+          <AddUValueInlineForm
+            elementType={element.elementType}
+            onSave={async (uValData) => {
+              await onAddUValue(uValData);
+              // After save, loadProject refreshes uValueLibrary — the new entry
+              // will appear in the "Apply from library" dropdown automatically.
+            }}
+            onClose={() => setOpenAddUValueElementId(null)}
+          />
+        </div>
+      )}
     </>
   );
 }
@@ -323,8 +426,9 @@ function ElementRow({
 // ---------------------------------------------------------------------------
 // ElementEditor — renders the header and delegates each row to ElementRow
 // ---------------------------------------------------------------------------
-export default function ElementEditor({ room, project, onAdd, onUpdate, onUpdateBatch, onDelete }) {
+export default function ElementEditor({ room, project, onAdd, onUpdate, onUpdateBatch, onDelete, onAddUValue }) {
   const [openCalcElementId, setOpenCalcElementId] = useState(null);
+  const [openAddUValueElementId, setOpenAddUValueElementId] = useState(null);
 
   const thermalBridging = room.thermalBridgingAddition ?? 0.10;
   const refTemp         = project.referenceTemp ?? 10.6;
@@ -375,9 +479,12 @@ export default function ElementEditor({ room, project, onAdd, onUpdate, onUpdate
             refTemp={refTemp}
             openCalcElementId={openCalcElementId}
             setOpenCalcElementId={setOpenCalcElementId}
+            openAddUValueElementId={openAddUValueElementId}
+            setOpenAddUValueElementId={setOpenAddUValueElementId}
             onUpdate={onUpdate}
             onUpdateBatch={onUpdateBatch}
             onDelete={onDelete}
+            onAddUValue={onAddUValue}
           />
         ))}
       </div>

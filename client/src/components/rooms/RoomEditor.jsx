@@ -41,6 +41,7 @@ export default function RoomEditor({
   onUpdateElement,
   onUpdateElementBatch,
   onDeleteElement,
+  onAddUValue,
   onAddEmitter,
   onUpdateEmitter,
   onDeleteEmitter,
@@ -266,6 +267,7 @@ export default function RoomEditor({
         onUpdate={onUpdateElement}
         onUpdateBatch={onUpdateElementBatch}
         onDelete={onDeleteElement}
+        onAddUValue={onAddUValue}
       />
 
       {/* Emitters */}

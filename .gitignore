@@ -117,3 +117,8 @@ server/server(o).js
 client/src/App(n).jsx
 client/src/App(o).jsx
 client/src/components/project/ProjectInfo(c).jsx
+App refinements list May 2026.md
+client/src/App(p).jsx
+client/src/components/rooms/ElementEditor(a).jsx
+client/src/components/rooms/RoomEditor(b).jsx
+client/src/components/rooms/RoomList(a).jsx
