@@ -688,11 +688,15 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
 
           {/* Climate region — determines Te,ref for typical load / modulation check */}
           {(() => {
-            const DEFAULT_REF_TEMP = 10.6;
-            const isDefault = (project.referenceTemp ?? DEFAULT_REF_TEMP) === DEFAULT_REF_TEMP;
+            // Find the currently selected region key.
+            // Check isDefault flag first to avoid clashing with real regions at 10.0°C.
+            const refTemp = project.referenceTemp ?? 10.0;
             const matchedRegion = Object.entries(REGIONAL_REFERENCE_TEMPS).find(
-              ([, v]) => v.annualMean === (project.referenceTemp ?? DEFAULT_REF_TEMP)
-            )?.[0] ?? 'severn_valley';
+              ([k, v]) => v.isDefault
+                ? refTemp === 10.0
+                : v.annualMean === refTemp && !v.isDefault
+            )?.[0] ?? 'default';
+            const isDefault = REGIONAL_REFERENCE_TEMPS[matchedRegion]?.isDefault ?? false;
             return (
               <div>
                 <label className="block text-sm font-semibold mb-1">
@@ -715,7 +719,7 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
                 </select>
                 {isDefault ? (
                   <p className="text-xs text-amber-600 mt-1">
-                    ⚠ Using default (Severn Valley, 10.6°C — the previous UK-wide default before regional values were introduced). Select your region to confirm. Te,ref was 7.0°C UK-wide prior to MCS MGD007.
+                    ⚠ Using default mean UK average (10°C). Select your region for accurate calculations.
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500 mt-1">

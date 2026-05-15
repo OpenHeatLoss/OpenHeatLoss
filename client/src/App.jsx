@@ -295,7 +295,7 @@ function App() {
       sapDraughtLobby:        dp.sap_draught_lobby         ?? 0,
       buildingStoreys:        dp.building_storeys           ?? 2,
       buildingShielding:      dp.building_shielding         || 'normal',
-      referenceTemp:          dp.reference_temp             ?? 10.6,
+      referenceTemp:          dp.reference_temp             ?? 10.0,
 
       mcsHeatPumpSoundPower: dp.mcs_heat_pump_sound_power || 0,
       mcsSoundAssessments: (() => {
@@ -530,7 +530,7 @@ function App() {
         sapDraughtLobby:       0,
         buildingStoreys:       2,
         buildingShielding:     'normal',
-        referenceTemp:         10.6,
+        referenceTemp:         10.0,
       });
       await loadProjects();
       await loadProject(newProject.id);
@@ -846,13 +846,10 @@ const deleteProject = async (id) => {
 
   const addUValueFromCalculator = async ({ elementCategory, name, uValue, notes }) => {
   try {
-    const record = await api.createUValue({ projectId: currentProject.id, elementCategory, name, uValue, notes });
+    await api.createUValue({ projectId: currentProject.id, elementCategory, name, uValue, notes });
     await loadProject(currentProject.id, true);
-    // Return the saved u_value so callers can auto-apply it to an element
-    return record?.u_value ?? uValue;
   } catch (error) {
     console.error('Error adding U-value from calculator:', error);
-    return null;
   }
 };
 

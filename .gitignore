@@ -126,3 +126,6 @@ client/src/App(q).jsx
 client/src/components/rooms/ElementEditor(b).jsx
 client/src/components/project/ProjectInfo(d).jsx
 client/src/components/project/VentilationSettings(a).jsx
+client/src/App(r).jsx
+client/src/components/project/ProjectInfo(e).jsx
+client/src/utils/en12831VentilationData(a).js

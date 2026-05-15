@@ -175,6 +175,7 @@ export const getHeightBand = (storeys) => {
 // ---------------------------------------------------------------------------
 
 export const REGIONAL_REFERENCE_TEMPS = {
+  default:        { label: 'Default — Mean UK average',    annualMean: 10.0, isDefault: true },
   ne_scotland:    { label: 'NE Scotland (Dyce)',           annualMean: 8.5 },
   nw_scotland:    { label: 'NW Scotland (Stornoway)',      annualMean: 8.6 },
   e_scotland:     { label: 'E Scotland (Leuchars)',        annualMean: 8.8 },
