@@ -1,6 +1,7 @@
 // client/src/components/project/ProjectInfo.jsx
 import { useState } from 'react';
 import { getMCSDataFromPostcode } from '../../utils/mcsData';
+import { REGIONAL_REFERENCE_TEMPS } from '../../utils/en12831VentilationData';
 import VentilationSettings from './VentilationSettings';
 
 // ---------------------------------------------------------------------------
@@ -660,6 +661,8 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
       <div>
         <h2 className="text-xl font-bold mb-4 pb-2 border-b-2 border-gray-300">Design Parameters</h2>
         <div className="grid grid-cols-2 gap-4">
+
+          {/* External design temperature — auto-set from postcode */}
           <div>
             <label className="block text-sm font-semibold mb-1">External Design Temperature (°C)</label>
             <input type="number" step="0.1" value={project.externalTemp}
@@ -682,15 +685,62 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
               </p>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1">Annual Average Temperature (°C)</label>
-            <input type="number" step="0.1" value={project.annualAvgTemp}
-              onChange={e => onUpdate('annualAvgTemp', parseFloat(e.target.value))}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <p className="text-xs text-gray-500 mt-1">
-              Used for legacy calculations. For ventilation typical load, set the Reference Temperature (Te,ref) in the Ventilation section below.
-            </p>
+
+          {/* Climate region — determines Te,ref for typical load / modulation check */}
+          {(() => {
+            const DEFAULT_REF_TEMP = 10.6;
+            const isDefault = (project.referenceTemp ?? DEFAULT_REF_TEMP) === DEFAULT_REF_TEMP;
+            const matchedRegion = Object.entries(REGIONAL_REFERENCE_TEMPS).find(
+              ([, v]) => v.annualMean === (project.referenceTemp ?? DEFAULT_REF_TEMP)
+            )?.[0] ?? 'severn_valley';
+            return (
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  Climate Region
+                  <span className="ml-1 text-xs font-normal text-gray-500">(Te,ref for typical load)</span>
+                </label>
+                <select
+                  value={matchedRegion}
+                  onChange={e => {
+                    const region = REGIONAL_REFERENCE_TEMPS[e.target.value];
+                    if (region) onUpdate('referenceTemp', region.annualMean);
+                  }}
+                  className={`w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    isDefault ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+                  }`}
+                >
+                  {Object.entries(REGIONAL_REFERENCE_TEMPS).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label} — {v.annualMean}°C</option>
+                  ))}
+                </select>
+                {isDefault ? (
+                  <p className="text-xs text-amber-600 mt-1">
+                    ⚠ Using default (Severn Valley, 10.6°C — the previous UK-wide default before regional values were introduced). Select your region to confirm. Te,ref was 7.0°C UK-wide prior to MCS MGD007.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Te,ref = {project.referenceTemp}°C — used for typical load and modulation check (CIBSE DHDG 2026 §5.7.2).
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Te,ref numeric override — spans full width, shown below region selector */}
+          <div className="col-span-2">
+            <label className="block text-sm font-semibold mb-1">
+              Te,ref override (°C)
+              <span className="ml-1 text-xs font-normal text-gray-500">— edit directly if using custom climate data</span>
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={project.referenceTemp ?? 10.6}
+              onChange={e => onUpdate('referenceTemp', parseFloat(e.target.value) || 10.6)}
+              className="w-48 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
+
         </div>
       </div>
 

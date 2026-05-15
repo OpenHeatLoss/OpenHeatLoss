@@ -15,7 +15,6 @@ import {
   SAP_FLOOR_INFILTRATION,
   SAP_WINDOW_DOOR_INFILTRATION,
   BUILDING_SHIELDING_OPTIONS,
-  REGIONAL_REFERENCE_TEMPS,
 } from '../../utils/en12831VentilationData';
 
 const inputClass  = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
@@ -287,55 +286,6 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch }
               max="6"
               value={project.buildingStoreys ?? 2}
               onChange={e => onUpdate('buildingStoreys', parseInt(e.target.value) || 2)}
-              className={inputClass}
-            />
-          </Field>
-
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Reference temperature                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 border-b border-gray-200 pb-1 mb-3">
-          Reference Temperature (Te,ref)
-        </h3>
-        <p className="text-xs text-gray-600 mb-3">
-          Mean annual external temperature for this region (MCS MGD007 Table B1).
-          Used for the typical temperature-weighted factors — feeds the generator
-          modulation / oversizing check (CIBSE DHDG 2026 section 5.7.2).
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-
-          <Field label="Climate region">
-            <select
-              className={selectClass}
-              value={
-                Object.entries(REGIONAL_REFERENCE_TEMPS).find(
-                  ([, v]) => v.annualMean === (project.referenceTemp ?? 10.6)
-                )?.[0] ?? 'severn_valley'
-              }
-              onChange={e => {
-                const region = REGIONAL_REFERENCE_TEMPS[e.target.value];
-                if (region) onUpdate('referenceTemp', region.annualMean);
-              }}
-            >
-              {Object.entries(REGIONAL_REFERENCE_TEMPS).map(([k, v]) => (
-                <option key={k} value={k}>{v.label} — {v.annualMean}°C</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="Te,ref (°C)"
-            hint="Override if using custom climate data"
-          >
-            <input
-              type="number"
-              step="0.1"
-              value={project.referenceTemp ?? 10.6}
-              onChange={e => onUpdate('referenceTemp', parseFloat(e.target.value) || 10.6)}
               className={inputClass}
             />
           </Field>
