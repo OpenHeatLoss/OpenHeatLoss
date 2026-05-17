@@ -951,6 +951,8 @@ app.delete('/api/segments/:id', requireAuthOrAnon, async (req, res) => {
 // ============================================================
 // ELEMENTS
 // ============================================================
+
+app.get('/api/rooms/:roomId/elements', requireAuthOrAnon, async (req, res) => {
   try {
     const roomElements = await elements.getByRoomId(req.params.roomId);
     res.json(roomElements);
