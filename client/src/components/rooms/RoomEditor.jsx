@@ -261,11 +261,34 @@ function SegmentEditor({ room, onAdd, onUpdate, onDelete }) {
                       <span className="text-amber-700 font-medium">
                         Sloped ceiling area: {ceilArea.toFixed(2)} m²
                         {loc.ceilingType === 'dual_pitch'
-                          ? ` (each slope: ${(ceilArea / 2).toFixed(2)} m²) — use total or per-slope for your ceiling element`
-                          : ' — use this for your ceiling element'
+                          ? ` (each slope: ${(ceilArea / 2).toFixed(2)} m²) — slope runs along the length; use total or per-slope for your ceiling element`
+                          : ' — slope runs across the width; use this for your ceiling element'
                         }
                       </span>
                     )}
+                    {loc.ceilingType === 'dual_pitch' && (() => {
+                      const w      = parseFloat(loc.width)     || 0;
+                      const hLow   = parseFloat(loc.heightLow)  || 0;
+                      const hHigh  = parseFloat(loc.heightHigh) || hLow;
+                      const rise   = Math.max(0, hHigh - hLow);
+                      const gable  = w > 0 ? w * (hLow + 0.5 * rise) : 0;
+                      return gable > 0 ? (
+                        <span className="text-amber-700 font-medium">
+                          Gable end area: {gable.toFixed(2)} m² each (on the width faces) — subtract window/door areas as separate elements
+                        </span>
+                      ) : null;
+                    })()}
+                    {loc.ceilingType === 'mono_pitch' && (() => {
+                      const l      = parseFloat(loc.length)     || 0;
+                      const hLow   = parseFloat(loc.heightLow)  || 0;
+                      const hHigh  = parseFloat(loc.heightHigh) || hLow;
+                      const endWall = l > 0 ? 0.5 * (hLow + hHigh) * l : 0;
+                      return endWall > 0 ? (
+                        <span className="text-amber-700 font-medium">
+                          Trapezoidal end wall: {endWall.toFixed(2)} m² each (on the length faces) — subtract window/door areas as separate elements
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 )}
               </div>
