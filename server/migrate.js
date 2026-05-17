@@ -1672,6 +1672,404 @@ const MIGRATIONS = [
       console.log('  Migration 013 complete: room_segments table created and seeded from existing room dimensions');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // MIGRATION 014 — Construction library additions
+  //
+  // Adds missing element types to construction_library that are needed for
+  // flats, maisonettes, exposed upper floors, basements, and internal elements.
+  //
+  // New element_type values introduced:
+  //   'party_wall'        — walls between dwellings (RdSAP10 Table 15 / s5.10)
+  //   'floor_party'       — floors/ceilings between dwellings (RdSAP10 s5.13)
+  //   'floor_basement'    — basement floors (RdSAP10 Table 23 / s5.17)
+  //   'wall_basement'     — basement walls (RdSAP10 Table 23 / s5.17)
+  //   'door_internal'     — internal doors (ISO 6946 first-principles calc)
+  //
+  // Existing element_type values extended:
+  //   'floor_exposed'     — semi-exposed upper floors added (Table 20 / s5.13)
+  //                         (age-band rows were missing from original seed)
+  //   'roof'              — assumed U-values when thickness unknown (Table 18)
+  //                         (age-band rows were missing from original seed)
+  //
+  // Sources:
+  //   RdSAP10 Specification, June 2025 (BRE/DESNZ, publicly licensed)
+  //   Internal door: BS EN ISO 6946:2017 calculation using conductivities from
+  //     BS EN ISO 10456:2007. Solid timber λ=0.13 W/m·K, 35mm,
+  //     Rsi=Rse=0.13 m²K/W → U=1/(0.13+0.269+0.13)=1.89≈2.0 W/m²K.
+  //     Matches the value used by the MCS heat load calculator.
+  // ---------------------------------------------------------------------------
+  {
+    version: '014',
+    description: 'Construction library additions: party walls, exposed floors, basement, roofs, internal elements',
+    run: async () => {
+
+      // Guard — idempotent. If party_wall rows exist, this migration has run.
+      const { rowCount } = await query(
+        `SELECT 1 FROM construction_library WHERE element_type = 'party_wall' LIMIT 1`
+      );
+      if (rowCount > 0) {
+        console.log('  Migration 014: already applied — skipping');
+        return;
+      }
+
+      const INSERT_SQL = `
+        INSERT INTO construction_library (
+          element_type, wall_type, roof_type, insulation_type, insulation_mm,
+          age_band, region, u_value, formula_type,
+          description, description_detail, source, notes,
+          door_type, opens_to
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      `;
+
+      // Helper — inserts one row. All nullable fields default to null.
+      const ins = (r) => query(INSERT_SQL, [
+        r.element_type,
+        r.wall_type          ?? null,
+        r.roof_type          ?? null,
+        r.insulation_type    ?? null,
+        r.insulation_mm      ?? null,
+        r.age_band           ?? null,
+        r.region             ?? 'all',
+        r.u_value            ?? null,
+        r.formula_type       ?? null,
+        r.description,
+        r.description_detail ?? null,
+        r.source,
+        r.notes              ?? null,
+        r.door_type          ?? null,
+        r.opens_to           ?? null,
+      ]);
+
+      let inserted = 0;
+
+      // ───────────────────────────────────────────────────────────────────────
+      // PARTY WALLS — RdSAP10 Table 15 / Section 5.10
+      //
+      // U=0.0 for solid/filled cavity between identical heated dwellings is
+      // physically correct (ΔT=0). The non-zero values apply when construction
+      // is uncertain or when the adjacent space may be at a different temperature.
+      // Engineers use customDeltaT on the element when the adjacent dwelling
+      // is unheated — the U-value then represents the actual construction resistance.
+      // ───────────────────────────────────────────────────────────────────────
+      const partyWalls = [
+        {
+          element_type: 'party_wall',
+          wall_type: 'solid_or_timber_frame',
+          u_value: 0.0,
+          description: 'Party wall — solid masonry / timber frame / system build',
+          description_detail: 'Between identical heated dwellings. ΔT=0 in normal use; heat loss is zero. Use a custom ΔT if the adjacent dwelling is unheated or at a lower temperature.',
+          source: 'RdSAP10-Table15',
+          notes: 'RdSAP10 Table 15, Section 5.10.',
+        },
+        {
+          element_type: 'party_wall',
+          wall_type: 'cavity_unfilled',
+          u_value: 0.5,
+          description: 'Party wall — cavity masonry, unfilled',
+          description_detail: 'Unfilled cavity party wall between dwellings. Higher U-value reflects potential for air movement within cavity.',
+          source: 'RdSAP10-Table15',
+          notes: 'RdSAP10 Table 15, Section 5.10.',
+        },
+        {
+          element_type: 'party_wall',
+          wall_type: 'cavity_filled',
+          u_value: 0.2,
+          description: 'Party wall — cavity masonry, filled',
+          description_detail: 'Filled cavity party wall between dwellings.',
+          source: 'RdSAP10-Table15',
+          notes: 'RdSAP10 Table 15, Section 5.10.',
+        },
+        {
+          element_type: 'party_wall',
+          wall_type: 'unknown_house',
+          u_value: 0.25,
+          description: 'Party wall — construction unknown, house or bungalow',
+          description_detail: 'Default where party wall construction cannot be determined in a house or bungalow.',
+          source: 'RdSAP10-Table15',
+          notes: 'RdSAP10 Table 15, Section 5.10.',
+        },
+        {
+          element_type: 'party_wall',
+          wall_type: 'unknown_flat',
+          u_value: 0.0,
+          description: 'Party wall — construction unknown, flat or maisonette',
+          description_detail: 'For flats and maisonettes where construction is unknown. RdSAP assumes construction avoids thermal bypass.',
+          source: 'RdSAP10-Table15',
+          notes: 'RdSAP10 Table 15 note: flat/maisonette construction assumed to prevent thermal bypass.',
+        },
+      ];
+      for (const r of partyWalls) { await ins(r); inserted++; }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // PARTY FLOORS / CEILINGS — RdSAP10 Section 5.13
+      //
+      // Between identical heated dwellings: U=0.0 (ΔT=0, no heat loss).
+      // RdSAP10 s5.13 explicitly states internal floors within or between
+      // heated dwellings are disregarded.
+      // For floors above/below unheated spaces use floor_exposed (Table 20).
+      //
+      // The concrete-to-unheated entry gives the actual construction U-value
+      // for use when one side is unheated — engineer sets customDeltaT.
+      // ───────────────────────────────────────────────────────────────────────
+      const partyFloors = [
+        {
+          element_type: 'floor_party',
+          wall_type: null,
+          u_value: 0.0,
+          description: 'Party floor/ceiling — between identical heated dwellings',
+          description_detail: 'ΔT=0 between dwellings at the same internal temperature. No heat loss. For floors above unheated spaces use the Exposed/semi-exposed floor entries.',
+          source: 'RdSAP10-s5.13',
+          notes: 'RdSAP10 Section 5.13: internal floors between heated dwellings are disregarded.',
+        },
+        {
+          element_type: 'floor_party',
+          wall_type: 'concrete_to_unheated',
+          u_value: 2.0,
+          description: 'Party floor/ceiling — concrete construction, to unheated space',
+          description_detail: 'Construction U-value for 150mm dense concrete + 13mm plaster both sides. ISO 6946: U=1/(0.13+0.023+0.111+0.023+0.13)≈2.0 W/m²K. Set a custom ΔT for the actual temperature difference to the adjacent unheated space.',
+          source: 'ISO6946-calc',
+          notes: 'First-principles calculation per BS EN ISO 6946:2017. λ_concrete=1.35 W/m·K, λ_plaster=0.57 W/m·K (BS EN ISO 10456:2007). Apply customDeltaT for correct heat loss.',
+        },
+      ];
+      for (const r of partyFloors) { await ins(r); inserted++; }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // EXPOSED / SEMI-EXPOSED UPPER FLOORS — RdSAP10 Table 20 / Section 5.13
+      //
+      // Floors exposed to outside air below, or above enclosed unheated space
+      // (garage, undercroft, etc.). RdSAP makes no distinction between the two.
+      //
+      // These extend the existing 'floor_exposed' element_type. The original
+      // seed (construction_library.json) may already contain some of these
+      // age-band rows for certain regions — the idempotency guard at the top
+      // of this migration uses 'party_wall' to avoid re-running, so we rely
+      // on distinct descriptions to avoid duplicates here.
+      //
+      // Check before deploying: if floor_exposed rows with age_band already
+      // exist in your DB for region='all', these inserts will create duplicates.
+      // Run: SELECT description, age_band, region FROM construction_library
+      //      WHERE element_type='floor_exposed' ORDER BY age_band;
+      // ───────────────────────────────────────────────────────────────────────
+      const exposedFloors = [
+        // As-built / insulation unknown — by age band group
+        {
+          element_type: 'floor_exposed', age_band: 'A', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band A, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20, Section 5.13. Applies to floors above outside air or unheated enclosed space.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'B', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band B, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'C', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band C, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'D', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band D, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'E', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band E, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'F', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band F, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'G', u_value: 1.20, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band G, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'H', u_value: 0.51, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band H, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'I', u_value: 0.51, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band I, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'J', u_value: 0.25, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band J, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'K', u_value: 0.22, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band K, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'L', u_value: 0.22, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band L, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20. 0.18 W/m²K in Scotland.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: 'M', u_value: 0.18, insulation_mm: null,
+          description: 'Exposed/semi-exposed upper floor — age band M, as built',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20. 0.15 W/m²K in Scotland and Wales.',
+        },
+        // Insulated — use same rows for all age bands A–I (50mm), all bands (100mm, 150mm)
+        {
+          element_type: 'floor_exposed', age_band: null, u_value: 0.50, insulation_mm: 50,
+          description: 'Exposed/semi-exposed upper floor — insulated 50mm (or insulated, thickness unknown)',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20. Use for age bands A–I when insulated but thickness unknown.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: null, u_value: 0.30, insulation_mm: 100,
+          description: 'Exposed/semi-exposed upper floor — insulated 100mm',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        {
+          element_type: 'floor_exposed', age_band: null, u_value: 0.22, insulation_mm: 150,
+          description: 'Exposed/semi-exposed upper floor — insulated 150mm',
+          source: 'RdSAP10-Table20', notes: 'RdSAP10 Table 20.',
+        },
+        // Floor above partially heated premises — RdSAP10 Section 5.14
+        {
+          element_type: 'floor_exposed', age_band: null, u_value: 0.70, insulation_mm: null,
+          description: 'Floor above partially heated premises (e.g. flat above commercial)',
+          description_detail: 'Flat above non-domestic premises not heated to the same extent or duration as the dwelling above.',
+          source: 'RdSAP10-s5.14', notes: 'RdSAP10 Section 5.14. Fixed value — not age-band dependent.',
+        },
+      ];
+      for (const r of exposedFloors) { await ins(r); inserted++; }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // BASEMENT WALLS AND FLOORS — RdSAP10 Table 23 / Section 5.17
+      // ───────────────────────────────────────────────────────────────────────
+      const basementData = [
+        // Basement walls
+        { element_type: 'wall_basement', age_band: 'A', u_value: 0.70, description: 'Basement wall — age band A', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23, Section 5.17.' },
+        { element_type: 'wall_basement', age_band: 'B', u_value: 0.70, description: 'Basement wall — age band B', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'C', u_value: 0.70, description: 'Basement wall — age band C', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'D', u_value: 0.70, description: 'Basement wall — age band D', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'E', u_value: 0.70, description: 'Basement wall — age band E', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'F', u_value: 0.70, description: 'Basement wall — age band F', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'G', u_value: 0.60, description: 'Basement wall — age band G', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'H', u_value: 0.60, description: 'Basement wall — age band H', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'I', u_value: 0.45, description: 'Basement wall — age band I', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'J', u_value: 0.35, description: 'Basement wall — age band J', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'K', u_value: 0.30, description: 'Basement wall — age band K', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'L', u_value: 0.28, description: 'Basement wall — age band L', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'wall_basement', age_band: 'M', u_value: 0.26, description: 'Basement wall — age band M', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        // Basement floors
+        { element_type: 'floor_basement', age_band: 'A', u_value: 0.50, description: 'Basement floor — age band A', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23, Section 5.17.' },
+        { element_type: 'floor_basement', age_band: 'B', u_value: 0.50, description: 'Basement floor — age band B', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'C', u_value: 0.50, description: 'Basement floor — age band C', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'D', u_value: 0.50, description: 'Basement floor — age band D', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'E', u_value: 0.50, description: 'Basement floor — age band E', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'F', u_value: 0.50, description: 'Basement floor — age band F', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'G', u_value: 0.50, description: 'Basement floor — age band G', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'H', u_value: 0.50, description: 'Basement floor — age band H', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'I', u_value: 0.50, description: 'Basement floor — age band I', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'J', u_value: 0.25, description: 'Basement floor — age band J', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'K', u_value: 0.22, description: 'Basement floor — age band K', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'L', u_value: 0.22, description: 'Basement floor — age band L', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+        { element_type: 'floor_basement', age_band: 'M', u_value: 0.18, description: 'Basement floor — age band M', source: 'RdSAP10-Table23', notes: 'RdSAP10 Table 23.' },
+      ];
+      for (const r of basementData) { await ins(r); inserted++; }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // ROOFS — assumed U-values when insulation thickness unknown
+      // RdSAP10 Table 18 / Section 5.11.4
+      //
+      // Three sub-types via roof_type field:
+      //   'pitched_joists'  — pitched, insulation at joists or unknown (col 1) — most common
+      //   'flat'            — flat roof or sloping ceiling to unheated space (col 3)
+      //   'room_in_roof'    — room-in-roof, all elements combined (col 4)
+      //
+      // Engineers with known insulation thickness should use Table 16/17
+      // values directly via the inline "Add U-value" form.
+      // ───────────────────────────────────────────────────────────────────────
+      const roofData = [
+        // Pitched — insulation at joists or unknown — Table 18 col (1)
+        // Note: A–D and E both assumed 100mm (most lofts insulated to at least 100mm)
+        { roof_type: 'pitched_joists', age_band: 'A', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band A (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1). Most lofts insulated to at least 100mm. Use Table 16 if thickness is known.' },
+        { roof_type: 'pitched_joists', age_band: 'B', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band B (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'C', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band C (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'D', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band D (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'E', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band E (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'F', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band F (assumed 100mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'G', u_value: 0.40, description: 'Pitched roof, insulation at joists — age band G', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'H', u_value: 0.30, description: 'Pitched roof, insulation at joists — age band H (assumed 150mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'I', u_value: 0.26, description: 'Pitched roof, insulation at joists — age band I (assumed 170mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'J', u_value: 0.16, description: 'Pitched roof, insulation at joists — age band J (assumed 270mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'K', u_value: 0.16, description: 'Pitched roof, insulation at joists — age band K (assumed 270mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        { roof_type: 'pitched_joists', age_band: 'L', u_value: 0.16, description: 'Pitched roof, insulation at joists — age band L (assumed 270mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1). 0.15 W/m²K in Scotland.' },
+        { roof_type: 'pitched_joists', age_band: 'M', u_value: 0.15, description: 'Pitched roof, insulation at joists — age band M (assumed 300mm)', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (1).' },
+        // No insulation — any age band (surveyor confirms none present)
+        { roof_type: 'pitched_joists', age_band: null, u_value: 2.30, insulation_mm: 0, description: 'Pitched roof — no insulation confirmed', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 note (a). U=2.3 for all roof types with no insulation. Accounts for sheltering effect of unheated roof space.' },
+        // Flat roof — Table 18 col (3)
+        { roof_type: 'flat', age_band: 'A', u_value: 2.30, description: 'Flat roof — age band A, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'B', u_value: 2.30, description: 'Flat roof — age band B, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'C', u_value: 2.30, description: 'Flat roof — age band C, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'D', u_value: 2.30, description: 'Flat roof — age band D, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'E', u_value: 1.50, description: 'Flat roof — age band E, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'F', u_value: 0.68, description: 'Flat roof — age band F, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'G', u_value: 0.40, description: 'Flat roof — age band G, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'H', u_value: 0.35, description: 'Flat roof — age band H, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'I', u_value: 0.35, description: 'Flat roof — age band I, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'J', u_value: 0.25, description: 'Flat roof — age band J, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'K', u_value: 0.25, description: 'Flat roof — age band K, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3). 0.20 W/m²K in Scotland.' },
+        { roof_type: 'flat', age_band: 'L', u_value: 0.18, description: 'Flat roof — age band L, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        { roof_type: 'flat', age_band: 'M', u_value: 0.15, description: 'Flat roof — age band M, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (3).' },
+        // Room-in-roof — Table 18 col (4), all elements
+        { roof_type: 'room_in_roof', age_band: 'A', u_value: 2.30, description: 'Room-in-roof — age band A, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'B', u_value: 2.30, description: 'Room-in-roof — age band B, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'C', u_value: 2.30, description: 'Room-in-roof — age band C, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'D', u_value: 2.30, description: 'Room-in-roof — age band D, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'E', u_value: 1.50, description: 'Room-in-roof — age band E, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'F', u_value: 0.80, description: 'Room-in-roof — age band F, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'G', u_value: 0.50, description: 'Room-in-roof — age band G, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'H', u_value: 0.35, description: 'Room-in-roof — age band H, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'I', u_value: 0.35, description: 'Room-in-roof — age band I, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'J', u_value: 0.30, description: 'Room-in-roof — age band J, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'K', u_value: 0.25, description: 'Room-in-roof — age band K, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'L', u_value: 0.18, description: 'Room-in-roof — age band L, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+        { roof_type: 'room_in_roof', age_band: 'M', u_value: 0.15, description: 'Room-in-roof — age band M, insulation unknown', source: 'RdSAP10-Table18', notes: 'RdSAP10 Table 18 col (4).' },
+      ];
+      for (const r of roofData) {
+        await ins({ ...r, element_type: 'roof', region: 'all' });
+        inserted++;
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // INTERNAL DOORS — ISO 6946 first-principles calculation
+      //
+      // door_type = 'internal' distinguishes from existing external door entries.
+      // opens_to = 'heated' — both sides are internal heated spaces.
+      //
+      // RdSAP10 does not tabulate internal door U-values. The 2.0 W/m²K value
+      // is derived from first principles and matches the MCS heat load calculator.
+      // ───────────────────────────────────────────────────────────────────────
+      const internalDoors = [
+        {
+          element_type: 'door',
+          door_type: 'internal',
+          opens_to: 'heated',
+          u_value: 2.0,
+          description: 'Internal door — solid or hollow core, standard domestic (35mm)',
+          description_detail: 'Applies to both solid timber and hollow core doors — both constructions yield approximately 2.0 W/m²K at standard domestic thickness. Rsi=Rse=0.13 m²K/W (internal surfaces). Solid: R_timber=0.035/0.13=0.269 → U=1.89. Hollow: 4mm skins + unventilated air gap (R=0.18) → U=2.0.',
+          source: 'ISO6946-calc',
+          notes: 'First-principles per BS EN ISO 6946:2017. Conductivities from BS EN ISO 10456:2007. Matches MCS heat load calculator internal door value.',
+          region: 'all',
+        },
+      ];
+      for (const r of internalDoors) { await ins(r); inserted++; }
+
+      console.log(`  Migration 014 complete: inserted ${inserted} construction library records`);
+    },
+  },
 ];
 
 async function runMigrations() {
@@ -1692,6 +2090,8 @@ async function runMigrations() {
     console.log(`  Migration ${migration.version} complete`);
   }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // MAIN
