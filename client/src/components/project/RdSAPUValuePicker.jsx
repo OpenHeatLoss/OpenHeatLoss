@@ -35,16 +35,18 @@ import {
 // ---------------------------------------------------------------------------
 
 const ELEMENT_TYPE_OPTIONS = [
-  { value: 'wall',          label: 'Wall (external)' },
-  { value: 'party_wall',    label: 'Party Wall' },
-  { value: 'roof',          label: 'Roof' },
-  { value: 'floor_exposed', label: 'Exposed / Semi-exposed Floor' },
-  { value: 'floor_party',   label: 'Party Floor / Ceiling' },
-  { value: 'wall_basement', label: 'Basement Wall' },
-  { value: 'floor_basement',label: 'Basement Floor' },
-  { value: 'window',        label: 'Window or Glazing' },
-  { value: 'door',          label: 'External Door' },
-  { value: 'door_internal', label: 'Internal Door' },
+  { value: 'wall',              label: 'Wall (external)' },
+  { value: 'party_wall',        label: 'Party Wall' },
+  { value: 'wall_internal',     label: 'Internal Partition Wall' },
+  { value: 'roof',              label: 'Roof' },
+  { value: 'floor_exposed',     label: 'Exposed / Semi-exposed Floor' },
+  { value: 'floor_party',       label: 'Party Floor / Ceiling' },
+  { value: 'floor_intermediate',label: 'Intermediate Floor / Ceiling' },
+  { value: 'wall_basement',     label: 'Basement Wall' },
+  { value: 'floor_basement',    label: 'Basement Floor' },
+  { value: 'window',            label: 'Window or Glazing' },
+  { value: 'door',              label: 'External Door' },
+  { value: 'door_internal',     label: 'Internal Door' },
 ];
 
 const REGION_LABELS = {
@@ -61,11 +63,13 @@ function toElementCategory(record) {
     if (record.roof_type === 'room_in_roof') return 'Roof Room';
     return 'Roof';
   }
-  if (record.element_type === 'floor_exposed')  return 'Floor';
-  if (record.element_type === 'floor_party')    return 'Floor';
-  if (record.element_type === 'floor_basement') return 'Floor';
-  if (record.element_type === 'wall_basement')  return 'External Wall';
-  if (record.element_type === 'party_wall')     return 'Party Wall';
+  if (record.element_type === 'floor_exposed')      return 'Floor';
+  if (record.element_type === 'floor_party')         return 'Floor';
+  if (record.element_type === 'floor_intermediate')  return 'Floor';
+  if (record.element_type === 'floor_basement')      return 'Floor';
+  if (record.element_type === 'wall_basement')       return 'External Wall';
+  if (record.element_type === 'wall_internal')       return 'Internal Wall';
+  if (record.element_type === 'party_wall')          return 'Party Wall';
   if (record.element_type === 'window')         return 'Window';
   if (record.element_type === 'door')           return 'Door';
   if (record.element_type === 'door_internal')  return 'Door';
@@ -312,6 +316,8 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
       party_wall:     libraryData.party_walls     ?? PARTY_WALL_RECORDS,
       floor_party:    libraryData.floors_party    ?? FLOOR_PARTY_RECORDS,
       door_internal:  libraryData.doors_internal  ?? DOOR_INTERNAL_RECORDS,
+      wall_internal:      libraryData.walls_internal      ?? [],
+      floor_intermediate: libraryData.floors_intermediate ?? [],
       wall_basement:  libraryData.walls_basement  ?? [],
       floor_basement: libraryData.floors_basement ?? [],
     };
@@ -340,8 +346,10 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
         return true;
       });
     }
-    // Party wall, party floor, internal door — no age-band filtering; filter by region
-    if (['party_wall', 'floor_party', 'door_internal'].includes(elementType)) {
+    // Party wall, party floor, internal door, internal wall, intermediate floor
+    // — no age-band filtering; filter by region
+    if (['party_wall', 'floor_party', 'door_internal',
+         'wall_internal', 'floor_intermediate'].includes(elementType)) {
       return allRecords.filter(r =>
         !r.regions || r.regions.includes(region)
       );
@@ -442,12 +450,13 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  const STATIC_TYPES = ['party_wall', 'floor_party', 'door_internal', 'wall_internal', 'floor_intermediate'];
   const step1Done = true;
   const step2Done = elementType === 'window'
     ? !!glazingType
     : elementType === 'door'
     ? true
-    : ['party_wall', 'floor_party', 'door_internal'].includes(elementType)
+    : STATIC_TYPES.includes(elementType)
     ? true
     : !!resolvedBand || elementType === 'roof';
   const step3Done = !!selectedRow;
@@ -804,6 +813,37 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
             </p>
           </div>
         )}
+        {elementType === 'wall_internal' && (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Source: ISO 6946:2017 layer calculations</p>
+            <p style={{ margin: '0 0 8px', color: '#6b7280' }}>
+              Internal partition wall U-values don't vary by age band. Select the construction
+              type below, then set a custom ΔT on the element:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18, color: '#6b7280', fontSize: 12 }}>
+              <li>Adjacent heated dwelling assumed at <strong>15°C</strong> → ΔT = Ti − 15</li>
+              <li>Unheated space (garage, etc.) assumed at <strong>5°C</strong> → ΔT = Ti − 5</li>
+              <li>Rooms within same dwelling at same temperature → ΔT = 0 (no loss)</li>
+            </ul>
+          </div>
+        )}
+        {elementType === 'floor_intermediate' && (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Source: ISO 6946:2017 layer calculations</p>
+            <p style={{ margin: '0 0 6px', color: '#6b7280' }}>
+              Select the appropriate heat flow direction — this affects the surface resistance
+              (ISO 6946 Table 1) and hence the U-value:
+            </p>
+            <ul style={{ margin: '0 0 8px', paddingLeft: 18, color: '#6b7280', fontSize: 12 }}>
+              <li><strong>Heat flow upwards</strong> — room you're calculating is below the floor (warmer)</li>
+              <li><strong>Heat flow downwards</strong> — room you're calculating is above the floor (warmer)</li>
+            </ul>
+            <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>
+              Then set a custom ΔT on the element for the temperature difference between rooms.
+              Rooms within the same dwelling at the same target temperature → ΔT = 0.
+            </p>
+          </div>
+        )}
 
         {/* WINDOW FILTERS */}
         {elementType === 'window' && (
@@ -887,7 +927,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
         )}
 
         {/* AGE BAND — walls, roofs, floors, basement; hidden for static types */}
-        {!['window', 'door', 'party_wall', 'floor_party', 'door_internal'].includes(elementType) && (
+        {!['window', 'door', ...STATIC_TYPES].includes(elementType) && (
           <div style={{ padding: 16 }}>
             <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
               <span style={badgeStyle(ageBandMode === 'band')} onClick={() => setAgeBandMode('band')}>
@@ -961,11 +1001,21 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
           {elementType === 'floor_exposed' && renderFloorOptions()}
           {elementType === 'window'        && renderWindowOptions()}
           {elementType === 'door'          && renderDoorOptions()}
-          {elementType === 'party_wall'    && renderSimpleList('No party wall records found.')}
-          {elementType === 'floor_party'   && renderSimpleList('No party floor records found.')}
-          {elementType === 'door_internal' && renderSimpleList('No internal door records found.')}
-          {elementType === 'wall_basement' && renderSimpleList('Select an age band above to see basement wall U-values.')}
-          {elementType === 'floor_basement'&& renderSimpleList('Select an age band above to see basement floor U-values.')}
+          {elementType === 'party_wall'     && renderSimpleList('No party wall records found.')}
+          {elementType === 'floor_party'    && renderSimpleList('No party floor records found.')}
+          {elementType === 'door_internal'  && renderSimpleList('No internal door records found.')}
+          {elementType === 'wall_internal'  && renderSimpleList('No internal wall records found.')}
+          {elementType === 'floor_intermediate' && renderSimpleList('No intermediate floor records found.')}
+          {elementType === 'wall_basement'  && renderSimpleList(
+            resolvedBand
+              ? `No basement wall records found for band ${resolvedBand} — check construction_library.json is up to date.`
+              : 'Select an age band above to see basement wall U-values.'
+          )}
+          {elementType === 'floor_basement' && renderSimpleList(
+            resolvedBand
+              ? `No basement floor records found for band ${resolvedBand} — check construction_library.json is up to date.`
+              : 'Select an age band above to see basement floor U-values.'
+          )}
         </div>
       </div>
 
@@ -1060,7 +1110,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
       )}
 
       <div style={{ marginTop: 12, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
-        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 15, 16, 18, 20, 23, 24, 26 · ISO 6946 first-principles (internal elements)
+        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 15, 16, 18, 20, 23, 24, 26 · ISO 6946:2017 first-principles (internal elements)
       </div>
     </div>
   );
