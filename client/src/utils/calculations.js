@@ -147,13 +147,18 @@ export const calculateElementArea   = (l, h)    => (l > 0 && h > 0) ? l * h : 0;
 
 /**
  * Calculate volume (m³) for a single segment.
- * @param {Object} seg — { length, width, ceiling_type, height_low, height_high }
+ * Accepts both camelCase (React state) and snake_case (raw DB rows).
+ * @param {Object} seg — { length, width, ceilingType|ceiling_type, heightLow|height_low, heightHigh|height_high }
  */
 export const calculateSegmentVolume = (seg) => {
-  const { length: l, width: w, ceiling_type, height_low: hLow, height_high: hHigh } = seg;
+  const l         = seg.length ?? 0;
+  const w         = seg.width  ?? 0;
+  const ceilType  = seg.ceilingType  ?? seg.ceiling_type  ?? 'flat';
+  const hLow      = seg.heightLow    ?? seg.height_low    ?? 0;
+  const hHighRaw  = seg.heightHigh   ?? seg.height_high   ?? null;
   if (!l || !w || !hLow) return 0;
-  if (ceiling_type === 'mono_pitch' || ceiling_type === 'dual_pitch') {
-    const hHi = hHigh ?? hLow;
+  if (ceilType === 'mono_pitch' || ceilType === 'dual_pitch') {
+    const hHi = hHighRaw ?? hLow;
     return 0.5 * (hLow + hHi) * w * l;
   }
   // flat (default)
@@ -164,18 +169,23 @@ export const calculateSegmentVolume = (seg) => {
  * Calculate ceiling/roof area (m²) for a single segment.
  * For flat ceilings this equals the floor area. For pitched types it is the
  * actual rafter-plane area — the figure the engineer needs for the ceiling element.
- * @param {Object} seg — { length, width, ceiling_type, height_low, height_high }
+ * Accepts both camelCase (React state) and snake_case (raw DB rows).
+ * @param {Object} seg — { length, width, ceilingType|ceiling_type, heightLow|height_low, heightHigh|height_high }
  */
 export const calculateSegmentCeilingArea = (seg) => {
-  const { length: l, width: w, ceiling_type, height_low: hLow, height_high: hHigh } = seg;
+  const l        = seg.length ?? 0;
+  const w        = seg.width  ?? 0;
+  const ceilType = seg.ceilingType ?? seg.ceiling_type ?? 'flat';
+  const hLow     = seg.heightLow   ?? seg.height_low   ?? 0;
+  const hHighRaw = seg.heightHigh  ?? seg.height_high  ?? null;
   if (!l || !w) return 0;
-  if (ceiling_type === 'mono_pitch') {
-    const hHi = hHigh ?? hLow;
+  if (ceilType === 'mono_pitch') {
+    const hHi = hHighRaw ?? hLow;
     const rise = hHi - hLow;
     return Math.sqrt(w * w + rise * rise) * l;
   }
-  if (ceiling_type === 'dual_pitch') {
-    const hHi = hHigh ?? hLow;
+  if (ceilType === 'dual_pitch') {
+    const hHi = hHighRaw ?? hLow;
     const rise = hHi - hLow;
     const halfW = w / 2;
     return 2 * Math.sqrt(halfW * halfW + rise * rise) * l;

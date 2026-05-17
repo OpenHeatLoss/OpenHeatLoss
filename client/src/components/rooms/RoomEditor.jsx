@@ -163,11 +163,24 @@ function SegmentEditor({ room, onAdd, onUpdate, onDelete }) {
                     <select
                       value={loc.ceilingType}
                       onChange={e => {
-                        setField(seg.id, 'ceilingType', e.target.value);
-                        // Clear heightHigh when switching to flat
-                        if (e.target.value === 'flat') setField(seg.id, 'heightHigh', '');
-                        // Commit immediately on change
-                        setTimeout(() => commitSeg({ ...seg, ceilingType: e.target.value }), 0);
+                        const newType = e.target.value;
+                        const newHighVal = newType === 'flat' ? null : (loc.heightHigh || null);
+                        setField(seg.id, 'ceilingType', newType);
+                        if (newType === 'flat') setField(seg.id, 'heightHigh', '');
+                        // Commit directly with the new values — don't use localOf
+                        // here as setField is async and localOf would read stale state
+                        onUpdate(room.id, seg.id, {
+                          label:        loc.label,
+                          length:       parseFloat(loc.length)    || 0,
+                          width:        parseFloat(loc.width)     || 0,
+                          ceilingType:  newType,
+                          heightLow:    parseFloat(loc.heightLow) || 0,
+                          heightHigh:   newType === 'flat' ? null
+                            : (newHighVal !== '' && newHighVal !== null
+                                ? parseFloat(newHighVal) || null
+                                : null),
+                          displayOrder: seg.displayOrder,
+                        });
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
                     >

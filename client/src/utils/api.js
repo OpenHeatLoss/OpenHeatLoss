@@ -157,6 +157,24 @@ export const api = {
       method: 'DELETE',
     }).then(r => r.json()),
 
+    createSegment: (roomId, data) =>
+    fetch(`/api/rooms/${roomId}/segments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+ 
+  updateSegment: (id, data) =>
+    fetch(`/api/segments/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+ 
+  deleteSegment: (id) =>
+    fetch(`/api/segments/${id}`, { method: 'DELETE' }).then(r => r.json()),
+
+
   // ==========================================================
   // ELEMENTS
   // ==========================================================
