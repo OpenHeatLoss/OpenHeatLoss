@@ -1,7 +1,7 @@
 // client/src/App.jsx
 import { useState, useEffect } from 'react';
 import { api } from './utils/api';
-import { calculateRoomVolume, calculateRoomFloorArea, calculateElementArea } from './utils/calculations';
+import { calculateRoomVolume, calculateRoomFloorArea, calculateElementArea, calculateSegmentsVolume, calculateSegmentsFloorArea } from './utils/calculations';
 import { HomeIcon, PlusIcon, SaveIcon, TrashIcon } from './components/common/Icons';
 import ProjectDashboard from './components/project/ProjectDashboard';
 import ProjectInfo from './components/project/ProjectInfo';
@@ -452,6 +452,18 @@ function App() {
           ufhReturnTemp:         room.ufhSpecs.ufh_return_temp         ?? 40,
           hasActuator:           room.ufhSpecs.has_actuator            ?? 0,
         } : null,
+        // Room segments (migration 013) — camelCase geometry fields for the client
+        segments: (room.segments || []).map(s => ({
+          id:           s.id,
+          roomId:       s.room_id,
+          label:        s.label        || '',
+          length:       s.length       ?? 0,
+          width:        s.width        ?? 0,
+          ceilingType:  s.ceiling_type || 'flat',
+          heightLow:    s.height_low   ?? 0,
+          heightHigh:   s.height_high  ?? null,
+          displayOrder: s.display_order ?? 0,
+        })),
       })),
     };
 
@@ -936,18 +948,10 @@ const deleteProject = async (id) => {
 
     let updates = { [field]: value };
 
-    // Auto-calculate volume and floor area when dimensions change
-    if (['roomLength', 'roomWidth', 'roomHeight'].includes(field)) {
-      const newLength = field === 'roomLength' ? value : room.roomLength;
-      const newWidth  = field === 'roomWidth'  ? value : room.roomWidth;
-      const newHeight = field === 'roomHeight' ? value : room.roomHeight;
-      if (newLength > 0 && newWidth > 0 && newHeight > 0) {
-        updates.volume = calculateRoomVolume(newLength, newWidth, newHeight);
-      }
-      if (newLength > 0 && newWidth > 0) {
-        updates.floorArea = calculateRoomFloorArea(newLength, newWidth);
-      }
-    }
+    // volume and floorArea are now derived from segments (see updateSegment /
+    // addSegment / deleteSegment handlers). Direct edits to roomLength/roomWidth/
+    // roomHeight are no longer used for geometry — those fields are kept in the DB
+    // for backward compat but not recalculated here.
 
     // Legacy ventilation field groups (kept for backward compat)
     const ventilationFields    = ['minAirFlow', 'infiltrationRate', 'mechanicalSupply', 'mechanicalExtract'];
@@ -1016,6 +1020,114 @@ const deleteProject = async (id) => {
       await loadProject(currentProject.id, true);
     } catch (error) {
       console.error('Error deleting room:', error);
+    }
+  };
+
+  // ── Room segment handlers ────────────────────────────────────────────────
+  // After any segment mutation, recalculate and persist volume + floorArea
+  // on the room record so everything downstream (PDF, ventilation, emitters)
+  // continues to read a single consistent figure.
+
+  const _recalcRoomFromSegments = async (roomId, segments) => {
+    const newVolume    = calculateSegmentsVolume(segments);
+    const newFloorArea = calculateSegmentsFloorArea(segments);
+    const room = currentProject.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    await api.updateRoom(roomId, {
+      name:              room.name,
+      internalTemp:      room.internalTemp,
+      volume:            newVolume,
+      floorArea:         newFloorArea,
+      roomLength:        room.roomLength,
+      roomWidth:         room.roomWidth,
+      roomHeight:        room.roomHeight,
+      minAirFlow:        room.ventilation.minAirFlow,
+      infiltrationRate:  room.ventilation.infiltrationRate,
+      mechanicalSupply:  room.ventilation.mechanicalSupply,
+      mechanicalExtract: room.ventilation.mechanicalExtract,
+      roomType:          room.roomType || 'living_room',
+      hasManualACHOverride: room.hasManualACHOverride || false,
+      manualACH:         room.manualACH || 0,
+      extractFanFlowRate: room.extractFanFlowRate || 0,
+      hasOpenFire:       room.hasOpenFire || false,
+      designConnectionType: room.designConnectionType || 'BOE',
+      thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
+      exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
+      hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
+      isTopStorey:          room.isTopStorey           ?? 0,
+      bgVentCount:          room.bgVentCount           ?? 0,
+      bgFanCount:           room.bgFanCount            ?? 0,
+      bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
+      bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
+      bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
+      continuousVentType:   room.continuousVentType    || 'none',
+      continuousVentRateM3h: room.continuousVentRateM3h ?? 0,
+      mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
+    });
+  };
+
+  const addSegment = async (roomId) => {
+    try {
+      const room = currentProject.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const nextOrder = (room.segments || []).length;
+      await api.createSegment(roomId, {
+        label:        'New area',
+        length:       0,
+        width:        0,
+        ceilingType:  'flat',
+        heightLow:    0,
+        heightHigh:   null,
+        displayOrder: nextOrder,
+      });
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error adding segment:', error);
+    }
+  };
+
+  const updateSegment = async (roomId, segmentId, data) => {
+    try {
+      await api.updateSegment(segmentId, data);
+      // Reload to get accurate segment list, then recalc room totals
+      const fresh = await api.getProject(currentProject.id);
+      const freshRoom = (fresh.rooms || []).find(r => r.id === roomId);
+      if (freshRoom) {
+        const segments = (freshRoom.segments || []).map(s => ({
+          length:      s.length  ?? 0,
+          width:       s.width   ?? 0,
+          ceilingType: s.ceiling_type || 'flat',
+          heightLow:   s.height_low   ?? 0,
+          heightHigh:  s.height_high  ?? null,
+        }));
+        await _recalcRoomFromSegments(roomId, segments);
+      }
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error updating segment:', error);
+    }
+  };
+
+  const deleteSegment = async (roomId, segmentId) => {
+    try {
+      await api.deleteSegment(segmentId);
+      const fresh = await api.getProject(currentProject.id);
+      const freshRoom = (fresh.rooms || []).find(r => r.id === roomId);
+      if (freshRoom) {
+        const segments = (freshRoom.segments || [])
+          .filter(s => s.id !== segmentId)
+          .map(s => ({
+            length:     s.length  ?? 0,
+            width:      s.width   ?? 0,
+            ceilingType: s.ceiling_type || 'flat',
+            heightLow:  s.height_low   ?? 0,
+            heightHigh: s.height_high  ?? null,
+          }));
+        await _recalcRoomFromSegments(roomId, segments);
+      }
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error deleting segment:', error);
     }
   };
 
@@ -1750,6 +1862,9 @@ const deleteProject = async (id) => {
                 onUpdateEmitter={updateEmitter}
                 onDeleteEmitter={deleteEmitter}
                 onAddRadiatorSpec={addRadiatorSpec}
+                onAddSegment={addSegment}
+                onUpdateSegment={updateSegment}
+                onDeleteSegment={deleteSegment}
               />
             )}
             {activeTab === 'summary' && (

@@ -15,6 +15,7 @@ import MCS031PerformanceEstimator from './components/mcs/MCS031PerformanceEstima
 import MCS020SoundCalculator from './components/mcs/MCS020SoundCalculator';
 import QuoteBuilder from './components/quote/QuoteBuilder';
 import SettingsPage from './components/settings/SettingsPage';
+import AdminPage from './components/admin/AdminPage';
 import { getMCSDataFromPostcode } from './utils/mcsData';
 
 function App() {
@@ -25,18 +26,35 @@ function App() {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId }
-  const [showAuthModal, setShowAuthModal] = useState(null); // null | 'register' | 'login'
+  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan, isAdmin }
+  const [currentCompany, setCurrentCompany] = useState(null); // { id, name, mcs_number, ... }
+  const [showAuthModal, setShowAuthModal] = useState(null);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [resetToken, setResetToken] = useState(null); // set from ?reset= query param on load
+
+  // Derived: pro and beta users can access the project dashboard.
+  // Set plan = 'beta' in Railway Postgres to grant early-access engineers dashboard access.
+  const canSeeDashboard = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
+
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // Boot sequence:
   // 1. Check if already logged in (auth_token cookie via /api/auth/me)
   // 2. If yes  → load their most recent project, registered mode
   // 3. If no   → check for / create anonymous session project
   useEffect(() => {
+    // Check for password reset link (?reset=TOKEN) before anything else.
+    const params = new URLSearchParams(window.location.search);
+    const resetParam = params.get('reset');
+    if (resetParam) {
+      setResetToken(resetParam);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const boot = async () => {
       try {
         // Step 1: are we already authenticated?
@@ -45,11 +63,20 @@ function App() {
           const { user } = await meRes.json();
           setCurrentUser(user);
           setIsAnonymous(false);
-          // Load their most recent project
-          const projectsRes = await fetch('/api/projects');
-          const userProjects = await projectsRes.json();
-          if (userProjects.length > 0) {
-            await loadProject(userProjects[0].id);
+          // Load company details for dashboard header
+          try {
+            const companyRes = await fetch('/api/company');
+            if (companyRes.ok) setCurrentCompany(await companyRes.json());
+          } catch { /* non-fatal */ }
+          // Dashboard-eligible users (beta/pro) land on the dashboard by default.
+          // Free users auto-load their most recent project as before.
+          const hasDashboard = user.plan === 'pro' || user.plan === 'beta';
+          if (!hasDashboard) {
+            const projectsRes = await fetch('/api/projects');
+            const userProjects = await projectsRes.json();
+            if (userProjects.length > 0) {
+              await loadProject(userProjects[0].id);
+            }
           }
           return;
         }
@@ -69,12 +96,12 @@ function App() {
         if (projectId) {
           setIsAnonymous(true);
           await loadProject(projectId);
-        } else {
-          loadProjects();
         }
+        // If projectId is null the anonymous project creation failed —
+        // leave currentProject null; the UI handles this gracefully.
       } catch (err) {
-        console.error('Anonymous boot error — falling back to dashboard:', err);
-        loadProjects();
+        console.error('Anonymous boot error:', err);
+        // No fallback for anonymous users — loadProjects() requires auth.
       }
     };
 
@@ -109,6 +136,10 @@ function App() {
       setCurrentUser(data.user);
       setIsAnonymous(false);
       setShowAuthModal(null);
+      try {
+        const companyRes = await fetch('/api/company');
+        if (companyRes.ok) setCurrentCompany(await companyRes.json());
+      } catch { /* non-fatal */ }
       if (data.projectId) {
         await loadProject(data.projectId);
       }
@@ -136,7 +167,16 @@ function App() {
       setCurrentUser(data.user);
       setIsAnonymous(false);
       setShowAuthModal(null);
-      if (data.projectId) {
+      try {
+        const companyRes = await fetch('/api/company');
+        if (companyRes.ok) setCurrentCompany(await companyRes.json());
+      } catch { /* non-fatal */ }
+      // Dashboard-eligible users (beta/pro) land on the dashboard — don't
+      // auto-load a project. Free users load the claimed anonymous project.
+      const hasDashboard = data.user.plan === 'pro' || data.user.plan === 'beta';
+      if (hasDashboard) {
+        setCurrentProject(null);  // clear any anonymous project loaded before login
+      } else if (data.projectId) {
         await loadProject(data.projectId);
       }
     } catch (err) {
@@ -149,6 +189,7 @@ function App() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setCurrentUser(null);
+    setCurrentCompany(null);
     setCurrentProject(null);
     setIsAnonymous(false);
     // Reload page so a fresh anonymous session is created
@@ -167,6 +208,16 @@ function App() {
       status:   data.status || 'enquiry',
       designer: data.designer || '',
       briefNotes: data.brief_notes || '',
+
+      // BUS Grant lifecycle (migration 012)
+      busGrantStatus:         data.bus_grant_status          || 'not_applicable',
+      busGrantAmount:         data.bus_grant_amount          ?? null,
+      busGrantVoucherRef:     data.bus_grant_voucher_ref     || '',
+      busGrantVoucherExpiry:  data.bus_grant_voucher_expiry  || '',
+      busGrantRedemptionDate: data.bus_grant_redemption_date || '',
+      busGrantPaidDate:       data.bus_grant_paid_date       || '',
+      busGrantPaidAmount:     data.bus_grant_paid_amount     ?? null,
+      busGrantNotes:          data.bus_grant_notes           || '',
 
       // Client
       clientId:          cl.id || null,
@@ -244,7 +295,7 @@ function App() {
       sapDraughtLobby:        dp.sap_draught_lobby         ?? 0,
       buildingStoreys:        dp.building_storeys           ?? 2,
       buildingShielding:      dp.building_shielding         || 'normal',
-      referenceTemp:          dp.reference_temp             ?? 10.6,
+      referenceTemp:          dp.reference_temp             ?? 10.0,
 
       mcsHeatPumpSoundPower: dp.mcs_heat_pump_sound_power || 0,
       mcsSoundAssessments: (() => {
@@ -413,16 +464,36 @@ function App() {
         project.externalTemp      = mcs.lowTemp;
         project.mcsDegreeDays     = mcs.degreeDays;
         project.mcsOutdoorLowTemp = mcs.lowTemp;
-        api.updateDesignParams(id, {
-          ...project,
+        api.updateDesignParams(id, buildDesignParamsPayload(project, {
           externalTemp:      mcs.lowTemp,
           mcsDegreeDays:     mcs.degreeDays,
           mcsOutdoorLowTemp: mcs.lowTemp,
-        }).catch(err => console.error('MCS auto-apply failed:', err));
+        })).catch(err => console.error('MCS auto-apply failed:', err));
       }
     }
     setCurrentProject(project);
     if (!preserveTab) setActiveTab('project');
+
+    // Load pipe sections, pipe materials and fittings separately from their
+    // new normalised tables. These are parallel fetches — independent of getProject.
+    // Only load for registered users (anonymous users don't have company context for libraries).
+    if (currentUser) {
+      try {
+        const [sectionsData, materialsData, fittingsData] = await Promise.all([
+          api.getPipeSections(id),
+          api.getPipeMaterials(),
+          api.getFittings(),
+        ]);
+        setCurrentProject(prev => ({
+          ...prev,
+          pipeSections:  Array.isArray(sectionsData)  ? sectionsData  : [],
+          pipeMaterials: Array.isArray(materialsData)  ? materialsData : [],
+          fittings:      Array.isArray(fittingsData)   ? fittingsData  : [],
+        }));
+      } catch (err) {
+        console.error('Failed to load pipe data:', err);
+      }
+    }
     } catch (error) {
             console.error('Error loading project:', error);
       }
@@ -459,7 +530,7 @@ function App() {
         sapDraughtLobby:       0,
         buildingStoreys:       2,
         buildingShielding:     'normal',
-        referenceTemp:         10.6,
+        referenceTemp:         10.0,
       });
       await loadProjects();
       await loadProject(newProject.id);
@@ -478,6 +549,14 @@ function App() {
       status:     currentProject.status,
       designer:   currentProject.designer,
       briefNotes: currentProject.briefNotes,
+      busGrantStatus:         currentProject.busGrantStatus,
+      busGrantAmount:         currentProject.busGrantAmount,
+      busGrantVoucherRef:     currentProject.busGrantVoucherRef,
+      busGrantVoucherExpiry:  currentProject.busGrantVoucherExpiry,
+      busGrantRedemptionDate: currentProject.busGrantRedemptionDate,
+      busGrantPaidDate:       currentProject.busGrantPaidDate,
+      busGrantPaidAmount:     currentProject.busGrantPaidAmount,
+      busGrantNotes:          currentProject.busGrantNotes,
     });
 
     // Save 2: client fields (if client is linked)
@@ -554,7 +633,7 @@ function App() {
       mcsSoundAssessments:    currentProject.mcsSoundAssessments    || [],
       mcsSoundSnapshot:       currentProject.mcsSoundSnapshot       || null,
       mcsCalculationSnapshot: currentProject.mcsCalculationSnapshot || null,
-      pipeSections:           currentProject.pipeSections           || [],
+      pipeSections:           null,   // now managed via /api/pipe-sections — not stored in design_params
       circuits:               currentProject.circuits               || null,
       heatPumpManufacturer:   currentProject.heatPumpManufacturer,
       heatPumpModel:          currentProject.heatPumpModel,
@@ -601,25 +680,119 @@ const deleteProject = async (id) => {
     setCurrentProject(prev => ({ ...prev, ...updates }));
   };
 
-  const handleUpdateClientAddress = async (addressId, data) => {
-    await api.updateAddress(addressId, data);
+  const handleUpdateClientAddress = async (addressId, data, clientId) => {
+    if (addressId) {
+      await api.updateAddress(addressId, data);
+    } else if (clientId) {
+      // No client address row yet — create one and link it to the client
+      await api.addClientAddress(clientId, {
+        ...data,
+        addressType: 'home',
+        isPrimary:   true,
+      });
+    }
     await loadProject(currentProject.id, true);
   };
+
+  const handleSaveContact = async (contactDraft) => {
+    // Update local state immediately so UI feels instant
+    updateProjectBatch(contactDraft);
+    // Persist to DB via the clients API
+    if (currentProject.clientId) {
+      await api.updateClient(currentProject.clientId, {
+        title:     contactDraft.customerTitle,
+        firstName: contactDraft.customerFirstName,
+        surname:   contactDraft.customerSurname,
+        email:     contactDraft.customerEmail,
+        telephone: contactDraft.customerTelephone,
+        mobile:    contactDraft.customerMobile,
+      });
+    }
+    await loadProject(currentProject.id, true);
+  };
+
+  // Builds the safe design params payload from a project object.
+  // Never spread the whole project — rooms, radiatorSpecs, pipeSections etc.
+  // will cause a 413 Content Too Large on projects with real data.
+  const buildDesignParamsPayload = (proj, overrides = {}) => ({
+    externalTemp:      proj.externalTemp,
+    annualAvgTemp:     proj.annualAvgTemp,
+    airDensity:        proj.airDensity,
+    specificHeat:      proj.specificHeat,
+    designFlowTemp:    proj.designFlowTemp,
+    designReturnTemp:  proj.designReturnTemp,
+    mcsPostcodePrefix: proj.mcsPostcodePrefix,
+    mcsDegreeDays:     proj.mcsDegreeDays,
+    mcsOutdoorLowTemp: proj.mcsOutdoorLowTemp,
+    mcsHeatPumpType:       proj.mcsHeatPumpType,
+    mcsEmitterType:        proj.mcsEmitterType,
+    mcsSystemProvides:     proj.mcsSystemProvides,
+    mcsCylinderVolume:     proj.mcsCylinderVolume,
+    mcsPasteurizationFreq: proj.mcsPasteurizationFreq,
+    mcsUFHType:            proj.mcsUFHType,
+    mcsBedrooms:           proj.mcsBedrooms,
+    mcsOccupants:          proj.mcsOccupants,
+    useSAPVentilation:        proj.useSAPVentilation,
+    buildingCategory:         proj.buildingCategory,
+    dwellingType:             proj.dwellingType,
+    numberOfStoreys:          proj.numberOfStoreys,
+    shelterFactor:            proj.shelterFactor,
+    numberOfBedrooms:         proj.numberOfBedrooms,
+    hasBlowerTest:            proj.hasBlowerTest,
+    sapAgeBand:               proj.sapAgeBand,
+    airPermeabilityQ50:       proj.airPermeabilityQ50,
+    numberOfChimneys:         proj.numberOfChimneys,
+    numberOfOpenFlues:        proj.numberOfOpenFlues,
+    numberOfIntermittentFans: proj.numberOfIntermittentFans,
+    numberOfPassiveVents:     proj.numberOfPassiveVents,
+    ventilationSystemType:    proj.ventilationSystemType,
+    mvhrEfficiency:           proj.mvhrEfficiency,
+    ventilationMethod:      proj.ventilationMethod,
+    airPermeabilityMethod:  proj.airPermeabilityMethod,
+    q50:                    proj.q50,
+    sapStructural:          proj.sapStructural,
+    sapFloor:               proj.sapFloor,
+    sapWindowDraughtPct:    proj.sapWindowDraughtPct,
+    sapDraughtLobby:        proj.sapDraughtLobby,
+    buildingStoreys:        proj.buildingStoreys,
+    buildingShielding:      proj.buildingShielding,
+    referenceTemp:          proj.referenceTemp,
+    mcsHeatPumpSoundPower:  proj.mcsHeatPumpSoundPower,
+    mcsSoundAssessments:    proj.mcsSoundAssessments    || [],
+    mcsSoundSnapshot:       proj.mcsSoundSnapshot       || null,
+    mcsCalculationSnapshot: proj.mcsCalculationSnapshot || null,
+    pipeSections:           null,
+    circuits:               proj.circuits               || null,
+    heatPumpManufacturer:   proj.heatPumpManufacturer,
+    heatPumpModel:          proj.heatPumpModel,
+    heatPumpRatedOutput:    proj.heatPumpRatedOutput,
+    heatPumpMinModulation:  proj.heatPumpMinModulation  ?? 0,
+    heatPumpFlowTemp:       proj.heatPumpFlowTemp,
+    heatPumpReturnTemp:     proj.heatPumpReturnTemp,
+    epcSpaceHeatingDemand:  proj.epcSpaceHeatingDemand,
+    epcHotWaterDemand:      proj.epcHotWaterDemand,
+    epcTotalFloorArea:      proj.epcTotalFloorArea,
+    heatPumpInternalVolume: proj.heatPumpInternalVolume ?? 0,
+    bufferVesselVolume:     proj.bufferVesselVolume     ?? 0,
+    en14511TestPoints:      proj.en14511TestPoints      || [],
+    defrostPct:             proj.defrostPct             ?? 5,
+    ...overrides,
+  });
 
   const applyMCSFromPostcode = async (projectId, postcode) => {
     if (!postcode) return;
     const mcs = getMCSDataFromPostcode(postcode);
     if (!mcs) return;
-    await api.updateDesignParams(projectId, {
-      ...currentProject,
+    await api.updateDesignParams(projectId, buildDesignParamsPayload(currentProject, {
       externalTemp:      mcs.lowTemp,
       mcsDegreeDays:     mcs.degreeDays,
       mcsOutdoorLowTemp: mcs.lowTemp,
-    });
+    }));
   };
 
   const handleSaveInstallAddress = async (installDraft) => {
     if (currentProject.installationAddressId) {
+      // Address row already exists — update it in place
       await api.updateAddress(currentProject.installationAddressId, {
         addressLine1: installDraft.customerAddressLine1,
         addressLine2: installDraft.customerAddressLine2,
@@ -628,15 +801,29 @@ const deleteProject = async (id) => {
         postcode:     installDraft.customerPostcode,
         what3words:   installDraft.customerWhat3words,
       });
+    } else {
+      // No address row yet (anonymous or newly created project) —
+      // create one and link it to this project.
+      await api.addProjectAddress(currentProject.id, {
+        addressLine1: installDraft.customerAddressLine1,
+        addressLine2: installDraft.customerAddressLine2,
+        town:         installDraft.customerTown,
+        county:       installDraft.customerCounty,
+        postcode:     installDraft.customerPostcode,
+        what3words:   installDraft.customerWhat3words,
+        addressType:  'installation',
+        isPrimary:    true,
+      });
     }
+
+    // Apply MCS design temperature from postcode if available
     const mcs = getMCSDataFromPostcode(installDraft.customerPostcode);
     if (mcs) {
-      await api.updateDesignParams(currentProject.id, {
-        ...currentProject,
+      await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject, {
         externalTemp:      mcs.lowTemp,
         mcsDegreeDays:     mcs.degreeDays,
         mcsOutdoorLowTemp: mcs.lowTemp,
-      });
+      }));
     }
     await loadProject(currentProject.id, true);
   };
@@ -670,13 +857,29 @@ const deleteProject = async (id) => {
     const uVal = currentProject.uValueLibrary.find(u => u.id === id);
     if (!uVal) return;
     try {
-      await api.updateUValue(id, {
+      // Build the updated record for both the API call and local state patch
+      const updated = {
         elementCategory: field === 'elementCategory' ? value : uVal.element_category,
         name:    field === 'name'    ? value : uVal.name,
         uValue:  field === 'uValue'  ? value : uVal.u_value,
-        notes:   field === 'notes'   ? value : uVal.notes
-      });
-      await loadProject(currentProject.id, true);
+        notes:   field === 'notes'   ? value : uVal.notes,
+      };
+      await api.updateUValue(id, updated);
+      // Patch local state directly — no loadProject, so the list never reorders
+      // mid-edit. The category select was the main trigger: it fired onUpdate
+      // immediately, loadProject re-sorted the list, disrupting the editing row.
+      setCurrentProject(prev => ({
+        ...prev,
+        uValueLibrary: prev.uValueLibrary.map(u =>
+          u.id !== id ? u : {
+            ...u,
+            element_category: updated.elementCategory,
+            name:             updated.name,
+            u_value:          updated.uValue,
+            notes:            updated.notes,
+          }
+        ),
+      }));
     } catch (error) {
       console.error('Error updating U-value:', error);
     }
@@ -1006,12 +1209,15 @@ const deleteProject = async (id) => {
     }
   };
 
+  // Change addRadiatorSpec to return the new id:
   const addRadiatorSpec = async (radiatorData) => {
     try {
-      await api.createRadiatorSpec(radiatorData);
+      const result = await api.createRadiatorSpec(radiatorData);
       await loadProject(currentProject.id, true);
+      return result.id;  // ← return the new id to the caller
     } catch (error) {
       console.error('Error adding radiator spec:', error);
+      return null;
     }
   };
 
@@ -1021,6 +1227,54 @@ const deleteProject = async (id) => {
       await loadProject(currentProject.id, true);
     } catch (error) {
       console.error('Error adding UFH emitter:', error);
+    }
+  };
+
+  const removeUFHSpecs = async (roomId) => {
+    try {
+      // Remove the UFH emitter entry and the UFH spec row for this room
+      const room = currentProject.rooms.find(r => r.id === roomId);
+      const ufhEmitter = room?.emitters?.find(e => e.emitterType === 'UFH');
+      if (ufhEmitter) await api.deleteRoomEmitter(ufhEmitter.id);
+      await api.deleteUFHSpecs(roomId);
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error removing UFH specs:', error);
+    }
+  };
+
+  // savePipeSection — persists a single pipe section to the normalised pipe_sections table.
+  // Called by PipeSizing after every add/edit/delete. Returns the updated sections array.
+  // The sections array in React state is updated by reloading from the server response.
+  const savePipeSection = async (sectionData, mode = 'create') => {
+    try {
+      let updatedSections;
+      if (mode === 'create') {
+        updatedSections = await api.createPipeSection(currentProject.id, sectionData);
+      } else if (mode === 'update') {
+        updatedSections = await api.updatePipeSection(sectionData.id, sectionData);
+      } else if (mode === 'delete') {
+        updatedSections = await api.deletePipeSection(sectionData.id);
+      }
+      if (Array.isArray(updatedSections)) {
+        setCurrentProject(prev => ({ ...prev, pipeSections: updatedSections }));
+      }
+    } catch (error) {
+      console.error('Error saving pipe section:', error);
+    }
+  };
+
+  // Generic handler to persist any design_params fields immediately.
+  // Called from MCS/pipe-sizing components on blur or action, so that
+  // loadProject triggered by other tabs never resets unsaved values.
+  // Pass a partial object — it is merged with currentProject before saving.
+  const saveDesignParams = async (fields) => {
+    try {
+      await api.updateDesignParams(currentProject.id,
+        buildDesignParamsPayload(currentProject, fields)
+      );
+    } catch (error) {
+      console.error('Error saving design params:', error);
     }
   };
 
@@ -1114,8 +1368,17 @@ const deleteProject = async (id) => {
     );
   }
 
+  if (showAdmin && currentUser?.isAdmin) {
+    return (
+      <AdminPage
+        currentUser={currentUser}
+        onBack={() => setShowAdmin(false)}
+      />
+    );
+  }
+
   // Project selection screen
-  if (!currentProject) {
+  if (!currentProject && canSeeDashboard) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">
@@ -1124,11 +1387,26 @@ const deleteProject = async (id) => {
               <div className="flex items-center gap-3">
                 <HomeIcon />
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-800">Mysa Heating Platform</h1>
-                  <p className="text-sm text-gray-500">Mysa Heating Ltd · MCS: OFT-502073</p>
+                  <h1 className="text-2xl font-bold text-gray-800">
+                    {currentCompany?.name || 'OpenHeatLoss'}
+                  </h1>
+                  <p className="text-sm text-gray-500">
+                    {[
+                      currentCompany?.name,
+                      currentCompany?.mcs_number ? `MCS: ${currentCompany.mcs_number}` : null,
+                    ].filter(Boolean).join(' · ') || 'Heat loss calculation & system design'}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3 items-center">
+                {currentUser?.isAdmin && (
+                  <button
+                    onClick={() => setShowAdmin(true)}
+                    className="bg-red-700 text-white py-2 px-4 rounded-lg hover:bg-red-800 text-sm font-semibold transition"
+                  >
+                    ⚙ Admin
+                  </button>
+                )}
                 <button
                   onClick={() => setShowSettings(true)}
                   className="bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-800 text-sm font-semibold transition"
@@ -1141,6 +1419,12 @@ const deleteProject = async (id) => {
                 >
                   <PlusIcon />
                   New Project
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 text-sm font-semibold transition"
+                >
+                  Log out
                 </button>
               </div>
             </div>
@@ -1166,9 +1450,130 @@ const deleteProject = async (id) => {
     );
   }
 
+  // Free registered user with no project loaded, OR still loading (anonymous boot)
+  if (!currentProject) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
+          <h2 className="text-xl font-bold text-gray-800 mb-2">OpenHeatLoss</h2>
+          <p className="text-gray-500 mb-6">Loading your project...</p>
+          <button
+            onClick={async () => {
+              const res = await fetch('/api/projects');
+              const userProjects = await res.json();
+              if (userProjects.length > 0) loadProject(userProjects[0].id);
+            }}
+            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition"
+          >
+            Open Project
+          </button>
+          <button
+            onClick={handleLogout}
+            className="block mx-auto mt-3 text-sm text-gray-400 hover:text-gray-600"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Project editing screen
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* About modal */}
+      {showAbout && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setShowAbout(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-screen overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="bg-blue-600 text-white px-6 py-4 rounded-t-xl flex justify-between items-start">
+              <div>
+                <h2 className="text-xl font-bold">About OpenHeatLoss</h2>
+                <p className="text-blue-200 text-sm mt-0.5">openheatloss.com</p>
+              </div>
+              <button onClick={() => setShowAbout(false)} className="text-blue-200 hover:text-white text-2xl leading-none ml-4">×</button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5 text-gray-700 text-sm leading-relaxed">
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Why this tool exists</h3>
+                <p>
+                  OpenHeatLoss started with a self-build. When I built my own house I needed a heating system
+                  design and couldn't find a local engineer to take on the job to design a low temperature heating system. So I designed and
+                  installed the heating system myself. At the time there was no accessible software for someone in my position,
+                  so I bought a copy of the CIBSE Domestic Heating Design Guide and built a design tool in
+                  a spreadsheet.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">From self-builder to heating engineer</h3>
+                <p>
+                  That experience led me into the trade. I started <a href="mysaheating.uk">Mysa Heating</a>  
+                   and kept using the spreadsheet for system designs through the business. As we moved to focus
+                  on heat pumps and became MCS certified, the spreadsheet still worked — but it was slow, 
+                  cumbersome, and not built for managing multiple projects. When MCS introduced the requirement
+                  for designs to comply with BS EN 12831:2017, I knew it was time to build something more robust 
+                  and comprehensive, and which helped me comply more easily with MCS design requirements.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Why not use existing tools?</h3>
+                <p>
+                  I tried six different heat loss tools on the market. Several were drawing-based — you had
+                  to draw the property, which created its own limitations and workarounds for anything that
+                  wasn't a simple box. More importantly, I got different results between tools for the same
+                  property and couldn't dig into the assumptions to understand why. That lack of transparency, 
+                  high subscription costs, my project data locked into a platform which could be difficult if 
+                  not impossible to extract if I moved on, were key deciding factors.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Open source and auditable by design</h3>
+                <p>
+                  OpenHeatLoss is open source (AGPL v3). Every calculation is visible, every assumption is
+                  documented, and anyone can verify what the tool is doing and why. That's deliberate. The
+                  calculation method follows CIBSE Domestic Heating Design Guide 2026 rather than the raw
+                  BS EN 12831:2017 standard — partly because the CIBSE guide is the accepted UK
+                  implementation, and partly because verifying it only requires a copy of the CIBSE guide
+                  rather than paying several hundred pounds for the EN standard itself. Accessibility matters.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Early access</h3>
+                <p>
+                  In building this tool, I've tried to make the workflow follow the logical steps a heating system 
+                  designer naturally needs to follow to produce a good design. This is an early release. The core calculations — heat loss per EN 12831-1, emitter sizing,
+                  pipe sizing, MCS MIS 3005-D documentation — are implemented and validated against real
+                  projects. There is more to build. If you find something that doesn't look right, or a
+                  workflow that doesn't fit how you work, please say so.
+                </p>
+                <p className="mt-2">
+                  <a href="mailto:heatloss@openheatloss.com" className="text-blue-600 hover:text-blue-800 underline font-medium">
+                    heatloss@openheatloss.com
+                  </a>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <a href="https://mysaheating.uk" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                    mysaheating.uk
+                  </a>
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Anonymous session banner */}
       {isAnonymous && (
@@ -1208,23 +1613,23 @@ const deleteProject = async (id) => {
                 .join(', ') || 'No address set'}
             </p>
           </div>
+
+          {/* Feedback — centre of header */}
+          <div className="text-center text-sm text-blue-100 hidden md:block">
+            <p className="font-semibold text-white mb-0.5">🧪 Early access — your feedback shapes this tool</p>
+            <p>
+              Found a bug or have a suggestion?{' '}
+              <a href="mailto:heatloss@openheatloss.com" className="underline hover:text-white transition">
+                heatloss@openheatloss.com
+              </a>
+              {' · '}
+              <button onClick={() => setShowAbout(true)} className="underline hover:text-white transition">
+                About this tool
+              </button>
+            </p>
+          </div>
+
           <div className="flex gap-2">
-            <button
-              onClick={() => {
-                const addr = [currentProject.customerAddressLine1, currentProject.customerTown]
-                             .filter(Boolean).join(', ');
-                const params = new URLSearchParams({
-                  projectId: currentProject.id,
-                  client:    [currentProject.customerFirstName, currentProject.customerSurname].filter(Boolean).join(' '),
-                  address:   addr,
-                  postcode:  currentProject.customerPostcode || '',
-                });
-                window.open(`/survey.html?${params.toString()}`, '_blank');
-              }}
-              className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded transition text-sm"
-            >
-              Survey
-            </button>
             <button
               onClick={isAnonymous
                 ? () => { setAuthError(''); setShowAuthModal('register'); }
@@ -1247,12 +1652,14 @@ const deleteProject = async (id) => {
                 Log out
               </button>
             )}
-            <button
-              onClick={() => setCurrentProject(null)}
-              className="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded transition"
-            >
-              Close
-            </button>
+            {canSeeDashboard && (
+              <button
+                onClick={() => setCurrentProject(null)}
+                className="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded transition"
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1272,7 +1679,7 @@ const deleteProject = async (id) => {
                 { key: 'summary',    label: 'Heat Loss Summary' },
                 { key: 'radiators',  label: 'Emitter Sizing' },
                 { key: 'pipe-sizing',label: 'Pipe Sizing' },
-                { key: 'quote',      label: 'Quote' },
+                { key: 'quote',      label: 'Materials & Quote' },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -1296,15 +1703,27 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdate={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                onSaveContact={handleSaveContact}
                 onUpdateClientAddress={handleUpdateClientAddress}
                 onSaveInstallAddress={handleSaveInstallAddress}
+                onLaunchSurvey={() => {
+                  const addr = [currentProject.customerAddressLine1, currentProject.customerTown]
+                               .filter(Boolean).join(', ');
+                  const params = new URLSearchParams({
+                    projectId: currentProject.id,
+                    client:    [currentProject.customerFirstName, currentProject.customerSurname].filter(Boolean).join(' '),
+                    address:   addr,
+                    postcode:  currentProject.customerPostcode || '',
+                  });
+                  window.open(`/survey.html?${params.toString()}`, '_blank');
+                }}
               />
             )}
             {activeTab === 'mcs031' && (
-              <MCS031PerformanceEstimator project={currentProject} onUpdate={updateProject} />
+              <MCS031PerformanceEstimator project={currentProject} onUpdate={updateProject} onSave={saveDesignParams} />
             )}
             {activeTab === 'mcs020' && (
-              <MCS020SoundCalculator project={currentProject} onUpdate={updateProject} />
+              <MCS020SoundCalculator project={currentProject} onUpdate={updateProject} onSave={saveDesignParams} />
             )}
             {activeTab === 'u-values' && (
               <UValueLibrary
@@ -1326,6 +1745,7 @@ const deleteProject = async (id) => {
                 onUpdateElement={updateElement}
                 onUpdateElementBatch={updateElementBatch}
                 onDeleteElement={deleteElement}
+                onAddUValue={addUValueFromCalculator}
                 onAddEmitter={addEmitter}
                 onUpdateEmitter={updateEmitter}
                 onDeleteEmitter={deleteEmitter}
@@ -1343,14 +1763,20 @@ const deleteProject = async (id) => {
               <RadiatorSizing
                 project={currentProject}
                 onUpdateProject={updateProject}
+                onSaveFlowTemps={async (flowTemp, returnTemp) => {
+                  updateProject('designFlowTemp', flowTemp);
+                  updateProject('designReturnTemp', returnTemp);
+                  await saveDesignParams();
+                }}
                 onAddRadiatorSpec={addRadiatorSpec}
                 onUpdateRadiatorSchedule={updateRadiatorSchedule}
                 onUpdateUFHSpecs={updateUFHSpecs}
                 onAddUFHEmitter={addUFHEmitter}
+                onRemoveUFH={removeUFHSpecs}
               />
             )}
             {activeTab === 'pipe-sizing' && (
-              <PipeSizing project={currentProject} onUpdate={updateProject} />
+              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSection={savePipeSection} onSave={saveDesignParams} />
             )}
             {activeTab === 'quote' && (
               <QuoteBuilder project={currentProject} />
@@ -1375,12 +1801,14 @@ const deleteProject = async (id) => {
               <SaveIcon />
               {isAnonymous ? 'Register free to Save' : (saving ? 'Saving...' : 'Save Project')}
             </button>
-            <button
-              onClick={() => setCurrentProject(null)}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition font-semibold shadow-md"
-            >
-              Close Project
-            </button>
+            {canSeeDashboard && (
+              <button
+                onClick={() => setCurrentProject(null)}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition font-semibold shadow-md"
+              >
+                Close Project
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1397,15 +1825,21 @@ const deleteProject = async (id) => {
           onClose={() => setShowAuthModal(null)}
         />
       )}
+
+      {/* Password reset modal — shown when user arrives via ?reset=TOKEN link */}
+      {resetToken && (
+        <ResetPasswordModal
+          token={resetToken}
+          onClose={() => setResetToken(null)}
+          onSuccess={() => { setResetToken(null); setAuthError(''); setShowAuthModal('login'); }}
+        />
+      )}
     </div>
   );
 }
 
 // =============================================================================
-// AUTH MODAL
-// Handles both register and login in a single component, toggled by `mode`.
-// Kept in App.jsx to avoid an extra file — it's small and tightly coupled
-// to the auth state that lives here.
+// AUTH MODAL — with forgot password link
 // =============================================================================
 function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, onClose }) {
   const [name, setName]         = useState('');
@@ -1413,6 +1847,7 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
   const [password, setPassword] = useState('');
   const [confirm, setConfirm]   = useState('');
   const [localError, setLocalError] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -1433,122 +1868,203 @@ function AuthModal({ mode, error, loading, onRegister, onLogin, onSwitchMode, on
 
   const displayError = localError || error;
 
+  if (showForgot) {
+    return <ForgotPasswordModal onBack={() => setShowForgot(false)} onClose={onClose} />;
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
               {isRegister ? 'Create your free account' : 'Log in to your account'}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              {isRegister
-                ? 'Your project will be saved to your account.'
-                : 'Welcome back — your project will load automatically.'}
+              {isRegister ? 'Your project will be saved to your account.' : 'Welcome back — your project will load automatically.'}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-          >
-            ×
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
-
-        {/* Form */}
         <div className="p-6 space-y-4">
           {isRegister && (
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Your name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Jane Smith"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-              />
+              <input type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Jane Smith" autoFocus
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           )}
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Email address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="jane@example.com"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus={!isRegister}
-            />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="jane@example.com" autoFocus={!isRegister}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder={isRegister ? 'At least 8 characters' : ''}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               onKeyDown={e => e.key === 'Enter' && !isRegister && handleSubmit()}
-            />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-
           {isRegister && (
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm password</label>
-              <input
-                type="password"
-                value={confirm}
-                onChange={e => setConfirm(e.target.value)}
+              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
                 placeholder="Repeat password"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           )}
-
           {displayError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-              {displayError}
-            </div>
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{displayError}</div>
           )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition"
-          >
-            {loading
-              ? (isRegister ? 'Creating account…' : 'Logging in…')
-              : (isRegister ? 'Create account & save project' : 'Log in')}
+          <button onClick={handleSubmit} disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+            {loading ? (isRegister ? 'Creating account…' : 'Logging in…') : (isRegister ? 'Create account & save project' : 'Log in')}
           </button>
+          {!isRegister && (
+            <p className="text-center">
+              <button onClick={() => setShowForgot(true)} className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition">
+                Forgot your password?
+              </button>
+            </p>
+          )}
         </div>
-
-        {/* Footer — switch mode */}
         <div className="px-6 pb-6 text-center text-sm text-gray-500">
           {isRegister ? (
             <>Already have an account?{' '}
-              <button
-                onClick={() => onSwitchMode('login')}
-                className="text-blue-600 hover:underline font-semibold"
-              >
-                Log in
-              </button>
+              <button onClick={() => onSwitchMode('login')} className="text-blue-600 hover:underline font-semibold">Log in</button>
             </>
           ) : (
             <>Don't have an account?{' '}
-              <button
-                onClick={() => onSwitchMode('register')}
-                className="text-blue-600 hover:underline font-semibold"
-              >
-                Register free
-              </button>
+              <button onClick={() => onSwitchMode('register')} className="text-blue-600 hover:underline font-semibold">Register free</button>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// FORGOT PASSWORD MODAL
+// =============================================================================
+function ForgotPasswordModal({ onBack, onClose }) {
+  const [email, setEmail]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState('');
+
+  const handleSubmit = async () => {
+    if (!email.trim()) { setError('Please enter your email address'); return; }
+    setLoading(true); setError('');
+    try {
+      await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      setSent(true);
+    } catch { setError('Network error — please try again'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-xl font-bold text-gray-900">Reset your password</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          {sent ? (
+            <div className="text-center space-y-3">
+              <div className="text-4xl">✉️</div>
+              <p className="font-semibold text-gray-900">Check your inbox</p>
+              <p className="text-sm text-gray-500">If an account exists for that email, we've sent a reset link. It expires in 1 hour.</p>
+              <button onClick={onClose} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition">Done</button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600">Enter your email and we'll send you a link to reset your password.</p>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="jane@example.com" autoFocus
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
+              <button onClick={handleSubmit} disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+                {loading ? 'Sending…' : 'Send reset link'}
+              </button>
+              <p className="text-center">
+                <button onClick={onBack} className="text-sm text-gray-500 hover:text-blue-600 hover:underline transition">← Back to log in</button>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// RESET PASSWORD MODAL
+// =============================================================================
+function ResetPasswordModal({ token, onClose, onSuccess }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm]   = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+
+  const handleSubmit = async () => {
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (password !== confirm) { setError('Passwords do not match'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Reset failed — the link may have expired'); return; }
+      onSuccess();
+    } catch { setError('Network error — please try again'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Set a new password</h2>
+            <p className="text-sm text-gray-500 mt-1">Choose something secure — at least 8 characters.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">New password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="At least 8 characters" autoFocus
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm new password</label>
+            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="Repeat password"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
+          <button onClick={handleSubmit} disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition">
+            {loading ? 'Saving…' : 'Set new password'}
+          </button>
         </div>
       </div>
     </div>

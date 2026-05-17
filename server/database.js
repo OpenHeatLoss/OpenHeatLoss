@@ -1100,6 +1100,54 @@ const ufhSpecs = {
 };
 
 // ---------------------------------------------------------------------------
+// ROOM SEGMENTS
+// One or more rectangular segments per room, each with a ceiling type.
+// The room's volume and floor_area totals are derived from these segments
+// by the client and written back via rooms.update() — they are not stored
+// on segments themselves.
+// ---------------------------------------------------------------------------
+const roomSegments = {
+  getByRoomId: (roomId) =>
+    allQuery(
+      'SELECT * FROM room_segments WHERE room_id = $1 ORDER BY display_order, id',
+      [roomId]
+    ),
+
+  create: (roomId, data) => runQuery(`
+    INSERT INTO room_segments
+      (room_id, label, length, width, ceiling_type, height_low, height_high, display_order)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING id`,
+    [roomId,
+     data.label        || '',
+     data.length       ?? 0,
+     data.width        ?? 0,
+     data.ceilingType  || 'flat',
+     data.heightLow    ?? 0,
+     data.heightHigh   ?? null,
+     data.displayOrder ?? 0]
+  ),
+
+  update: (id, data) => runQuery(`
+    UPDATE room_segments SET
+      label = $1, length = $2, width = $3,
+      ceiling_type = $4, height_low = $5, height_high = $6,
+      display_order = $7
+    WHERE id = $8`,
+    [data.label        || '',
+     data.length       ?? 0,
+     data.width        ?? 0,
+     data.ceilingType  || 'flat',
+     data.heightLow    ?? 0,
+     data.heightHigh   ?? null,
+     data.displayOrder ?? 0,
+     id]
+  ),
+
+  delete: (id) => runQuery('DELETE FROM room_segments WHERE id = $1', [id]),
+};
+
+// ---------------------------------------------------------------------------
 // RADIATOR SCHEDULE
 // ---------------------------------------------------------------------------
 const radiatorSchedule = {
@@ -1196,12 +1244,13 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
     allEmitters,
     allRadSchedule,
     allUfhSpecs,
+    allSegments,
   ] = await Promise.all([
     project.client_id ? clients.getById(project.client_id) : Promise.resolve(null),
     project.client_id ? addresses.getByClientId(project.client_id) : Promise.resolve([]),
     addresses.getByProjectId(projectId),
 
-    // Fetch all elements / emitters / schedule / UFH for every room at once
+    // Fetch all elements / emitters / schedule / UFH / segments for every room at once
     roomIds.length
       ? allQuery('SELECT * FROM elements WHERE room_id = ANY($1) ORDER BY room_id, id', [roomIds])
       : Promise.resolve([]),
@@ -1217,6 +1266,12 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
     roomIds.length
       ? allQuery('SELECT * FROM room_ufh_specs WHERE room_id = ANY($1)', [roomIds])
       : Promise.resolve([]),
+    roomIds.length
+      ? allQuery(
+          'SELECT * FROM room_segments WHERE room_id = ANY($1) ORDER BY room_id, display_order, id',
+          [roomIds]
+        )
+      : Promise.resolve([]),
   ]);
 
   // Stitch sub-data back onto each room in JS — no extra round-trips
@@ -1225,6 +1280,7 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
     room.emitters         = allEmitters.filter(e => e.room_id === room.id);
     room.radiatorSchedule = allRadSchedule.filter(e => e.room_id === room.id);
     room.ufhSpecs         = allUfhSpecs.find(e => e.room_id === room.id) || null;
+    room.segments         = allSegments.filter(e => e.room_id === room.id);
   }
 
   return {
@@ -1713,6 +1769,7 @@ module.exports = {
   projects,
   designParams,
   rooms,
+  roomSegments,
   elements,
   uValueLibrary,
   radiatorSpecs,

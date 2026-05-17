@@ -23,6 +23,7 @@ const {
   projects,
   designParams,
   rooms,
+  roomSegments,
   elements,
   uValueLibrary,
   radiatorSpecs,
@@ -881,10 +882,75 @@ app.delete('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
 });
 
 // ============================================================
-// ELEMENTS
+// ROOM SEGMENTS
 // ============================================================
 
-app.get('/api/rooms/:roomId/elements', requireAuthOrAnon, async (req, res) => {
+app.get('/api/rooms/:roomId/segments', requireAuthOrAnon, async (req, res) => {
+  try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const segments = await roomSegments.getByRoomId(req.params.roomId);
+    res.json(segments);
+  } catch (error) {
+    console.error('Error fetching segments:', error);
+    res.status(500).json({ error: 'Failed to fetch segments' });
+  }
+});
+
+app.post('/api/rooms/:roomId/segments', requireAuthOrAnon, async (req, res) => {
+  try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const result = await roomSegments.create(req.params.roomId, req.body);
+    const segment = await pool.query('SELECT * FROM room_segments WHERE id = $1', [result.id]);
+    res.status(201).json(segment.rows[0]);
+  } catch (error) {
+    console.error('Error creating segment:', error);
+    res.status(500).json({ error: 'Failed to create segment' });
+  }
+});
+
+app.put('/api/segments/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    // Ownership: join segment → room → project
+    const project = await pool.query(
+      `SELECT p.* FROM projects p
+       JOIN rooms r ON r.project_id = p.id
+       JOIN room_segments s ON s.room_id = r.id
+       WHERE s.id = $1`, [req.params.id]
+    );
+    const proj = project.rows[0];
+    if (!ownsProject(proj, req)) return res.status(403).json({ error: 'Not authorised' });
+    await roomSegments.update(req.params.id, req.body);
+    const updated = await pool.query('SELECT * FROM room_segments WHERE id = $1', [req.params.id]);
+    res.json(updated.rows[0]);
+  } catch (error) {
+    console.error('Error updating segment:', error);
+    res.status(500).json({ error: 'Failed to update segment' });
+  }
+});
+
+app.delete('/api/segments/:id', requireAuthOrAnon, async (req, res) => {
+  try {
+    const project = await pool.query(
+      `SELECT p.* FROM projects p
+       JOIN rooms r ON r.project_id = p.id
+       JOIN room_segments s ON s.room_id = r.id
+       WHERE s.id = $1`, [req.params.id]
+    );
+    const proj = project.rows[0];
+    if (!ownsProject(proj, req)) return res.status(403).json({ error: 'Not authorised' });
+    await roomSegments.delete(req.params.id);
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting segment:', error);
+    res.status(500).json({ error: 'Failed to delete segment' });
+  }
+});
+
+// ============================================================
+// ELEMENTS
+// ============================================================
   try {
     const roomElements = await elements.getByRoomId(req.params.roomId);
     res.json(roomElements);

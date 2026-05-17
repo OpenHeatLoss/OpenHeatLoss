@@ -18,7 +18,10 @@ export default function RoomList({
   onAddEmitter,
   onUpdateEmitter,
   onDeleteEmitter,
-  onAddRadiatorSpec
+  onAddRadiatorSpec,
+  onAddSegment,
+  onUpdateSegment,
+  onDeleteSegment,
 }) {
   const [expandedRooms, setExpandedRooms] = useState(new Set());
   const prevRoomCountRef = useRef(rooms?.length || 0);
@@ -158,6 +161,9 @@ export default function RoomList({
                       onUpdateEmitter={onUpdateEmitter}
                       onDeleteEmitter={onDeleteEmitter}
                       onAddRadiatorSpec={onAddRadiatorSpec}
+                      onAddSegment={onAddSegment}
+                      onUpdateSegment={onUpdateSegment}
+                      onDeleteSegment={onDeleteSegment}
                     />
                   </div>
                 )}

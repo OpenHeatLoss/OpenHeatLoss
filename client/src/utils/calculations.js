@@ -120,3 +120,84 @@ export const calculateBuildingTotal = (rooms, project) => {
 export const calculateRoomVolume    = (l, w, h) => (l > 0 && w > 0 && h > 0) ? l * w * h : 0;
 export const calculateRoomFloorArea = (l, w)    => (l > 0 && w > 0) ? l * w : 0;
 export const calculateElementArea   = (l, h)    => (l > 0 && h > 0) ? l * h : 0;
+
+// ---------------------------------------------------------------------------
+// SEGMENT GEOMETRY
+// Per-segment volume and ceiling area for flat, mono-pitch and dual-pitch types.
+// All dimensions in metres; results in m³ (volume) and m² (ceiling area).
+//
+// ceiling_type = 'flat'
+//   Cross-section: rectangle. height_low = single height. height_high unused.
+//   volume       = l × w × h
+//   ceiling_area = l × w  (horizontal plane)
+//
+// ceiling_type = 'mono_pitch'
+//   Cross-section: trapezoid (two different wall heights across the width).
+//   height_low = low eaves, height_high = high eaves.
+//   volume       = ½ × (h_low + h_high) × w × l
+//   ceiling_area = √(w² + (h_high − h_low)²) × l  (sloped rafter plane)
+//
+// ceiling_type = 'dual_pitch'
+//   Cross-section: symmetric pentagon (equal eaves, central ridge).
+//   height_low = eaves height, height_high = ridge height.
+//   volume       = (h_low + ½ × (h_high − h_low)) × w × l
+//                = ½ × (h_low + h_high) × w × l  (same formula as mono_pitch)
+//   ceiling_area = 2 × √((w/2)² + (h_high − h_low)²) × l  (two rafter planes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Calculate volume (m³) for a single segment.
+ * @param {Object} seg — { length, width, ceiling_type, height_low, height_high }
+ */
+export const calculateSegmentVolume = (seg) => {
+  const { length: l, width: w, ceiling_type, height_low: hLow, height_high: hHigh } = seg;
+  if (!l || !w || !hLow) return 0;
+  if (ceiling_type === 'mono_pitch' || ceiling_type === 'dual_pitch') {
+    const hHi = hHigh ?? hLow;
+    return 0.5 * (hLow + hHi) * w * l;
+  }
+  // flat (default)
+  return l * w * hLow;
+};
+
+/**
+ * Calculate ceiling/roof area (m²) for a single segment.
+ * For flat ceilings this equals the floor area. For pitched types it is the
+ * actual rafter-plane area — the figure the engineer needs for the ceiling element.
+ * @param {Object} seg — { length, width, ceiling_type, height_low, height_high }
+ */
+export const calculateSegmentCeilingArea = (seg) => {
+  const { length: l, width: w, ceiling_type, height_low: hLow, height_high: hHigh } = seg;
+  if (!l || !w) return 0;
+  if (ceiling_type === 'mono_pitch') {
+    const hHi = hHigh ?? hLow;
+    const rise = hHi - hLow;
+    return Math.sqrt(w * w + rise * rise) * l;
+  }
+  if (ceiling_type === 'dual_pitch') {
+    const hHi = hHigh ?? hLow;
+    const rise = hHi - hLow;
+    const halfW = w / 2;
+    return 2 * Math.sqrt(halfW * halfW + rise * rise) * l;
+  }
+  // flat
+  return l * w;
+};
+
+/**
+ * Sum volume across all segments for a room.
+ * @param {Array} segments
+ */
+export const calculateSegmentsVolume = (segments) =>
+  (segments || []).reduce((sum, s) => sum + calculateSegmentVolume(s), 0);
+
+/**
+ * Sum floor area across all segments for a room (always l × w regardless of ceiling type).
+ * @param {Array} segments
+ */
+export const calculateSegmentsFloorArea = (segments) =>
+  (segments || []).reduce((sum, s) => {
+    const l = s.length ?? 0;
+    const w = s.width  ?? 0;
+    return sum + (l > 0 && w > 0 ? l * w : 0);
+  }, 0);

@@ -1611,6 +1611,67 @@ const MIGRATIONS = [
       console.log('  Migration 012 complete: BUS Grant lifecycle columns + dashboard view rebuilt');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // MIGRATION 013 — Room segments for irregular floor plans and pitched ceilings
+  //
+  // Replaces the single length × width × height room geometry with a list of
+  // rectangular segments, each with its own ceiling type. This handles:
+  //   - L-shapes, T-shapes, extensions (multiple flat segments)
+  //   - Mono-pitch ceilings (lean-to / single-pitch roof)
+  //   - Dual-pitch / vaulted ceilings (symmetric ridge)
+  //
+  // The room's volume and floor_area columns are retained — they store the
+  // summed totals derived from all segments and are written by the client after
+  // any segment change. This keeps the PDF generators and all existing queries
+  // working unchanged.
+  //
+  // Seeding: one 'flat' segment is created per existing room using the room's
+  // current room_length / room_width / room_height so all existing projects are
+  // migrated without data loss.
+  // ---------------------------------------------------------------------------
+  {
+    version: '013',
+    description: 'Room segments for irregular floor plans and pitched ceilings',
+    run: async () => {
+
+      // Create the room_segments table.
+      // ceiling_type: 'flat' | 'mono_pitch' | 'dual_pitch'
+      // height_low:  flat → single height; mono_pitch → low eaves; dual_pitch → eaves height
+      // height_high: flat → NULL; mono_pitch → high eaves; dual_pitch → ridge height
+      await query(`
+        CREATE TABLE IF NOT EXISTS room_segments (
+          id            SERIAL PRIMARY KEY,
+          room_id       INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+          label         TEXT NOT NULL DEFAULT '',
+          length        DOUBLE PRECISION NOT NULL DEFAULT 0,
+          width         DOUBLE PRECISION NOT NULL DEFAULT 0,
+          ceiling_type  TEXT NOT NULL DEFAULT 'flat',
+          height_low    DOUBLE PRECISION NOT NULL DEFAULT 0,
+          height_high   DOUBLE PRECISION,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at    TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_room_segments_room
+          ON room_segments (room_id, display_order)
+      `);
+
+      // Seed one flat segment per existing room from its current dimensions.
+      // Rooms with all-zero dimensions get a zero segment — harmless, the
+      // engineer will fill in their segments when they next edit that room.
+      await query(`
+        INSERT INTO room_segments (room_id, label, length, width, ceiling_type, height_low, display_order)
+        SELECT id, 'Main area', room_length, room_width, 'flat', room_height, 0
+        FROM rooms
+        WHERE id NOT IN (SELECT DISTINCT room_id FROM room_segments)
+      `);
+
+      console.log('  Migration 013 complete: room_segments table created and seeded from existing room dimensions');
+    },
+  },
 ];
 
 async function runMigrations() {
