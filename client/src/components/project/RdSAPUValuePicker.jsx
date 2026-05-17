@@ -35,11 +35,16 @@ import {
 // ---------------------------------------------------------------------------
 
 const ELEMENT_TYPE_OPTIONS = [
-  { value: 'wall',          label: 'Wall' },
+  { value: 'wall',          label: 'Wall (external)' },
+  { value: 'party_wall',    label: 'Party Wall' },
   { value: 'roof',          label: 'Roof' },
   { value: 'floor_exposed', label: 'Exposed / Semi-exposed Floor' },
+  { value: 'floor_party',   label: 'Party Floor / Ceiling' },
+  { value: 'wall_basement', label: 'Basement Wall' },
+  { value: 'floor_basement',label: 'Basement Floor' },
   { value: 'window',        label: 'Window or Glazing' },
   { value: 'door',          label: 'External Door' },
+  { value: 'door_internal', label: 'Internal Door' },
 ];
 
 const REGION_LABELS = {
@@ -56,11 +61,104 @@ function toElementCategory(record) {
     if (record.roof_type === 'room_in_roof') return 'Roof Room';
     return 'Roof';
   }
-  if (record.element_type === 'floor_exposed') return 'Floor';
-  if (record.element_type === 'window') return 'Window';
-  if (record.element_type === 'door') return 'Door';
+  if (record.element_type === 'floor_exposed')  return 'Floor';
+  if (record.element_type === 'floor_party')    return 'Floor';
+  if (record.element_type === 'floor_basement') return 'Floor';
+  if (record.element_type === 'wall_basement')  return 'External Wall';
+  if (record.element_type === 'party_wall')     return 'Party Wall';
+  if (record.element_type === 'window')         return 'Window';
+  if (record.element_type === 'door')           return 'Door';
+  if (record.element_type === 'door_internal')  return 'Door';
   return 'External Wall';
 }
+
+// ---------------------------------------------------------------------------
+// Static data for element types not in construction_library.json
+// These don't vary by region or insulation thickness so they're hardcoded
+// here rather than in the JSON seed. Values match migration 014 exactly.
+// ---------------------------------------------------------------------------
+
+// RdSAP10 Table 15 / Section 5.10
+const PARTY_WALL_RECORDS = [
+  {
+    element_type: 'party_wall', wall_type: 'solid_or_timber_frame',
+    u_value: 0.0,
+    description: 'Solid masonry / timber frame / system build',
+    description_detail: 'Between identical heated dwellings. ΔT=0 in normal use; heat loss is zero. Use a custom ΔT on the element if the adjacent dwelling is unheated.',
+    source: 'RdSAP10-Table15',
+    notes: 'RdSAP10 Table 15.',
+  },
+  {
+    element_type: 'party_wall', wall_type: 'cavity_unfilled',
+    u_value: 0.5,
+    description: 'Cavity masonry — unfilled',
+    description_detail: 'Unfilled cavity party wall. Higher U-value reflects potential air movement within the cavity.',
+    source: 'RdSAP10-Table15',
+    notes: 'RdSAP10 Table 15.',
+  },
+  {
+    element_type: 'party_wall', wall_type: 'cavity_filled',
+    u_value: 0.2,
+    description: 'Cavity masonry — filled',
+    description_detail: null,
+    source: 'RdSAP10-Table15',
+    notes: 'RdSAP10 Table 15.',
+  },
+  {
+    element_type: 'party_wall', wall_type: 'unknown_house',
+    u_value: 0.25,
+    description: 'Construction unknown — house or bungalow',
+    description_detail: 'Default where party wall construction cannot be determined.',
+    source: 'RdSAP10-Table15',
+    notes: 'RdSAP10 Table 15.',
+  },
+  {
+    element_type: 'party_wall', wall_type: 'unknown_flat',
+    u_value: 0.0,
+    description: 'Construction unknown — flat or maisonette',
+    description_detail: 'RdSAP assumes construction avoids thermal bypass in flats/maisonettes.',
+    source: 'RdSAP10-Table15',
+    notes: 'RdSAP10 Table 15.',
+  },
+];
+
+// RdSAP10 Section 5.13
+const FLOOR_PARTY_RECORDS = [
+  {
+    element_type: 'floor_party',
+    u_value: 0.0,
+    description: 'Between identical heated dwellings',
+    description_detail: 'ΔT=0 between dwellings at the same temperature. No heat loss. For floors above unheated spaces use Exposed/semi-exposed floor instead.',
+    source: 'RdSAP10-s5.13',
+    notes: 'RdSAP10 s5.13: internal floors between heated dwellings are disregarded.',
+  },
+  {
+    element_type: 'floor_party',
+    u_value: 2.0,
+    description: 'Concrete floor/ceiling — to unheated space',
+    description_detail: 'Construction U-value: 150mm dense concrete + 13mm plaster both sides. ISO 6946 calculation. Apply a custom ΔT for the actual temperature difference to the adjacent unheated space.',
+    source: 'ISO6946-calc',
+    notes: 'First-principles per BS EN ISO 6946:2017. λ_concrete=1.35, λ_plaster=0.57 W/m·K.',
+  },
+];
+
+// Internal door — ISO 6946 first-principles
+const DOOR_INTERNAL_RECORDS = [
+  {
+    element_type: 'door_internal',
+    u_value: 2.0,
+    description: 'Internal door — solid or hollow core, 35mm (standard domestic)',
+    description_detail: 'Both solid timber and hollow core constructions give approximately 2.0 W/m²K at standard domestic thickness. Rsi=Rse=0.13 m²K/W.',
+    source: 'ISO6946-calc',
+    notes: 'BS EN ISO 6946:2017. Matches MCS heat load calculator internal door value.',
+  },
+];
+
+// Sheltered wall formula note — not a selectable value, surfaced as UI guidance
+const SHELTERED_WALL_FORMULA = `For walls adjacent to an unheated corridor, apply:
+U = 1 / (1/U₀ + 0.5) where U₀ is the base wall U-value.
+For stairwells: U = 1 / (1/U₀ + 2.1).
+Source: RdSAP10 Section 5.9 / SAP10.2 Section 3.3.`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,12 +300,20 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
 
   // --- Filtered library records ---
   const allRecords = useMemo(() => {
+    // New sections read from JSON where present; static arrays as fallback
+    // (static arrays in PARTY_WALL_RECORDS etc. are kept for resilience but
+    //  the JSON is authoritative — both should stay in sync)
     const sections = {
-      wall:          libraryData.walls          ?? [],
-      roof:          libraryData.roofs          ?? [],
-      floor_exposed: libraryData.floors_exposed ?? [],
-      window:        libraryData.windows        ?? [],
-      door:          libraryData.doors          ?? [],
+      wall:           libraryData.walls           ?? [],
+      roof:           libraryData.roofs           ?? [],
+      floor_exposed:  libraryData.floors_exposed  ?? [],
+      window:         libraryData.windows         ?? [],
+      door:           libraryData.doors           ?? [],
+      party_wall:     libraryData.party_walls     ?? PARTY_WALL_RECORDS,
+      floor_party:    libraryData.floors_party    ?? FLOOR_PARTY_RECORDS,
+      door_internal:  libraryData.doors_internal  ?? DOOR_INTERNAL_RECORDS,
+      wall_basement:  libraryData.walls_basement  ?? [],
+      floor_basement: libraryData.floors_basement ?? [],
     };
     return (sections[elementType] ?? []).filter(r => !('_comment' in r));
   }, [elementType]);
@@ -233,6 +339,19 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
         if (resolvedBand && r.age_bands && !r.age_bands.includes(resolvedBand)) return false;
         return true;
       });
+    }
+    // Party wall, party floor, internal door — no age-band filtering; filter by region
+    if (['party_wall', 'floor_party', 'door_internal'].includes(elementType)) {
+      return allRecords.filter(r =>
+        !r.regions || r.regions.includes(region)
+      );
+    }
+    // Basement walls/floors — filter by age band (no regional variation in RdSAP10 Table 23)
+    if (elementType === 'wall_basement' || elementType === 'floor_basement') {
+      if (!resolvedBand) return [];
+      return allRecords.filter(r =>
+        !r.age_bands || r.age_bands.includes(resolvedBand)
+      );
     }
     // Walls / floors — require age band
     if (!resolvedBand && elementType !== 'roof') return [];
@@ -327,6 +446,8 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
   const step2Done = elementType === 'window'
     ? !!glazingType
     : elementType === 'door'
+    ? true
+    : ['party_wall', 'floor_party', 'door_internal'].includes(elementType)
     ? true
     : !!resolvedBand || elementType === 'roof';
   const step3Done = !!selectedRow;
@@ -553,6 +674,47 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
     });
   }
 
+  // Shared simple list renderer — used by party wall, party floor, internal door, basement
+  function renderSimpleList(emptyMsg) {
+    if (filteredRecords.length === 0) {
+      return <p style={{ padding: 16, fontSize: 13, color: '#6b7280' }}>{emptyMsg}</p>;
+    }
+    return filteredRecords.map((r, i) => {
+      const isSelected = selectedRow === r;
+      return (
+        <div
+          key={i}
+          onClick={() => handleSelectRow(r)}
+          style={{
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+            padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6',
+            background: isSelected ? '#eff6ff' : '#fff',
+            borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent',
+            transition: 'all .1s',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, color: '#374151', fontWeight: isSelected ? 600 : 400 }}>
+              {r.description}
+            </div>
+            {r.description_detail && (
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3, lineHeight: 1.4 }}>
+                {r.description_detail}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16, paddingTop: 1 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>
+              {r.u_value?.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>W/m²K</span>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: getUValueColour(r.u_value), flexShrink: 0 }} />
+          </div>
+        </div>
+      );
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -599,6 +761,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
           <span>
             {elementType === 'window' ? 'Glazing specification'
               : elementType === 'door' ? 'Door type'
+              : ['party_wall', 'floor_party', 'door_internal'].includes(elementType) ? 'Reference'
               : 'Age band'}
           </span>
           {elementType === 'roof' && (
@@ -607,6 +770,40 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
             </span>
           )}
         </div>
+
+        {/* STATIC TYPES — party wall, party floor, internal door: no age band needed */}
+        {elementType === 'party_wall' && (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Source: RdSAP10 Table 15 / Section 5.10</p>
+            <p style={{ margin: '0 0 8px', color: '#6b7280' }}>
+              Party wall U-values don't vary by age band. Select the construction type below.
+              Where the adjacent dwelling is unheated, set a custom ΔT on the element after adding it to the room.
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
+              {SHELTERED_WALL_FORMULA}
+            </p>
+          </div>
+        )}
+        {elementType === 'floor_party' && (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Source: RdSAP10 Section 5.13 / ISO 6946</p>
+            <p style={{ margin: 0, color: '#6b7280' }}>
+              Between identical heated dwellings the heat loss is zero (ΔT=0). The concrete-to-unheated
+              entry gives the construction U-value for cases where the adjacent space is unheated —
+              set a custom ΔT on the element to get the correct heat loss.
+            </p>
+          </div>
+        )}
+        {elementType === 'door_internal' && (
+          <div style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Source: BS EN ISO 6946:2017 (first-principles)</p>
+            <p style={{ margin: 0, color: '#6b7280' }}>
+              Internal doors don't vary by age band or region. Both solid timber and hollow core
+              constructions give approximately 2.0 W/m²K at standard 35mm domestic thickness.
+              This matches the value used in the MCS heat load calculator.
+            </p>
+          </div>
+        )}
 
         {/* WINDOW FILTERS */}
         {elementType === 'window' && (
@@ -689,8 +886,8 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
           </div>
         )}
 
-        {/* AGE BAND — walls, roofs, floors */}
-        {elementType !== 'window' && elementType !== 'door' && (
+        {/* AGE BAND — walls, roofs, floors, basement; hidden for static types */}
+        {!['window', 'door', 'party_wall', 'floor_party', 'door_internal'].includes(elementType) && (
           <div style={{ padding: 16 }}>
             <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
               <span style={badgeStyle(ageBandMode === 'band')} onClick={() => setAgeBandMode('band')}>
@@ -764,6 +961,11 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
           {elementType === 'floor_exposed' && renderFloorOptions()}
           {elementType === 'window'        && renderWindowOptions()}
           {elementType === 'door'          && renderDoorOptions()}
+          {elementType === 'party_wall'    && renderSimpleList('No party wall records found.')}
+          {elementType === 'floor_party'   && renderSimpleList('No party floor records found.')}
+          {elementType === 'door_internal' && renderSimpleList('No internal door records found.')}
+          {elementType === 'wall_basement' && renderSimpleList('Select an age band above to see basement wall U-values.')}
+          {elementType === 'floor_basement'&& renderSimpleList('Select an age band above to see basement floor U-values.')}
         </div>
       </div>
 
@@ -858,7 +1060,7 @@ export default function RdSAPUValuePicker({ project, onSaveToLibrary }) {
       )}
 
       <div style={{ marginTop: 12, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
-        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 16, 18, 20, 24, 26
+        U-values per RdSAP10 Specification (9 June 2025) · Tables 6–10, 12–13, 15, 16, 18, 20, 23, 24, 26 · ISO 6946 first-principles (internal elements)
       </div>
     </div>
   );
