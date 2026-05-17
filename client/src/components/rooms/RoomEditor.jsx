@@ -259,7 +259,11 @@ function SegmentEditor({ room, onAdd, onUpdate, onDelete }) {
                     <span>Volume: <span className="font-medium text-gray-700">{segVolume.toFixed(2)} m³</span></span>
                     {isPitched && ceilArea > 0 && (
                       <span className="text-amber-700 font-medium">
-                        Sloped ceiling area: {ceilArea.toFixed(2)} m² — use this for your ceiling element
+                        Sloped ceiling area: {ceilArea.toFixed(2)} m²
+                        {loc.ceilingType === 'dual_pitch'
+                          ? ` (each slope: ${(ceilArea / 2).toFixed(2)} m²) — use total or per-slope for your ceiling element`
+                          : ' — use this for your ceiling element'
+                        }
                       </span>
                     )}
                   </div>
