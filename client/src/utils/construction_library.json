@@ -7,13 +7,13 @@
       "Bands A-E solid brick: use formula_type='brick_thickness', call solidBrickUValue(thicknessMm)",
       "Bands A-E stone: use formula_type='stone_granite' or 'stone_sandstone', call stoneUValue(thicknessMm)",
       "Filled cavity rows are included as 'current state' regardless of when CWI was installed.",
-      "Ground floors are excluded \u2014 calculated via BS EN ISO 13370 from area/perimeter in the app.",
+      "Ground floors are excluded — calculated via BS EN ISO 13370 from area/perimeter in the app.",
       "Thermal bridging y-factors (Table 21) are stored separately, not in this library.",
       "Age band M (2023+) values taken from M column where shown. Not all regions publish M separately.",
-      "\u2020 means assumed as-built in RdSAP source. * means applies only if insulation added subsequently.",
-      "We include \u2020 rows (they are current-state values). We exclude * rows (retrofit insulation \u2014 enter directly).",
+      "† means assumed as-built in RdSAP source. * means applies only if insulation added subsequently.",
+      "We include † rows (they are current-state values). We exclude * rows (retrofit insulation — enter directly).",
       "insulation_mm: only relevant for rows where added insulation changes the base as-built value.",
-      "For formula rows, u_value is null \u2014 compute at runtime using formula_type + thicknessMm."
+      "For formula rows, u_value is null — compute at runtime using formula_type + thicknessMm."
     ],
     "age_bands": {
       "A": "pre-1900",
@@ -29,12 +29,11 @@
       "K": "2007-2011",
       "L": "2012-2022",
       "M": "2023+"
-    },
-    "tables": "Tables 6-10 (walls), 12-13 (brick/stone formula), 16 (roof thickness), 18 (roof defaults), 20 (exposed floors), 24 (windows), 26 (doors)"
+    }
   },
   "walls": [
     {
-      "_comment": "=== SOLID BRICK \u2014 age bands A-E use thickness formula (Table 13), F+ use fixed values ==="
+      "_comment": "=== SOLID BRICK — age bands A-E use thickness formula (Table 13), F+ use fixed values ==="
     },
     {
       "element_type": "wall",
@@ -56,8 +55,8 @@
       ],
       "u_value": null,
       "formula_type": "brick_thickness",
-      "description": "Solid brick, as built \u2014 U-value depends on wall thickness (measure on site)",
-      "description_detail": "Up to 200mm: 2.5 W/m\u00b2K | 200\u2013280mm: 1.7 W/m\u00b2K | 280\u2013420mm: 1.4 W/m\u00b2K | >420mm: 1.1 W/m\u00b2K",
+      "description": "Solid brick, as built — U-value depends on wall thickness (measure on site)",
+      "description_detail": "Up to 200mm: 2.5 W/m²K | 200–280mm: 1.7 W/m²K | 280–420mm: 1.4 W/m²K | >420mm: 1.1 W/m²K",
       "source": "RdSAP10 Table 13",
       "notes": "Measure wall thickness including plaster. Formula applies to age bands A-E only."
     },
@@ -416,7 +415,7 @@
       "notes": null
     },
     {
-      "_comment": "=== STONE: GRANITE OR WHINSTONE \u2014 bands A-E use formula, F+ fixed ==="
+      "_comment": "=== STONE: GRANITE OR WHINSTONE — bands A-E use formula, F+ fixed ==="
     },
     {
       "element_type": "wall",
@@ -438,8 +437,8 @@
       ],
       "u_value": null,
       "formula_type": "stone_granite",
-      "description": "Stone: granite or whinstone, as built \u2014 U-value depends on wall thickness (measure on site)",
-      "description_detail": "Formula: U = 45.315 \u00d7 W^(-0.513) where W is wall thickness in mm",
+      "description": "Stone: granite or whinstone, as built — U-value depends on wall thickness (measure on site)",
+      "description_detail": "Formula: U = 45.315 × W^(-0.513) where W is wall thickness in mm",
       "source": "RdSAP10 Table 12",
       "notes": "Applies to age bands A-E. Measure wall thickness on site."
     },
@@ -813,7 +812,7 @@
       "notes": null
     },
     {
-      "_comment": "=== STONE: SANDSTONE OR LIMESTONE \u2014 bands A-E formula, F+ fixed ==="
+      "_comment": "=== STONE: SANDSTONE OR LIMESTONE — bands A-E formula, F+ fixed ==="
     },
     {
       "element_type": "wall",
@@ -835,8 +834,8 @@
       ],
       "u_value": null,
       "formula_type": "stone_sandstone",
-      "description": "Stone: sandstone or limestone, as built \u2014 U-value depends on wall thickness (measure on site)",
-      "description_detail": "Formula: U = 54.876 \u00d7 W^(-0.561) where W is wall thickness in mm",
+      "description": "Stone: sandstone or limestone, as built — U-value depends on wall thickness (measure on site)",
+      "description_detail": "Formula: U = 54.876 × W^(-0.561) where W is wall thickness in mm",
       "source": "RdSAP10 Table 12",
       "notes": "Applies to age bands A-E. Measure wall thickness on site."
     },
@@ -1180,7 +1179,7 @@
       "notes": null
     },
     {
-      "_comment": "=== CAVITY \u2014 UNFILLED (as built) ==="
+      "_comment": "=== CAVITY — UNFILLED (as built) ==="
     },
     {
       "element_type": "wall",
@@ -1580,7 +1579,7 @@
       "notes": null
     },
     {
-      "_comment": "=== CAVITY \u2014 FILLED (CWI) \u2014 treated as current state regardless of when filled ==="
+      "_comment": "=== CAVITY — FILLED (CWI) — treated as current state regardless of when filled ==="
     },
     {
       "element_type": "wall",
@@ -1709,9 +1708,9 @@
       ],
       "u_value": 0.35,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1726,9 +1725,9 @@
       ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7 / Table 8",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1744,9 +1743,9 @@
       ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1761,9 +1760,9 @@
       ],
       "u_value": 0.45,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7 / Table 8",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1779,9 +1778,9 @@
       ],
       "u_value": 0.35,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1795,9 +1794,9 @@
       ],
       "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1813,9 +1812,9 @@
       ],
       "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1829,9 +1828,9 @@
       ],
       "u_value": 0.25,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1845,9 +1844,9 @@
       ],
       "u_value": 0.3,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 8",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1862,9 +1861,9 @@
       ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1878,9 +1877,9 @@
       ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 9",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1894,9 +1893,9 @@
       ],
       "u_value": 0.22,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1910,9 +1909,9 @@
       ],
       "u_value": 0.28,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 8",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1928,9 +1927,9 @@
       ],
       "u_value": 0.26,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 6",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1944,9 +1943,9 @@
       ],
       "u_value": 0.17,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 7",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
       "element_type": "wall",
@@ -1960,12 +1959,12 @@
       ],
       "u_value": 0.18,
       "formula_type": null,
-      "description": "Cavity wall, cavity fill insulation (CWI) \u2014 assumed as built (\u2020)",
+      "description": "Cavity wall, cavity fill insulation (CWI) — assumed as built (†)",
       "source": "RdSAP10 Table 8",
-      "notes": "\u2020 assumed as built per RdSAP10"
+      "notes": "† assumed as built per RdSAP10"
     },
     {
-      "_comment": "=== TIMBER FRAME \u2014 all bands, all regions ==="
+      "_comment": "=== TIMBER FRAME — all bands, all regions ==="
     },
     {
       "element_type": "wall",
@@ -2337,7 +2336,7 @@
       "notes": null
     },
     {
-      "_comment": "=== SYSTEM BUILD \u2014 all bands, all regions ==="
+      "_comment": "=== SYSTEM BUILD — all bands, all regions ==="
     },
     {
       "element_type": "wall",
@@ -2737,7 +2736,7 @@
       "notes": null
     },
     {
-      "_comment": "=== COB \u2014 all regions (rare but should be present for SW England completeness) ==="
+      "_comment": "=== COB — all regions (rare but should be present for SW England completeness) ==="
     },
     {
       "element_type": "wall",
@@ -2990,7 +2989,7 @@
   ],
   "roofs": [
     {
-      "_comment": "=== PITCHED ROOF \u2014 insulation thickness known (Table 16, column 1: at joists / flat roof) ==="
+      "_comment": "=== PITCHED ROOF — insulation thickness known (Table 16, column 1: at joists / flat roof) ==="
     },
     {
       "element_type": "roof",
@@ -3265,7 +3264,7 @@
       "notes": ">=400mm"
     },
     {
-      "_comment": "=== PITCHED ROOF \u2014 insulation at rafters (Table 16, column 2) ==="
+      "_comment": "=== PITCHED ROOF — insulation at rafters (Table 16, column 2) ==="
     },
     {
       "element_type": "roof",
@@ -3540,7 +3539,7 @@
       "notes": ">=400mm"
     },
     {
-      "_comment": "=== PITCHED ROOF \u2014 age-band defaults, insulation unknown (Table 18 col.1) ==="
+      "_comment": "=== PITCHED ROOF — age-band defaults, insulation unknown (Table 18 col.1) ==="
     },
     {
       "element_type": "roof",
@@ -3750,7 +3749,7 @@
       "notes": null
     },
     {
-      "_comment": "=== FLAT ROOF \u2014 age-band defaults (Table 18 col.3) ==="
+      "_comment": "=== FLAT ROOF — age-band defaults (Table 18 col.3) ==="
     },
     {
       "element_type": "roof",
@@ -3960,7 +3959,7 @@
       "notes": null
     },
     {
-      "_comment": "=== ROOM IN ROOF \u2014 age-band defaults (Table 18 col.4) ==="
+      "_comment": "=== ROOM IN ROOF — age-band defaults (Table 18 col.4) ==="
     },
     {
       "element_type": "roof",
@@ -4186,7 +4185,7 @@
   ],
   "floors_exposed": [
     {
-      "_comment": "=== EXPOSED / SEMI-EXPOSED UPPER FLOORS (Table 20) \u2014 ground floors excluded (calculated via ISO 13370) ==="
+      "_comment": "=== EXPOSED / SEMI-EXPOSED UPPER FLOORS (Table 20) — ground floors excluded (calculated via ISO 13370) ==="
     },
     {
       "element_type": "floor_exposed",
@@ -4337,11 +4336,117 @@
       "description": "Exposed/semi-exposed upper floor, as built / insulation unknown",
       "source": "RdSAP10 Table 20",
       "notes": "Scotland and Wales: 0.15 at band M"
+    },
+    {
+      "element_type": "floor_exposed",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I"
+      ],
+      "insulation_type": "insulated",
+      "insulation_mm": 50,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.5,
+      "description": "Exposed/semi-exposed upper floor, insulated 50mm (or insulated, thickness unknown)",
+      "source": "RdSAP10 Table 20",
+      "notes": "Use when insulated but insulation thickness unknown (age bands A–I)."
+    },
+    {
+      "element_type": "floor_exposed",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M"
+      ],
+      "insulation_type": "insulated",
+      "insulation_mm": 100,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.3,
+      "description": "Exposed/semi-exposed upper floor, insulated 100mm",
+      "source": "RdSAP10 Table 20",
+      "notes": null
+    },
+    {
+      "element_type": "floor_exposed",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M"
+      ],
+      "insulation_type": "insulated",
+      "insulation_mm": 150,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.22,
+      "description": "Exposed/semi-exposed upper floor, insulated 150mm",
+      "source": "RdSAP10 Table 20",
+      "notes": null
+    },
+    {
+      "element_type": "floor_exposed",
+      "age_bands": null,
+      "insulation_type": null,
+      "insulation_mm": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.7,
+      "description": "Floor above partially heated premises (e.g. flat above commercial)",
+      "source": "RdSAP10 s5.14",
+      "notes": "Flat above non-domestic premises not heated to the same extent or duration. RdSAP10 Section 5.14. Not age-band dependent."
     }
   ],
   "thermal_bridging_y_factors": [
     {
-      "_comment": "Table 21 \u2014 y-factors for SAP thermal bridging. Stored for reference. Different from CIBSE delta-U approach used in the main app. Do not use directly in BS EN 12831-1 calculations without review."
+      "_comment": "Table 21 — y-factors for SAP thermal bridging. Stored for reference. Different from CIBSE delta-U approach used in the main app. Do not use directly in BS EN 12831-1 calculations without review."
     },
     {
       "age_bands": [
@@ -4378,1273 +4483,67 @@
       "notes": "Applies to non-park-home dwellings, age bands K, L, M"
     }
   ],
-  "windows": [
+  "walls_basement": [
     {
-      "element_type": "window",
-      "glazing_type": "single",
-      "period": "any",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "scotland",
-        "wales",
-        "ni",
-        "iom"
-      ],
-      "u_value": 4.8,
-      "g_value": 0.85,
-      "description": "Single glazed \u2014 PVC or wood frame",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "single",
-      "period": "any",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "scotland",
-        "wales",
-        "ni",
-        "iom"
-      ],
-      "u_value": 5.7,
-      "g_value": 0.85,
-      "description": "Single glazed \u2014 metal frame",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "single",
-      "period": "any",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "scotland",
-        "wales",
-        "ni",
-        "iom"
-      ],
-      "u_value": 5.3,
-      "g_value": 0.85,
-      "description": "Single glazed \u2014 roof window (PVC or wood frame, 45\u00b0 pitch)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal"
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 6mm gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 6mm gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 6mm gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 6mm gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.8,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.8,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.8,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.4,
-      "g_value": 0.76,
-      "description": "Double glazed, 12mm gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 12mm gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 12mm gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.1,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 12mm gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.7,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.3,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.3,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Scotland: before 2003."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.3,
-      "g_value": 0.76,
-      "description": "Double glazed, 16mm+ gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Northern Ireland: before 2006."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 3.0,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 16mm+ gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 3.0,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 16mm+ gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 3.0,
-      "g_value": 0.76,
-      "description": "Double glazed roof window, 16mm+ gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.4,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.4,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.4,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.9,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.9,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.9,
-      "g_value": 0.68,
-      "description": "Triple glazed, 6mm gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 6mm gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 6mm gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 6,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 6mm gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.1,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.1,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.1,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.6,
-      "g_value": 0.68,
-      "description": "Triple glazed, 12mm gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 12mm gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 12mm gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 12,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 12mm gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 PVC or wood frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.5,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.5,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.5,
-      "g_value": 0.68,
-      "description": "Triple glazed, 16mm+ gap \u2014 metal frame (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 16mm+ gap (installed before 2002)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 16mm+ gap (installed before 2003)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "triple",
-      "period": "pre_cutoff",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.68,
-      "description": "Triple glazed roof window, 16mm+ gap (installed before 2006)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal, PVC or wood frame only."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2002 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2003 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.0,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2006 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.72,
-      "description": "Double or triple glazed roof window (2002 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.72,
-      "description": "Double or triple glazed roof window (2003 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": true,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.3,
-      "g_value": 0.72,
-      "description": "Double or triple glazed roof window (2006 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": "Roof pitch 45\u00b0 unless horizontal."
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2002 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2003 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_cutoff",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2006 or later)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 1.4,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2022 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 1.4,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2023 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 1.4,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 PVC or wood frame (2022 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "wales",
-        "iom"
-      ],
-      "u_value": 1.6,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2022 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 1.6,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2023 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "double_or_triple",
-      "period": "post_2022",
-      "gap_mm": null,
-      "frame_type": "metal",
-      "is_roof_window": false,
-      "regions": [
-        "ni"
-      ],
-      "u_value": 1.6,
-      "g_value": 0.72,
-      "description": "Double or triple glazed \u2014 metal frame (2022 or later, current standard)",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "secondary",
-      "period": "any",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "scotland",
-        "wales",
-        "ni",
-        "iom"
-      ],
-      "u_value": 2.9,
-      "g_value": 0.85,
-      "description": "Secondary glazing, 16mm+ gap \u2014 normal emissivity",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    },
-    {
-      "element_type": "window",
-      "glazing_type": "secondary",
-      "period": "any",
-      "gap_mm": 16,
-      "frame_type": "pvc_wood",
-      "is_roof_window": false,
-      "regions": [
-        "england",
-        "scotland",
-        "wales",
-        "ni",
-        "iom"
-      ],
-      "u_value": 2.2,
-      "g_value": 0.85,
-      "description": "Secondary glazing, 16mm+ gap \u2014 low emissivity",
-      "source": "RdSAP10 Table 24",
-      "notes": null
-    }
-  ],
-  "doors": [
-    {
-      "element_type": "door",
-      "door_type": "external",
-      "opens_to": "outside",
+      "element_type": "wall_basement",
       "age_bands": [
         "A",
         "B",
         "C",
         "D",
         "E",
-        "F",
+        "F"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.7,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "wall_basement",
+      "age_bands": [
         "G",
-        "H",
-        "I",
+        "H"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.6,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "wall_basement",
+      "age_bands": [
+        "I"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.45,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "wall_basement",
+      "age_bands": [
         "J"
       ],
       "regions": [
@@ -5654,15 +4553,13 @@
         "ni",
         "iom"
       ],
-      "u_value": 3.0,
-      "description": "External door \u2014 uninsulated (age bands A\u2013J)",
-      "source": "RdSAP10 Table 26",
-      "notes": null
+      "u_value": 0.35,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
     },
     {
-      "element_type": "door",
-      "door_type": "external",
-      "opens_to": "outside",
+      "element_type": "wall_basement",
       "age_bands": [
         "K"
       ],
@@ -5673,48 +4570,30 @@
         "ni",
         "iom"
       ],
-      "u_value": 2.0,
-      "description": "External door \u2014 uninsulated (age band K, 2007\u20132011)",
-      "source": "RdSAP10 Table 26",
-      "notes": null
+      "u_value": 0.3,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
     },
     {
-      "element_type": "door",
-      "door_type": "external",
-      "opens_to": "outside",
+      "element_type": "wall_basement",
       "age_bands": [
         "L"
       ],
       "regions": [
         "england",
+        "scotland",
         "wales",
         "ni",
         "iom"
       ],
-      "u_value": 1.8,
-      "description": "External door \u2014 uninsulated (age band L, 2012\u20132022)",
-      "source": "RdSAP10 Table 26",
-      "notes": null
+      "u_value": 0.28,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
     },
     {
-      "element_type": "door",
-      "door_type": "external",
-      "opens_to": "outside",
-      "age_bands": [
-        "L"
-      ],
-      "regions": [
-        "scotland"
-      ],
-      "u_value": 1.6,
-      "description": "External door \u2014 uninsulated (age band L, 2012\u20132022, Scotland)",
-      "source": "RdSAP10 Table 26",
-      "notes": "Scotland has a tighter standard at band L"
-    },
-    {
-      "element_type": "door",
-      "door_type": "external",
-      "opens_to": "outside",
+      "element_type": "wall_basement",
       "age_bands": [
         "M"
       ],
@@ -5725,15 +4604,15 @@
         "ni",
         "iom"
       ],
-      "u_value": 1.4,
-      "description": "External door \u2014 uninsulated (age band M, 2023+)",
-      "source": "RdSAP10 Table 26",
-      "notes": null
-    },
+      "u_value": 0.26,
+      "description": "Basement wall",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    }
+  ],
+  "floors_basement": [
     {
-      "element_type": "door",
-      "door_type": "semi_exposed",
-      "opens_to": "unheated_corridor",
+      "element_type": "floor_basement",
       "age_bands": [
         "A",
         "B",
@@ -5743,10 +4622,58 @@
         "F",
         "G",
         "H",
-        "I",
-        "J",
+        "I"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.5,
+      "description": "Basement floor",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "floor_basement",
+      "age_bands": [
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.25,
+      "description": "Basement floor",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "floor_basement",
+      "age_bands": [
         "K",
-        "L",
+        "L"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.22,
+      "description": "Basement floor",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    },
+    {
+      "element_type": "floor_basement",
+      "age_bands": [
         "M"
       ],
       "regions": [
@@ -5756,10 +4683,288 @@
         "ni",
         "iom"
       ],
-      "u_value": 1.4,
-      "description": "Door to unheated corridor or stairwell \u2014 any age band",
-      "source": "RdSAP10 Table 26",
+      "u_value": 0.18,
+      "description": "Basement floor",
+      "source": "RdSAP10 Table 23",
+      "notes": "RdSAP10 Table 23, Section 5.17."
+    }
+  ],
+  "party_walls": [
+    {
+      "element_type": "party_wall",
+      "wall_type": "solid_or_timber_frame",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.0,
+      "description": "Solid masonry / timber frame / system build",
+      "description_detail": "Between identical heated dwellings. ΔT=0 in normal use; heat loss is zero. Use a custom ΔT on the element if the adjacent dwelling is unheated.",
+      "source": "RdSAP10-Table15",
+      "notes": "RdSAP10 Table 15, Section 5.10."
+    },
+    {
+      "element_type": "party_wall",
+      "wall_type": "cavity_unfilled",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.5,
+      "description": "Cavity masonry — unfilled",
+      "description_detail": "Unfilled cavity party wall. Higher U-value reflects potential air movement within the cavity.",
+      "source": "RdSAP10-Table15",
+      "notes": "RdSAP10 Table 15."
+    },
+    {
+      "element_type": "party_wall",
+      "wall_type": "cavity_filled",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.2,
+      "description": "Cavity masonry — filled",
+      "description_detail": null,
+      "source": "RdSAP10-Table15",
+      "notes": "RdSAP10 Table 15."
+    },
+    {
+      "element_type": "party_wall",
+      "wall_type": "unknown_house",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.25,
+      "description": "Construction unknown — house or bungalow",
+      "description_detail": "Default where party wall construction cannot be determined.",
+      "source": "RdSAP10-Table15",
+      "notes": "RdSAP10 Table 15."
+    },
+    {
+      "element_type": "party_wall",
+      "wall_type": "unknown_flat",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.0,
+      "description": "Construction unknown — flat or maisonette",
+      "description_detail": "RdSAP assumes construction avoids thermal bypass in flats/maisonettes.",
+      "source": "RdSAP10-Table15",
+      "notes": "RdSAP10 Table 15."
+    }
+  ],
+  "floors_party": [
+    {
+      "element_type": "floor_party",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.0,
+      "description": "Between identical heated dwellings",
+      "description_detail": "ΔT=0 between dwellings at the same temperature. No heat loss. For floors above unheated spaces use Exposed/semi-exposed floor instead.",
+      "source": "RdSAP10-s5.13",
+      "notes": "RdSAP10 Section 5.13: internal floors between heated dwellings are disregarded."
+    },
+    {
+      "element_type": "floor_party",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "description": "Concrete floor/ceiling — to unheated space",
+      "description_detail": "Construction U-value: 150mm dense concrete + 13mm plaster both sides. Apply a custom ΔT for the actual temperature difference to the adjacent unheated space.",
+      "source": "ISO6946-calc",
+      "notes": "First-principles per BS EN ISO 6946:2017. λ_concrete=1.35, λ_plaster=0.57 W/m·K (BS EN ISO 10456:2007)."
+    }
+  ],
+  "doors_internal": [
+    {
+      "element_type": "door",
+      "door_type": "internal",
+      "opens_to": "heated",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "description": "Internal door — solid or hollow core, 35mm (standard domestic)",
+      "description_detail": "Both solid timber and hollow core give ≈2.0 W/m²K at standard domestic thickness. Rsi=Rse=0.13 m²K/W.",
+      "source": "ISO6946-calc",
+      "notes": "First-principles per BS EN ISO 6946:2017. Matches MCS heat load calculator internal door value."
+    }
+  ],
+  "walls_internal": [
+    {
+      "element_type": "wall_internal",
+      "wall_type": "stud_plasterboard",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.8,
+      "description": "Internal partition — timber stud with plasterboard both sides",
+      "description_detail": "12.5mm plasterboard, unventilated air gap, 12.5mm plasterboard. Horizontal heat flow, Rsi=Rse=0.13 m²K/W. Consistent with CIBSE DHDG 2026 Table 2-36.",
+      "source": "ISO6946-calc",
+      "notes": "Most common UK domestic partition. For wall to adjacent heated space use customDeltaT = Ti − 15°C. For wall to unheated space use customDeltaT = Ti − 5°C."
+    },
+    {
+      "element_type": "wall_internal",
+      "wall_type": "brick_102",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "description": "Internal wall — 102mm brick, plaster both sides",
+      "description_detail": "13mm plaster, 102mm brick, 13mm plaster. Horizontal heat flow, Rsi=Rse=0.13 m²K/W. Consistent with CIBSE DHDG 2026 Table 2-36 (2.05 W/m²K).",
+      "source": "ISO6946-calc",
+      "notes": "Single brick partition wall. Typical in older UK domestic construction."
+    },
+    {
+      "element_type": "wall_internal",
+      "wall_type": "brick_215",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.5,
+      "description": "Internal wall — 215mm brick, plaster both sides",
+      "description_detail": "13mm plaster, 215mm brick, 13mm plaster. Horizontal heat flow, Rsi=Rse=0.13 m²K/W. Consistent with CIBSE DHDG 2026 Table 2-36 (1.45 W/m²K).",
+      "source": "ISO6946-calc",
+      "notes": "Double brick internal wall. May be a structural or party wall."
+    },
+    {
+      "element_type": "wall_internal",
+      "wall_type": "dense_block_100",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.8,
+      "description": "Internal wall — 100mm dense concrete block, plaster both sides",
+      "description_detail": "13mm plaster, 100mm dense concrete block, 13mm plaster. Horizontal heat flow, Rsi=Rse=0.13 m²K/W. Consistent with CIBSE DHDG 2026 Table 2-36 (2.76 W/m²K).",
+      "source": "ISO6946-calc",
       "notes": null
+    },
+    {
+      "element_type": "wall_internal",
+      "wall_type": "hp_block_100",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 0.8,
+      "description": "Internal wall — 100mm lightweight/HP aerated block, plaster both sides",
+      "description_detail": "13mm plaster, 100mm high-performance aerated block, 13mm plaster. Horizontal heat flow, Rsi=Rse=0.13 m²K/W. Consistent with CIBSE DHDG 2026 Table 2-36 (0.82 W/m²K).",
+      "source": "ISO6946-calc",
+      "notes": "HP (high performance) aerated block. Common in post-1990 construction."
+    }
+  ],
+  "floors_intermediate": [
+    {
+      "element_type": "floor_intermediate",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.7,
+      "description": "Intermediate timber floor — heat flow upwards (room below heating room above)",
+      "description_detail": "19mm boarding, airspace between joists, 9.5mm plasterboard. Upward heat flow: Rsi=Rse=0.10 m²K/W per ISO 6946. Consistent with CIBSE DHDG 2026 Table 2-45 (1.73 W/m²K).",
+      "source": "ISO6946-calc",
+      "notes": "Use when the room being calculated is BELOW the intermediate floor (heat rising into cooler space above). For heat loss: ΔT = Ti(lower room) − Ti(upper room)."
+    },
+    {
+      "element_type": "floor_intermediate",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "description": "Intermediate timber floor — heat flow downwards (room above losing heat to room below)",
+      "description_detail": "19mm boarding, airspace between joists, 9.5mm plasterboard. Downward heat flow: Rsi=Rse=0.17 m²K/W per ISO 6946. Consistent with CIBSE DHDG 2026 Table 2-45 (1.41 W/m²K).",
+      "source": "ISO6946-calc",
+      "notes": "Use when the room being calculated is ABOVE the intermediate floor (heat falling into cooler space below). For heat loss: ΔT = Ti(upper room) − Ti(lower room)."
+    },
+    {
+      "element_type": "floor_intermediate",
+      "age_bands": null,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.8,
+      "description": "Exposed timber floor underside — heat flow downwards (to outside or unheated space)",
+      "description_detail": "19mm boarding, airspace between joists, insulation, 6mm sheeting. No insulation variant: 1.75 W/m²K. Consistent with CIBSE DHDG 2026 Table 2-45.",
+      "source": "ISO6946-calc",
+      "notes": "For floors over external air or unheated void. Use RdSAP Table 20 (floor_exposed) values for age-band defaults."
     }
   ]
 }
