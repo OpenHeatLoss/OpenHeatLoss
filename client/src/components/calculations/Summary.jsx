@@ -59,11 +59,23 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
   }, [project.heatPumpManufacturer, project.heatPumpModel, project.heatPumpRatedOutput, project.heatPumpMinModulation]);
 
   // Sync SCOP fields only when a different project loads — not on every save.
+  // The ref is reset when the project is closed (id becomes falsy) so that
+  // reopening the same project triggers a fresh load rather than keeping stale state.
   useEffect(() => {
-    if (project.id && project.id !== scopProjectIdRef.current) {
+    if (!project.id) {
+      scopProjectIdRef.current = null;
+      return;
+    }
+    if (project.id !== scopProjectIdRef.current) {
       scopProjectIdRef.current = project.id;
       if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
         setTestPoints(project.en14511TestPoints);
+      } else {
+        setTestPoints([
+          { tAir: -5, tFlow: 55, cop: '' },
+          { tAir:  7, tFlow: 35, cop: '' },
+          { tAir:  7, tFlow: 55, cop: '' },
+        ]);
       }
       setDefrostPct(project.defrostPct ?? 5);
       setBalancePoint(project.balancePoint ?? 12.5);
