@@ -803,14 +803,22 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tAir: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
+                onBlur={e => {
+                  const updated = testPoints.map((p, j) => j === i ? { ...p, tAir: parseFloat(e.target.value) || 0 } : p);
+                  setTestPoints(updated);
+                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
+                }}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="1" value={pt.tFlow}
                 onChange={e => {
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tFlow: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
+                onBlur={e => {
+                  const updated = testPoints.map((p, j) => j === i ? { ...p, tFlow: parseFloat(e.target.value) || 0 } : p);
+                  setTestPoints(updated);
+                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
+                }}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="0.01" min="1" max="10"
                 value={pt.cop} placeholder="e.g. 3.11"
@@ -818,7 +826,13 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                   const updated = testPoints.map((p, j) => j === i ? { ...p, cop: e.target.value } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
+                onBlur={e => {
+                  // Use e.target.value directly to avoid stale closure — React
+                  // state update from onChange may not have flushed before onBlur fires.
+                  const updated = testPoints.map((p, j) => j === i ? { ...p, cop: e.target.value } : p);
+                  setTestPoints(updated);
+                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
+                }}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <button
                 onClick={() => {
