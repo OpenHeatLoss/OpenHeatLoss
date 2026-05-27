@@ -205,7 +205,7 @@ function BusGrantSection({ project, onUpdate }) {
               <label className={labelClass}>Voucher expiry date</label>
               <input
                 type="date"
-                value={project.busGrantVoucherExpiry || ''}
+                value={(project.busGrantVoucherExpiry || '').split('T')[0]}
                 onChange={e => onUpdate('busGrantVoucherExpiry', e.target.value)}
                 className={inputClass}
               />
@@ -224,7 +224,7 @@ function BusGrantSection({ project, onUpdate }) {
             <label className={labelClass}>Redemption application date</label>
             <input
               type="date"
-              value={project.busGrantRedemptionDate || ''}
+              value={(project.busGrantRedemptionDate || '').split('T')[0]}
               onChange={e => onUpdate('busGrantRedemptionDate', e.target.value)}
               className={inputClass}
             />
@@ -238,7 +238,7 @@ function BusGrantSection({ project, onUpdate }) {
               <label className={labelClass}>Date payment received</label>
               <input
                 type="date"
-                value={project.busGrantPaidDate || ''}
+                value={(project.busGrantPaidDate || '').split('T')[0]}
                 onChange={e => onUpdate('busGrantPaidDate', e.target.value)}
                 className={inputClass}
               />
