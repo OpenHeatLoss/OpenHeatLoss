@@ -353,11 +353,15 @@ function App() {
       en14511TestPoints: (() => {
         const val = dp.en14511_test_points;
         if (!val) return [];
-        try { return JSON.parse(val); } catch { return []; }
+        // PostgreSQL JSONB columns are returned already parsed by node-postgres.
+        // Only call JSON.parse if val is still a string (legacy TEXT storage).
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          try { return JSON.parse(val); } catch { return []; }
+        }
+        return [];
       })(),
       defrostPct: dp.defrost_pct ?? 5,
-      balancePoint:    dp.balance_point      ?? 12.5,
-      scopEmitterType: dp.scop_emitter_type  || 'radiator',
 
       epcSpaceHeatingDemand: dp.epc_space_heating_demand || 0,
       epcHotWaterDemand:     dp.epc_hot_water_demand     || 0,
@@ -662,8 +666,6 @@ function App() {
       bufferVesselVolume:     currentProject.bufferVesselVolume     ?? 0,
       en14511TestPoints:      currentProject.en14511TestPoints      || [],
       defrostPct:             currentProject.defrostPct             ?? 5,
-      balancePoint:           currentProject.balancePoint           ?? 12.5,
-      scopEmitterType:        currentProject.scopEmitterType        || 'radiator',
     });
 
     await loadProjects();

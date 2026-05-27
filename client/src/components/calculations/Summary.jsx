@@ -139,11 +139,15 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
     }
   };
 
-  // Save scalar SCOP fields only — never touches en14511TestPoints so cannot clear it.
+  // Save scalar SCOP fields only — explicitly carries current valid test points
+  // through the payload so that buildDesignParamsPayload never overwrites the
+  // DB column with a stale [] from project state.
   const handleSaveScalarFields = async (newDefrostPct, newBalancePoint, newEmitterType) => {
+    const validPoints = testPoints.filter(p => p.cop !== '' && p.cop > 0);
     isSavingRef.current = true;
     try {
       await api.updateDesignParams(project.id, buildDesignParamsPayload(project, {
+        en14511TestPoints: validPoints,
         defrostPct: newDefrostPct,
         balancePoint: newBalancePoint,
         scopEmitterType: newEmitterType,
