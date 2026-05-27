@@ -770,9 +770,9 @@ const designParams = {
       q50 = $54, sap_structural = $55, sap_floor = $56,
       sap_window_draught_pct = $57, sap_draught_lobby = $58,
       building_storeys = $59, building_shielding = $60, reference_temp = $61,
-      balance_point = $63, scop_emitter_type = $64,
+      balance_point = $62, scop_emitter_type = $63,
       updated_at = NOW()
-    WHERE project_id = $65`,
+    WHERE project_id = $64`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
