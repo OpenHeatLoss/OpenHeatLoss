@@ -2070,6 +2070,32 @@ const MIGRATIONS = [
       console.log(`  Migration 014 complete: inserted ${inserted} construction library records`);
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // MIGRATION 015 — SCOP estimator persistence fields
+  //
+  // Adds two columns to design_params that were missing from the SCOP estimator:
+  //   balance_point      — outdoor temperature below which HP provides all heat
+  //                        (default 12.5°C — accounts for internal/solar gains)
+  //   scop_emitter_type  — emitter type for EN 442 N exponent selection in SCOP
+  //                        calculation ('radiator'|'panel_radiator'|'ufh')
+  //                        (default 'radiator')
+  //
+  // Without these columns both values reset to hardcoded defaults on every page
+  // reload, making the SCOP estimator inputs non-persistent.
+  // ---------------------------------------------------------------------------
+  {
+    version: '015',
+    description: 'SCOP estimator: add balance_point and scop_emitter_type to design_params',
+    run: async () => {
+      await query(`
+        ALTER TABLE design_params
+          ADD COLUMN IF NOT EXISTS balance_point     DOUBLE PRECISION NOT NULL DEFAULT 12.5,
+          ADD COLUMN IF NOT EXISTS scop_emitter_type TEXT             NOT NULL DEFAULT 'radiator'
+      `);
+      console.log('  Migration 015 complete: balance_point and scop_emitter_type added to design_params');
+    },
+  },
 ];
 
 async function runMigrations() {

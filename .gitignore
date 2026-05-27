@@ -134,3 +134,4 @@ client/src/utils/calculations(a).js
 server/database.(a)js
 client/src/components/project/RdSAPUValuePicker(b).jsx
 client/src/components/project/RdSAPUValuePicker(c).jsx
+client/src/components/calculations/Summary(a).jsx

@@ -41,10 +41,8 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
         ]
   );
   const [defrostPct, setDefrostPct] = useState(project.defrostPct ?? 5);
-  const [emitterType, setEmitterType] = useState(
-    project.mcsEmitterType === 'ufh' ? 'ufh' : 'radiator'
-  );
-  const [balancePoint, setBalancePoint] = useState(12.5);
+  const [emitterType, setEmitterType] = useState(project.scopEmitterType || 'radiator');
+  const [balancePoint, setBalancePoint] = useState(project.balancePoint ?? 12.5);
 
   useEffect(() => {
     setHeatPumpData({
@@ -54,6 +52,17 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
       minModulation:   project.heatPumpMinModulation   || 0,
     });
   }, [project.heatPumpManufacturer, project.heatPumpModel, project.heatPumpRatedOutput, project.heatPumpMinModulation]);
+
+  // Sync SCOP estimator fields if project loads after initial mount
+  useEffect(() => {
+    if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
+      setTestPoints(project.en14511TestPoints);
+    }
+  }, [project.en14511TestPoints]);
+
+  useEffect(() => { setDefrostPct(project.defrostPct ?? 5); },        [project.defrostPct]);
+  useEffect(() => { setBalancePoint(project.balancePoint ?? 12.5); },  [project.balancePoint]);
+  useEffect(() => { setEmitterType(project.scopEmitterType || 'radiator'); }, [project.scopEmitterType]);
 
   const [savingHeatPump, setSavingHeatPump] = useState(false);
 
@@ -99,17 +108,19 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
     setEditingHeatPump(false);
   };
 
-  // Auto-save SCOP inputs whenever test points or defrost change
-  const handleSaveSCOPInputs = async (newTestPoints, newDefrostPct) => {
+  // Auto-save SCOP inputs whenever test points, defrost, balance point or emitter type change
+  const handleSaveSCOPInputs = async (newTestPoints, newDefrostPct, newBalancePoint, newEmitterType) => {
     const validPoints = newTestPoints.filter(p => p.cop !== '' && p.cop > 0);
     try {
       await api.updateDesignParams(project.id, {
         ...project,
         en14511TestPoints: validPoints,
         defrostPct: newDefrostPct,
+        balancePoint: newBalancePoint,
+        scopEmitterType: newEmitterType,
       });
       if (onUpdateBatch) {
-        onUpdateBatch({ en14511TestPoints: validPoints, defrostPct: newDefrostPct });
+        onUpdateBatch({ en14511TestPoints: validPoints, defrostPct: newDefrostPct, balancePoint: newBalancePoint, scopEmitterType: newEmitterType });
       }
     } catch (err) {
       console.error('Failed to save SCOP inputs:', err);
@@ -768,14 +779,14 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tAir: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct)}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="1" value={pt.tFlow}
                 onChange={e => {
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tFlow: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct)}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="0.01" min="1" max="10"
                 value={pt.cop} placeholder="e.g. 3.11"
@@ -783,13 +794,13 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
                   const updated = testPoints.map((p, j) => j === i ? { ...p, cop: e.target.value } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct)}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <button
                 onClick={() => {
                   const updated = testPoints.filter((_, j) => j !== i);
                   setTestPoints(updated);
-                  handleSaveSCOPInputs(updated, defrostPct);
+                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
                 }}
                 className="text-red-500 hover:text-red-700 text-xs">Remove</button>
             </div>
@@ -820,7 +831,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
         <div className="grid grid-cols-3 gap-4 mb-5">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Emitter type</label>
-            <select value={emitterType} onChange={e => setEmitterType(e.target.value)}
+            <select value={emitterType} onChange={e => { setEmitterType(e.target.value); handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, e.target.value); }}
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm">
               {Object.entries(EMITTER_EXPONENTS).map(([k, v]) => (
                 <option key={k} value={k}>{v.label}</option>
@@ -832,7 +843,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Defrost penalty (%)</label>
             <input type="number" step="0.5" min="0" max="15" value={defrostPct}
               onChange={e => setDefrostPct(parseFloat(e.target.value) || 0)}
-              onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct)}
+              onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
             <p className="text-xs text-gray-400 mt-1">Nominal %; scaled by outdoor temp. Typical 3–7%.</p>
           </div>
@@ -840,6 +851,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Balance point (°C)</label>
             <input type="number" step="0.5" min="5" max="15" value={balancePoint}
               onChange={e => setBalancePoint(parseFloat(e.target.value) || 12.5)}
+              onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
             <p className="text-xs text-gray-400 mt-1">
               Outdoor temp below which heating runs. Default 12.5°C accounts for
