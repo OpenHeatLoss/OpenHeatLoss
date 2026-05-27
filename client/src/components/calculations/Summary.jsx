@@ -59,24 +59,34 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
   }, [project.heatPumpManufacturer, project.heatPumpModel, project.heatPumpRatedOutput, project.heatPumpMinModulation]);
 
   // Sync SCOP fields only when a different project loads — not on every save.
-  // The ref is reset when the project is closed (id becomes falsy) so that
-  // reopening the same project triggers a fresh load rather than keeping stale state.
+  // Sync SCOP fields when project loads or changes.
+  // The ref tracks the project ID to detect genuine project switches vs save
+  // round-trips. However we always sync testPoints if the incoming data is
+  // non-empty and local state is still at defaults — this handles the case
+  // where loadProject completes after the initial mount render.
   useEffect(() => {
     if (!project.id) {
       scopProjectIdRef.current = null;
       return;
     }
-    if (project.id !== scopProjectIdRef.current) {
+    const isNewProject = project.id !== scopProjectIdRef.current;
+    const hasIncomingPoints = project.en14511TestPoints && project.en14511TestPoints.length > 0;
+    const localIsDefault = testPoints.every(p => p.cop === '');
+
+    if (isNewProject) {
       scopProjectIdRef.current = project.id;
-      if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
-        setTestPoints(project.en14511TestPoints);
-      } else {
-        setTestPoints([
-          { tAir: -5, tFlow: 55, cop: '' },
-          { tAir:  7, tFlow: 35, cop: '' },
-          { tAir:  7, tFlow: 55, cop: '' },
-        ]);
-      }
+      setTestPoints(hasIncomingPoints ? project.en14511TestPoints : [
+        { tAir: -5, tFlow: 55, cop: '' },
+        { tAir:  7, tFlow: 35, cop: '' },
+        { tAir:  7, tFlow: 55, cop: '' },
+      ]);
+      setDefrostPct(project.defrostPct ?? 5);
+      setBalancePoint(project.balancePoint ?? 12.5);
+      setEmitterType(project.scopEmitterType || 'radiator');
+    } else if (hasIncomingPoints && localIsDefault) {
+      // Same project, but testPoints just arrived from async loadProject
+      // and local state is still at defaults — safe to sync.
+      setTestPoints(project.en14511TestPoints);
       setDefrostPct(project.defrostPct ?? 5);
       setBalancePoint(project.balancePoint ?? 12.5);
       setEmitterType(project.scopEmitterType || 'radiator');
@@ -803,22 +813,14 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tAir: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={e => {
-                  const updated = testPoints.map((p, j) => j === i ? { ...p, tAir: parseFloat(e.target.value) || 0 } : p);
-                  setTestPoints(updated);
-                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
-                }}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="1" value={pt.tFlow}
                 onChange={e => {
                   const updated = testPoints.map((p, j) => j === i ? { ...p, tFlow: parseFloat(e.target.value) || 0 } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={e => {
-                  const updated = testPoints.map((p, j) => j === i ? { ...p, tFlow: parseFloat(e.target.value) || 0 } : p);
-                  setTestPoints(updated);
-                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
-                }}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <input type="number" step="0.01" min="1" max="10"
                 value={pt.cop} placeholder="e.g. 3.11"
@@ -826,13 +828,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                   const updated = testPoints.map((p, j) => j === i ? { ...p, cop: e.target.value } : p);
                   setTestPoints(updated);
                 }}
-                onBlur={e => {
-                  // Use e.target.value directly to avoid stale closure — React
-                  // state update from onChange may not have flushed before onBlur fires.
-                  const updated = testPoints.map((p, j) => j === i ? { ...p, cop: e.target.value } : p);
-                  setTestPoints(updated);
-                  handleSaveSCOPInputs(updated, defrostPct, balancePoint, emitterType);
-                }}
+                onBlur={() => handleSaveSCOPInputs(testPoints, defrostPct, balancePoint, emitterType)}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
               <button
                 onClick={() => {
