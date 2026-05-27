@@ -1,5 +1,5 @@
 // client/src/components/calculations/Summary.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   calculateRoomHeatLoss,
   calculateFabricLoss,
@@ -44,6 +44,11 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
   const [emitterType, setEmitterType] = useState(project.scopEmitterType || 'radiator');
   const [balancePoint, setBalancePoint] = useState(project.balancePoint ?? 12.5);
 
+  // Tracks whether initial project data has been applied to local SCOP state.
+  // Prevents save round-trips (onUpdateBatch → project prop change → useEffect)
+  // from resetting local state mid-edit.
+  const scopProjectIdRef = useRef(null);
+
   useEffect(() => {
     setHeatPumpData({
       manufacturer:    project.heatPumpManufacturer    || '',
@@ -53,16 +58,18 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
     });
   }, [project.heatPumpManufacturer, project.heatPumpModel, project.heatPumpRatedOutput, project.heatPumpMinModulation]);
 
-  // Sync SCOP estimator fields if project loads after initial mount
+  // Sync SCOP fields only when a different project loads — not on every save.
   useEffect(() => {
-    if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
-      setTestPoints(project.en14511TestPoints);
+    if (project.id && project.id !== scopProjectIdRef.current) {
+      scopProjectIdRef.current = project.id;
+      if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
+        setTestPoints(project.en14511TestPoints);
+      }
+      setDefrostPct(project.defrostPct ?? 5);
+      setBalancePoint(project.balancePoint ?? 12.5);
+      setEmitterType(project.scopEmitterType || 'radiator');
     }
-  }, [project.en14511TestPoints]);
-
-  useEffect(() => { setDefrostPct(project.defrostPct ?? 5); },        [project.defrostPct]);
-  useEffect(() => { setBalancePoint(project.balancePoint ?? 12.5); },  [project.balancePoint]);
-  useEffect(() => { setEmitterType(project.scopEmitterType || 'radiator'); }, [project.scopEmitterType]);
+  }, [project.id, project.en14511TestPoints, project.defrostPct, project.balancePoint, project.scopEmitterType]);
 
   const [savingHeatPump, setSavingHeatPump] = useState(false);
 
@@ -107,6 +114,8 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
 
   // Auto-save SCOP inputs whenever test points, defrost, balance point or emitter type change
   const handleSaveSCOPInputs = async (newTestPoints, newDefrostPct, newBalancePoint, newEmitterType) => {
+    // Only persist rows with a valid COP value — incomplete rows stay in local
+    // state for editing but don't go to the DB.
     const validPoints = newTestPoints.filter(p => p.cop !== '' && p.cop > 0);
     try {
       await api.updateDesignParams(project.id, buildDesignParamsPayload(project, {
@@ -115,8 +124,15 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
         balancePoint: newBalancePoint,
         scopEmitterType: newEmitterType,
       }));
+      // Push the full testPoints (including incomplete rows) back into project
+      // state so the useEffect sync doesn't strip them from the UI.
       if (onUpdateBatch) {
-        onUpdateBatch({ en14511TestPoints: validPoints, defrostPct: newDefrostPct, balancePoint: newBalancePoint, scopEmitterType: newEmitterType });
+        onUpdateBatch({
+          en14511TestPoints: newTestPoints,
+          defrostPct: newDefrostPct,
+          balancePoint: newBalancePoint,
+          scopEmitterType: newEmitterType,
+        });
       }
     } catch (err) {
       console.error('Failed to save SCOP inputs:', err);
