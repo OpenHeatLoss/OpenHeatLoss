@@ -44,33 +44,29 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
   const [emitterType, setEmitterType] = useState(project.scopEmitterType || 'radiator');
   const [balancePoint, setBalancePoint] = useState(project.balancePoint ?? 12.5);
 
-  // Tracks whether initial project data has been applied to local SCOP state.
-  // Prevents save round-trips (onUpdateBatch → project prop change → useEffect)
-  // from resetting local state mid-edit.
-  const scopProjectIdRef = useRef(null);
+  // Tracks whether a save is currently in flight. While saving, we suppress
+  // the useEffect sync so that onUpdateBatch → project prop change doesn't
+  // reset local state mid-edit. Outside of saves, any change to
+  // project.en14511TestPoints (including async loadProject completing) always
+  // syncs through.
+  const isSavingRef = useRef(false);
+  const lastProjectIdRef = useRef(null);
 
-  useEffect(() => {
-    setHeatPumpData({
-      manufacturer:    project.heatPumpManufacturer    || '',
-      model:           project.heatPumpModel           || '',
-      ratedOutput:     project.heatPumpRatedOutput     || 0,
-      minModulation:   project.heatPumpMinModulation   || 0,
-    });
-  }, [project.heatPumpManufacturer, project.heatPumpModel, project.heatPumpRatedOutput, project.heatPumpMinModulation]);
-
-  // Sync SCOP fields only when a different project loads — not on every save.
-  // The ref is reset when the project is closed (id becomes falsy) so that
-  // reopening the same project triggers a fresh load rather than keeping stale state.
   useEffect(() => {
     if (!project.id) {
-      scopProjectIdRef.current = null;
+      lastProjectIdRef.current = null;
       return;
     }
-    if (project.id !== scopProjectIdRef.current) {
-      scopProjectIdRef.current = project.id;
+    const isNewProject = project.id !== lastProjectIdRef.current;
+    if (isNewProject) {
+      lastProjectIdRef.current = project.id;
+    }
+    // Always sync if this is a new project OR if no save is in flight
+    // (i.e. the change came from loadProject, not from onUpdateBatch after a save)
+    if (isNewProject || !isSavingRef.current) {
       if (project.en14511TestPoints && project.en14511TestPoints.length > 0) {
         setTestPoints(project.en14511TestPoints);
-      } else {
+      } else if (isNewProject) {
         setTestPoints([
           { tAir: -5, tFlow: 55, cop: '' },
           { tAir:  7, tFlow: 35, cop: '' },
@@ -124,10 +120,11 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
     setEditingHeatPump(false);
   };
 
-  // Save test points to DB — only called from test point input onBlur/remove handlers.
-  // Never passes scalar fields through to avoid stale closure issues with those values.
+  // Auto-save SCOP inputs whenever test points, defrost, balance point or emitter type change
+  // Save test points only — never touches scalar fields to avoid cross-contamination.
   const handleSaveTestPoints = async (newTestPoints) => {
     const validPoints = newTestPoints.filter(p => p.cop !== '' && p.cop > 0);
+    isSavingRef.current = true;
     try {
       await api.updateDesignParams(project.id, buildDesignParamsPayload(project, {
         en14511TestPoints: validPoints,
@@ -137,11 +134,14 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
       }
     } catch (err) {
       console.error('Failed to save test points:', err);
+    } finally {
+      isSavingRef.current = false;
     }
   };
 
-  // Save scalar SCOP fields — never touches en14511TestPoints so cannot clear it.
+  // Save scalar SCOP fields only — never touches en14511TestPoints so cannot clear it.
   const handleSaveScalarFields = async (newDefrostPct, newBalancePoint, newEmitterType) => {
+    isSavingRef.current = true;
     try {
       await api.updateDesignParams(project.id, buildDesignParamsPayload(project, {
         defrostPct: newDefrostPct,
@@ -153,6 +153,8 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
       }
     } catch (err) {
       console.error('Failed to save SCOP scalar fields:', err);
+    } finally {
+      isSavingRef.current = false;
     }
   };
 
