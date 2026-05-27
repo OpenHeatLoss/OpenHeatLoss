@@ -356,8 +356,6 @@ function App() {
         try { return JSON.parse(val); } catch { return []; }
       })(),
       defrostPct: dp.defrost_pct ?? 5,
-      balancePoint:     dp.balance_point      ?? 12.5,
-      scopEmitterType:  dp.scop_emitter_type  || 'radiator',
 
       epcSpaceHeatingDemand: dp.epc_space_heating_demand || 0,
       epcHotWaterDemand:     dp.epc_hot_water_demand     || 0,
@@ -662,8 +660,6 @@ function App() {
       bufferVesselVolume:     currentProject.bufferVesselVolume     ?? 0,
       en14511TestPoints:      currentProject.en14511TestPoints      || [],
       defrostPct:             currentProject.defrostPct             ?? 5,
-      balancePoint:           currentProject.balancePoint           ?? 12.5,
-      scopEmitterType:        currentProject.scopEmitterType        || 'radiator',
     });
 
     await loadProjects();
@@ -1878,6 +1874,7 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdateProject={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                buildDesignParamsPayload={buildDesignParamsPayload}
               />
             )}
             {activeTab === 'radiators' && (

@@ -21,7 +21,7 @@ import {
   EMITTER_EXPONENTS,
 } from '../../utils/scopCalculations';
 
-export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
+export default function Summary({ project, onUpdateProject, onUpdateBatch, buildDesignParamsPayload }) {
   const [editingHeatPump, setEditingHeatPump] = useState(false);
   const [heatPumpData, setHeatPumpData] = useState({
     manufacturer:    project.heatPumpManufacturer    || '',
@@ -87,10 +87,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
     // Persist to the database immediately — don't wait for the main Save button
     setSavingHeatPump(true);
     try {
-      await api.updateDesignParams(project.id, {
-        ...project,
-        ...updates,
-      });
+      await api.updateDesignParams(project.id, buildDesignParamsPayload(project, updates));
     } catch (err) {
       console.error('Failed to save heat pump spec:', err);
     }
@@ -112,13 +109,12 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const handleSaveSCOPInputs = async (newTestPoints, newDefrostPct, newBalancePoint, newEmitterType) => {
     const validPoints = newTestPoints.filter(p => p.cop !== '' && p.cop > 0);
     try {
-      await api.updateDesignParams(project.id, {
-        ...project,
+      await api.updateDesignParams(project.id, buildDesignParamsPayload(project, {
         en14511TestPoints: validPoints,
         defrostPct: newDefrostPct,
         balancePoint: newBalancePoint,
         scopEmitterType: newEmitterType,
-      });
+      }));
       if (onUpdateBatch) {
         onUpdateBatch({ en14511TestPoints: validPoints, defrostPct: newDefrostPct, balancePoint: newBalancePoint, scopEmitterType: newEmitterType });
       }
