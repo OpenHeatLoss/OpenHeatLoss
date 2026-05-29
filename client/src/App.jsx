@@ -1426,6 +1426,7 @@ const deleteProject = async (id) => {
             mechanicalSupply:  room.ventilation?.mechanicalSupply  || 0,
             mechanicalExtract: room.ventilation?.mechanicalExtract || 0,
             designConnectionType: data.value,
+            thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10, // fix: was missing, causing reset to default on connection type change
             // EN 12831-1 fields preserved as-is
             exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
             hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
