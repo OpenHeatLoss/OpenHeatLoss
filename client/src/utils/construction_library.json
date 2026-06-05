@@ -4966,5 +4966,1389 @@
       "source": "ISO6946-calc",
       "notes": "For floors over external air or unheated void. Use RdSAP Table 20 (floor_exposed) values for age-band defaults."
     }
+  ],
+  "windows": [
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 4.8,
+      "g_value": 0.85,
+      "description": "Single glazed — PVC or wood frame",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 5.7,
+      "g_value": 0.85,
+      "description": "Single glazed — metal frame",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "single",
+      "period": "any",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 5.3,
+      "g_value": 0.85,
+      "description": "Single glazed — roof window (PVC or wood frame, 45° pitch)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal"
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 6mm gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 6mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.8,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.4,
+      "g_value": 0.76,
+      "description": "Double glazed, 12mm gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.1,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 12mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.7,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "England/Wales: before 2002. Also use for double/triple glazing of unknown installation date."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Scotland: before 2003."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.3,
+      "g_value": 0.76,
+      "description": "Double glazed, 16mm+ gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Northern Ireland: before 2006."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 3.0,
+      "g_value": 0.76,
+      "description": "Double glazed roof window, 16mm+ gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.4,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.68,
+      "description": "Triple glazed, 6mm gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 6,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 6mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.1,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.6,
+      "g_value": 0.68,
+      "description": "Triple glazed, 12mm gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 12,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 12mm gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — PVC or wood frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — PVC or wood frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — PVC or wood frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — metal frame (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — metal frame (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.5,
+      "g_value": 0.68,
+      "description": "Triple glazed, 16mm+ gap — metal frame (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2002)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2003)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "triple",
+      "period": "pre_cutoff",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.68,
+      "description": "Triple glazed roof window, 16mm+ gap (installed before 2006)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal, PVC or wood frame only."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.0,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": true,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.3,
+      "g_value": 0.72,
+      "description": "Double or triple glazed roof window (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": "Roof pitch 45° unless horizontal."
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2002 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2003 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_cutoff",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2006 or later)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2023 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 1.4,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — PVC or wood frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "wales",
+        "iom"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2023 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "double_or_triple",
+      "period": "post_2022",
+      "gap_mm": null,
+      "frame_type": "metal",
+      "is_roof_window": false,
+      "regions": [
+        "ni"
+      ],
+      "u_value": 1.6,
+      "g_value": 0.72,
+      "description": "Double or triple glazed — metal frame (2022 or later, current standard)",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "secondary",
+      "period": "any",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.9,
+      "g_value": 0.85,
+      "description": "Secondary glazing, 16mm+ gap — normal emissivity",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    },
+    {
+      "element_type": "window",
+      "glazing_type": "secondary",
+      "period": "any",
+      "gap_mm": 16,
+      "frame_type": "pvc_wood",
+      "is_roof_window": false,
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.2,
+      "g_value": 0.85,
+      "description": "Secondary glazing, 16mm+ gap — low emissivity",
+      "source": "RdSAP10 Table 24",
+      "notes": null
+    }
+  ],
+  "doors": [
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 3.0,
+      "description": "External door — uninsulated (age bands A–J)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "K"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 2.0,
+      "description": "External door — uninsulated (age band K, 2007–2011)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "england",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.8,
+      "description": "External door — uninsulated (age band L, 2012–2022)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "L"
+      ],
+      "regions": [
+        "scotland"
+      ],
+      "u_value": 1.6,
+      "description": "External door — uninsulated (age band L, 2012–2022, Scotland)",
+      "source": "RdSAP10 Table 26",
+      "notes": "Scotland has a tighter standard at band L"
+    },
+    {
+      "element_type": "door",
+      "door_type": "external",
+      "opens_to": "outside",
+      "age_bands": [
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "description": "External door — uninsulated (age band M, 2023+)",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    },
+    {
+      "element_type": "door",
+      "door_type": "semi_exposed",
+      "opens_to": "unheated_corridor",
+      "age_bands": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M"
+      ],
+      "regions": [
+        "england",
+        "scotland",
+        "wales",
+        "ni",
+        "iom"
+      ],
+      "u_value": 1.4,
+      "description": "Door to unheated corridor or stairwell — any age band",
+      "source": "RdSAP10 Table 26",
+      "notes": null
+    }
   ]
 }
