@@ -50,12 +50,15 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
     }
   };
 
-  // Toggle index circuit inclusion — updates via normalised API
+  // Toggle index circuit inclusion — updates via normalised API.
+  // include_in_index_circuit is explicitly cleared so that normalisePipeSectionBody
+  // on the server doesn't let the old snake_case DB value shadow the toggled camelCase one.
   const toggleIndexCircuitInclusion = (index) => {
     const section = sections[index];
     if (!section) return;
     onSavePipeSection?.({
       ...section,
+      include_in_index_circuit: undefined,
       includeInIndexCircuit: !(section.include_in_index_circuit ?? section.includeInIndexCircuit),
     }, 'update');
   };
