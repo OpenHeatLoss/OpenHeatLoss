@@ -137,3 +137,4 @@ client/src/components/project/RdSAPUValuePicker(c).jsx
 client/src/components/calculations/Summary(a).jsx
 client/src/components/project/ProjectInfo(f).jsx
 client/src/components/pipesizing/PipeSizing(d).jsx
+client/src/components/pipesizing/PipeSectionEditor(e).jsx

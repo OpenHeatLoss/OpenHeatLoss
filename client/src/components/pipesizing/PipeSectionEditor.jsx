@@ -170,6 +170,8 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
       pipe_material_id:            editedSection.pipeMaterialId,
       nominal_size:                editedSection.nominalSize,
       length_m:                    editedSection.lengthM,
+      flow_rate:                   editedSection.flowRate,
+      heat_load:                   editedSection.heatLoad,
       use_whole_property:          editedSection.useWholeProperty,
       include_in_index_circuit:    editedSection.includeInIndexCircuit,
       connected_rooms:             editedSection.connectedRooms,
