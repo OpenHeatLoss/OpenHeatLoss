@@ -29,6 +29,25 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     return defaultMaterial;
   };
 
+  // Pre-calculate the live heat load and flow rate for room-connected sections
+  // so that the useState initialiser never seeds stale stored values.
+  // useWholeProperty sections derive these at render time (effectiveHeatLoad/
+  // effectiveFlowRate below) so don't need this path.
+  const initialDesignDeltaT = (project.designFlowTemp || 50) - (project.designReturnTemp || 40);
+  const initialHeatLoad = (() => {
+    if (!section) return 0;
+    if (section.use_whole_property ?? section.useWholeProperty) return section.heat_load ?? section.heatLoad ?? 0;
+    const connectedRooms = section.connected_rooms ?? section.connectedRooms ?? [];
+    if (connectedRooms.length === 0) return section.heat_load ?? section.heatLoad ?? 0;
+    return connectedRooms.reduce((sum, id) => {
+      const room = rooms.find(r => r.id === id);
+      return sum + (room ? calculateRoomTotal(room, project) / 1000 : 0);
+    }, 0);
+  })();
+  const initialFlowRate = initialHeatLoad > 0
+    ? calculateFlowRate(initialHeatLoad, initialDesignDeltaT)
+    : (section?.flow_rate ?? section?.flowRate ?? 0);
+
   const [editedSection, setEditedSection] = useState(section ? {
     ...section,
     // Normalise DB field names to camelCase for the editor
@@ -41,8 +60,8 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     lengthM:               section.length_m ?? section.length ?? 0,
     nominalSize:           section.nominal_size ?? section.diameter ?? '',
     pipeMaterialId:        section.pipe_material_id ?? defaultMaterialId,
-    flowRate:              section.flow_rate ?? section.flowRate ?? 0,
-    heatLoad:              section.heat_load ?? section.heatLoad ?? 0,
+    flowRate:              initialFlowRate,
+    heatLoad:              initialHeatLoad,
     velocity:              section.velocity ?? 0,
     pressureDrop:          section.pressure_drop ?? section.pressureDrop ?? 0,
     // fittings on existing sections come from the DB join as an array of objects

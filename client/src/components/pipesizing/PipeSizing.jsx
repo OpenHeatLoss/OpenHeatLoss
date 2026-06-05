@@ -206,25 +206,37 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
     name: 'Index Circuit',
   } : null;
 
-  // Staleness detection — compares stored flow_rate/heat_load against live project
-  // values. A section is stale if design conditions have changed since it was last saved.
+  // Staleness detection — a section is stale if design conditions or room heat
+  // losses have changed since it was last saved.
   // 1% tolerance avoids false positives from floating-point rounding.
+  //
+  // useWholeProperty: compare stored flow rate against live derived value.
+  //
+  // Room-connected: compare stored heat load against current calculateRoomTotal
+  // sum. project.rooms carries camelCase elements (mapped in App.jsx loadProject)
+  // so calculateRoomTotal works correctly here. If the stored heat load matches
+  // the live sum, also verify the flow rate is consistent with current deltaT.
   const designDeltaT = (project.designFlowTemp || 50) - (project.designReturnTemp || 40);
   const isStale = (section) => {
-    const useWhole = section.use_whole_property ?? section.useWholeProperty;
     const storedFlowRate = section.flow_rate ?? section.flowRate ?? 0;
-    const storedHeatLoad = section.heat_load ?? section.heatLoad ?? 0;
+    if (storedFlowRate === 0) return false;
+    const useWhole = section.use_whole_property ?? section.useWholeProperty;
     if (useWhole) {
       const liveFlowRate = calculateFlowRate(project.heatPumpRatedOutput || 0, designDeltaT);
       return Math.abs(liveFlowRate - storedFlowRate) / Math.max(liveFlowRate, 0.001) > 0.01;
     } else {
       const connectedRooms = section.connected_rooms ?? section.connectedRooms ?? [];
       if (connectedRooms.length === 0) return false;
+      const storedHeatLoad = section.heat_load ?? section.heatLoad ?? 0;
       const liveHeatLoad = connectedRooms.reduce((sum, roomId) => {
         const room = (project.rooms || []).find(r => r.id === roomId);
         return sum + (room ? calculateRoomTotal(room, project) / 1000 : 0);
       }, 0);
-      return Math.abs(liveHeatLoad - storedHeatLoad) / Math.max(liveHeatLoad, 0.001) > 0.01;
+      // Flag if heat load has changed (room inputs changed)
+      if (Math.abs(liveHeatLoad - storedHeatLoad) / Math.max(liveHeatLoad, 0.001) > 0.01) return true;
+      // Flag if flow rate is inconsistent with current deltaT (flow/return temps changed)
+      const expectedFlowRate = calculateFlowRate(storedHeatLoad, designDeltaT);
+      return Math.abs(expectedFlowRate - storedFlowRate) / Math.max(expectedFlowRate, 0.001) > 0.01;
     }
   };
   const staleSections = sections.filter(isStale);
