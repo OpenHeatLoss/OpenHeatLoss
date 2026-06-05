@@ -80,6 +80,19 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
   // Get design delta T from project
   const designDeltaT = (project.designFlowTemp || 50) - (project.designReturnTemp || 40);
 
+  // For useWholeProperty sections, derive heatLoad and flowRate live from project
+  // rather than reading stale state — same pattern as designDeltaT above.
+  // All consumers (liveCalc, UI display, calculateAndSave) read these derived
+  // values so they stay current when heatPumpRatedOutput or designDeltaT changes
+  // without requiring a save/re-open cycle.
+  // NOTE: any future field that depends on flowRate must also read effectiveFlowRate.
+  const effectiveHeatLoad = editedSection.useWholeProperty
+    ? (project.heatPumpRatedOutput || 0)
+    : editedSection.heatLoad;
+  const effectiveFlowRate = editedSection.useWholeProperty
+    ? calculateFlowRate(project.heatPumpRatedOutput || 0, designDeltaT)
+    : editedSection.flowRate;
+
   const handleChange = (field, value) => {
     setEditedSection(prev => ({ ...prev, [field]: value }));
   };
@@ -119,11 +132,11 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
     };
     // Suggest a size based on current flow rate
     let suggestedSize = mat.sizes[1]?.nominalSize ?? mat.sizes[0]?.nominalSize ?? '';
-    if (editedSection.flowRate > 0) {
+    if (effectiveFlowRate > 0) {
       for (const size of mat.sizes) {
         const D = size.internalDiameter / 1000;
         const A = Math.PI * Math.pow(D / 2, 2);
-        const v = (editedSection.flowRate / 1000) / A;
+        const v = (effectiveFlowRate / 1000) / A;
         if (v <= mat.max_velocity) { suggestedSize = size.nominalSize; break; }
       }
     }
@@ -170,8 +183,8 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
       pipe_material_id:            editedSection.pipeMaterialId,
       nominal_size:                editedSection.nominalSize,
       length_m:                    editedSection.lengthM,
-      flow_rate:                   editedSection.flowRate,
-      heat_load:                   editedSection.heatLoad,
+      flow_rate:                   effectiveFlowRate,
+      heat_load:                   effectiveHeatLoad,
       use_whole_property:          editedSection.useWholeProperty,
       include_in_index_circuit:    editedSection.includeInIndexCircuit,
       connected_rooms:             editedSection.connectedRooms,
@@ -188,11 +201,11 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
   // Pipe size suggestion for the currently selected material
   const suggestSize = () => {
     const mat = selectedMaterial;
-    if (!mat || !editedSection.flowRate) return null;
+    if (!mat || !effectiveFlowRate) return null;
     for (const size of (mat.sizes || [])) {
       const D = size.internalDiameter / 1000;
       const A = Math.PI * Math.pow(D / 2, 2);
-      const v = (editedSection.flowRate / 1000) / A;
+      const v = (effectiveFlowRate / 1000) / A;
       if (v <= mat.max_velocity) return { size: size.nominalSize, velocity: v, isAcceptable: true };
     }
     const last = mat.sizes?.[mat.sizes.length - 1];
@@ -205,13 +218,13 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
   const liveCalc = useMemo(() => {
     const mat = selectedMaterial;
     if (!mat || !editedSection.lengthM || editedSection.lengthM <= 0) return null;
-    if (!editedSection.flowRate || editedSection.flowRate <= 0) return null;
+    if (!effectiveFlowRate || effectiveFlowRate <= 0) return null;
     const size = mat.sizes?.find(s => s.nominalSize === editedSection.nominalSize);
     if (!size) return null;
 
     try {
       const straight = calculatePressureDrop(
-        editedSection.flowRate,
+        effectiveFlowRate,
         size.internalDiameter,
         editedSection.lengthM,
         mat.material_key,
@@ -240,7 +253,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
       return null;
     }
   }, [
-    editedSection.flowRate, editedSection.lengthM, editedSection.nominalSize,
+    effectiveFlowRate, editedSection.lengthM, editedSection.nominalSize,
     editedSection.pipeMaterialId, editedSection.waterTemperature,
     editedSection.fittingsMethod, editedSection.fittingPercentage,
     editedSection.fittings, selectedMaterial,
@@ -301,7 +314,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
                 </div>
                 {editedSection.useWholeProperty && (
                   <div className="mt-2 bg-purple-100 rounded p-2 text-sm text-purple-900">
-                    <strong>Active:</strong> Section sized for {project.heatPumpRatedOutput} kW ({editedSection.flowRate?.toFixed(3)} l/s)
+                    <strong>Active:</strong> Section sized for {project.heatPumpRatedOutput} kW ({effectiveFlowRate?.toFixed(3)} l/s)
                   </div>
                 )}
               </div>
@@ -354,22 +367,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
                   <div>
                     <div className="text-sm text-gray-600">Total Heat Load</div>
                     <div className="text-2xl font-bold text-blue-700">
-                      {editedSection.heatLoad ? editedSection.heatLoad.toFixed(2) : '0.00'} kW
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-600">Design ΔT</div>
-                    <div className="text-2xl font-bold text-purple-700">
-                      {designDeltaT.toFixed(1)}°C
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      {project.designFlowTemp || 50}°C → {project.designReturnTemp || 40}°C
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-600">Flow Rate Required</div>
-                    <div className="text-2xl font-bold text-blue-700">
-                      {editedSection.flowRate ? editedSection.flowRate.toFixed(3) : '0.000'} l/s
+                      {effectiveHeatLoad ? effectiveHeatLoad.toFixed(2) : '0.00'} kW
                     </div>
                   </div>
                 </div>
@@ -398,16 +396,16 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
               <div>
                 <div className="text-sm text-gray-600">Flow Rate Required</div>
                 <div className="text-xl font-bold text-purple-700">
-                  {editedSection.flowRate ? editedSection.flowRate.toFixed(3) : '0.000'} l/s
+                  {effectiveFlowRate ? effectiveFlowRate.toFixed(3) : '0.000'} l/s
                 </div>
                 <div className="text-xs text-gray-600">
-                  {editedSection.flowRate ? (editedSection.flowRate * 3600).toFixed(0) : '0'} l/h
+                  {effectiveFlowRate ? (effectiveFlowRate * 3600).toFixed(0) : '0'} l/h
                 </div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Heat Load</div>
                 <div className="text-xl font-bold text-purple-700">
-                  {editedSection.heatLoad ? editedSection.heatLoad.toFixed(2) : '0.00'} kW
+                  {effectiveHeatLoad ? effectiveHeatLoad.toFixed(2) : '0.00'} kW
                 </div>
               </div>
             </div>
@@ -485,7 +483,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
         </div>
 
         {/* Pipe Size Suggestion */}
-        {editedSection.flowRate > 0 && (
+        {effectiveFlowRate > 0 && (
           <div className={`rounded p-3 text-sm ${
             suggestion.isAcceptable ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
           }`}>
@@ -493,7 +491,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
               {suggestion.isAcceptable ? '✓ Suggested Size' : '⚠ Warning'}
             </div>
             <div className={suggestion.isAcceptable ? 'text-green-800' : 'text-red-800'}>
-              For flow rate of {editedSection.flowRate.toFixed(3)} l/s, suggested minimum size: <strong>{suggestion.size}</strong>
+              For flow rate of {effectiveFlowRate.toFixed(3)} l/s, suggested minimum size: <strong>{suggestion.size}</strong>
               {!suggestion.isAcceptable && (
                 <div className="mt-1">⚠ {suggestion.warning}</div>
               )}
