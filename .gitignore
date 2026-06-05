@@ -138,3 +138,4 @@ client/src/components/calculations/Summary(a).jsx
 client/src/components/project/ProjectInfo(f).jsx
 client/src/components/pipesizing/PipeSizing(d).jsx
 client/src/components/pipesizing/PipeSectionEditor(e).jsx
+client/src/components/pipesizing/PipeSizing(e).jsx

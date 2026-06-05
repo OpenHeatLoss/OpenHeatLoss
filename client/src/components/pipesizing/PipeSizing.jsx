@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import PipeSectionEditor from './PipeSectionEditor';
 import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
+import { calculateFlowRate } from '../../utils/pipeMaterialData';
+import { calculateRoomTotal } from '../../utils/calculations';
 
 export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSave }) {
   // Pipe sections now come from project.pipeSections (loaded from DB via loadProject).
@@ -204,8 +206,55 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
     name: 'Index Circuit',
   } : null;
 
+  // Staleness detection — compares stored flow_rate/heat_load against live project
+  // values. A section is stale if design conditions have changed since it was last saved.
+  // 1% tolerance avoids false positives from floating-point rounding.
+  const designDeltaT = (project.designFlowTemp || 50) - (project.designReturnTemp || 40);
+  const isStale = (section) => {
+    const useWhole = section.use_whole_property ?? section.useWholeProperty;
+    const storedFlowRate = section.flow_rate ?? section.flowRate ?? 0;
+    const storedHeatLoad = section.heat_load ?? section.heatLoad ?? 0;
+    if (useWhole) {
+      const liveFlowRate = calculateFlowRate(project.heatPumpRatedOutput || 0, designDeltaT);
+      return Math.abs(liveFlowRate - storedFlowRate) / Math.max(liveFlowRate, 0.001) > 0.01;
+    } else {
+      const connectedRooms = section.connected_rooms ?? section.connectedRooms ?? [];
+      if (connectedRooms.length === 0) return false;
+      const liveHeatLoad = connectedRooms.reduce((sum, roomId) => {
+        const room = (project.rooms || []).find(r => r.id === roomId);
+        return sum + (room ? calculateRoomTotal(room, project) / 1000 : 0);
+      }, 0);
+      return Math.abs(liveHeatLoad - storedHeatLoad) / Math.max(liveHeatLoad, 0.001) > 0.01;
+    }
+  };
+  const staleSections = sections.filter(isStale);
+  const hasStaleSections = staleSections.length > 0;
+
   return (
     <div className="space-y-6">
+      {/* Staleness banner — shown when any section's stored values are out of date
+          with the current heat pump output or design temperatures. The engineer must
+          open and re-save each flagged section to review pipe diameter implications. */}
+      {hasStaleSections && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4 flex items-start gap-3">
+          <span className="text-amber-500 text-xl mt-0.5">⚠</span>
+          <div>
+            <p className="font-semibold text-amber-900">
+              {staleSections.length} pipe section{staleSections.length !== 1 ? 's' : ''} may be out of date
+            </p>
+            <p className="text-sm text-amber-800 mt-1">
+              Design conditions (heat pump output or flow/return temperatures) have changed
+              since these sections were last saved. Flow rates and pressure drops may no
+              longer be correct. Open and re-save each flagged section to confirm pipe
+              diameters are still appropriate before generating a report.
+            </p>
+            <p className="text-sm text-amber-700 font-medium mt-1">
+              Affected: {staleSections.map(s => s.name || 'Unnamed section').join(', ')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold mb-2">Pipe Sizing</h2>
@@ -279,7 +328,8 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
             {sections.length > 0 && !showSectionEditor && (
               <button
                 onClick={handleExportPDF}
-                disabled={isExportingPDF}
+                disabled={isExportingPDF || hasStaleSections}
+                title={hasStaleSections ? 'Re-save all flagged sections before generating a report' : ''}
                 className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 font-semibold transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isExportingPDF ? (
@@ -311,17 +361,25 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                 const currentIsVelocityOK = section.velocity !== undefined
                   ? section.velocity <= currentMaxVelocity
                   : section.isVelocityOK;
+                const sectionIsStale = isStale(section);
                 return (
                 <div
                   key={index}
-                  className="border-2 rounded-lg p-5 bg-white border-gray-300"
+                  className={`border-2 rounded-lg p-5 bg-white ${sectionIsStale ? 'border-amber-400' : 'border-gray-300'}`}
                 >
                   {/* Section Header */}
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-800">
-                        {section.name || `Section ${index + 1}`}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-800">
+                          {section.name || `Section ${index + 1}`}
+                        </h3>
+                        {sectionIsStale && (
+                          <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded border border-amber-300">
+                            ⚠ Recalculate
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-600">
                         {(section.use_whole_property ?? section.useWholeProperty) 
                           ? `Main header - Full system load (${project.heatPumpRatedOutput || 0} kW)`
