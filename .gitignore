@@ -143,3 +143,8 @@ client/src/utils/en12831Calculations(b).js
 client/src/utils/pipeMaterialData(a).js
 client/src/components/calculations/Summary(b).jsx
 client/src/utils/calculations(b).js
+website/for-engineers.html
+website/for-self-builders.html
+.gitignore
+website/how-it-works.html
+website/index.html
