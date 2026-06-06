@@ -1209,7 +1209,11 @@ const deleteProject = async (id) => {
     // as the sum of areas of all elements with includeInEnvelope = 1.
     // Use updateRoom (the App-level handler) so all field defaults are applied
     // correctly and we don't have to duplicate the full room payload here.
-    if (field === 'includeInEnvelope' || field === 'area' || field === 'length' || field === 'height') {
+    // Recompute exposedEnvelopeM2 when anything that affects it changes:
+    // - includeInEnvelope toggled directly
+    // - area/dimensions updated (gross area used for envelope)
+    // - elementType changed (changes the includeInEnvelope default)
+    if (field === 'includeInEnvelope' || field === 'area' || field === 'length' || field === 'height' || field === 'elementType') {
       const updatedElements = room.elements.map(el =>
         el.id === elementId
           ? { ...el, ...updates, area: updates.area ?? el.area }
@@ -1217,11 +1221,12 @@ const deleteProject = async (id) => {
       );
       const newEnvelope = updatedElements.reduce((sum, el) => {
         if (!(el.includeInEnvelope ?? 0)) return sum;
-        // Use effective area: subtract any child elements
-        const subtracted = updatedElements
-          .filter(s => s.subtractFromElementId === el.id)
-          .reduce((s, sub) => s + (sub.area ?? 0), 0);
-        return sum + Math.max(0, (el.area ?? 0) - subtracted);
+        // Exposed envelope uses GROSS element area — windows and external doors
+        // are NOT subtracted per CIBSE DHDG 2026 section 2.5.4.2. The envelope
+        // area represents the total exposed surface through which air leaks,
+        // including glazed and door openings. Subtraction only applies to the
+        // fabric U-value calculation in calculateTransmissionLoss().
+        return sum + (el.area ?? 0);
       }, 0);
       // updateRoom calls loadProject internally — return early to avoid double reload
       await updateRoom(room.id, 'exposedEnvelopeM2', parseFloat(newEnvelope.toFixed(2)));
@@ -1259,7 +1264,27 @@ const deleteProject = async (id) => {
 
   const deleteElement = async (elementId) => {
     try {
+      // Find the room and element before deletion so we can recalculate
+      // exposedEnvelopeM2 if the deleted element was part of the envelope.
+      const room    = currentProject.rooms.find(r => r.elements?.some(e => e.id === elementId));
+      const element = room?.elements.find(e => e.id === elementId);
+
       await api.deleteElement(elementId);
+
+      // If the deleted element contributed to the exposed envelope, recompute
+      // and save the updated total before reloading — otherwise the stored value
+      // remains inflated until the engineer manually toggles another element.
+      if (room && element && (element.includeInEnvelope ?? 0)) {
+        const remainingElements = room.elements.filter(e => e.id !== elementId);
+        const newEnvelope = remainingElements.reduce((sum, el) => {
+          if (!(el.includeInEnvelope ?? 0)) return sum;
+          // Gross area — no window/door subtraction per CIBSE DHDG 2026 s.2.5.4.2
+          return sum + (el.area ?? 0);
+        }, 0);
+        await updateRoom(room.id, 'exposedEnvelopeM2', parseFloat(newEnvelope.toFixed(2)));
+        return; // updateRoom calls loadProject internally
+      }
+
       await loadProject(currentProject.id, true);
     } catch (error) {
       console.error('Error deleting element:', error);

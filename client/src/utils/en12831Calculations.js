@@ -12,6 +12,28 @@
 // Field names match the camelCase convention used throughout the React app —
 // these are the names assigned in App.jsx loadProject(), not the raw DB column names.
 // Calculation audit trail is preserved via the returned breakdown objects.
+//
+// ─── THREE VENTILATION OUTPUTS ───────────────────────────────────────────────
+//
+// The main entry point calculateRoomVentilationEN12831() returns three figures:
+//
+//   ventEmitter         (W) — used for EMITTER and PIPE sizing
+//                            Leakage term uses ×2 orientation factor (CIBSE DHDG 2026
+//                            s.2.5.4.4) — accounts for worst-case wind direction.
+//                            Always higher than ventGeneratorDesign for naturally
+//                            ventilated buildings.
+//
+//   ventGeneratorDesign (W) — used for HEAT PUMP OUTPUT selection
+//                            Leakage term uses ×1 (no orientation factor).
+//                            Not all rooms are simultaneously windward.
+//
+//   ventGeneratorTypical(W) — used for MODULATION CHECK (MCS 5.7.2)
+//                            Leakage and continuous vent at Te,ref (annual mean).
+//
+// calculateVentilationLoss() in calculations.js returns ventEmitter only.
+// Call calculateRoomVentilationEN12831() directly when all three figures are needed.
+//
+// See CALCULATIONS.md for the complete reference.
 
 import {
   SAP_STRUCTURAL_INFILTRATION,

@@ -235,6 +235,46 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
   // Warnings from EN 12831 calc
   const ventWarnings = buildingVent?.warnings || [];
 
+  // W/m² outlier detection — flags rooms that are statistically anomalous
+  // and likely indicate a data entry error (wrong area, missing element, or
+  // the exposed envelope bug causing inflated ventilation loss).
+  //
+  // Threshold: flag if W/m² > max(2× building mean, 80).
+  // The 80 W/m² floor prevents false positives on small rooms in well-insulated
+  // buildings where the mean might be 20 W/m² but 40 W/m² is perfectly legitimate.
+  // W/m² is based on generator load (same as the table display).
+  const roomsWithArea = rooms.filter(r => (r.floorArea || 0) > 0);
+  const buildingMeanWPerM2 = (() => {
+    if (roomsWithArea.length === 0) return 0;
+    const totalW = roomsWithArea.reduce((sum, room) => {
+      const fabricW = calculateTransmissionLoss(room, project.externalTemp ?? -3);
+      if (isEN12831) {
+        const ventCalc = calculateRoomVentilationEN12831(room, project);
+        return sum + fabricW + ventCalc.ventGeneratorDesign;
+      }
+      return sum + calculateRoomHeatLoss(room, project) * 1000;
+    }, 0);
+    const totalArea = roomsWithArea.reduce((sum, r) => sum + (r.floorArea || 0), 0);
+    return totalArea > 0 ? totalW / totalArea : 0;
+  })();
+  const wPerM2Threshold = Math.max(buildingMeanWPerM2 * 2, 80);
+  const highWPerM2Rooms = new Set(
+    roomsWithArea
+      .filter(room => {
+        const fabricW = calculateTransmissionLoss(room, project.externalTemp ?? -3);
+        let roomW;
+        if (isEN12831) {
+          const ventCalc = calculateRoomVentilationEN12831(room, project);
+          roomW = fabricW + ventCalc.ventGeneratorDesign;
+        } else {
+          roomW = calculateRoomHeatLoss(room, project) * 1000;
+        }
+        const wPerM2 = roomW / (room.floorArea || 1);
+        return wPerM2 > wPerM2Threshold;
+      })
+      .map(r => r.id)
+  );
+
   // ── SCOP Estimator calculations ───────────────────────────────────────────
   const validTestPoints = testPoints.filter(p => p.cop !== '' && parseFloat(p.cop) > 0)
     .map(p => ({ tAir: parseFloat(p.tAir), tFlow: parseFloat(p.tFlow), cop: parseFloat(p.cop) }));
@@ -712,12 +752,13 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                   const fabricW = calculateTransmissionLoss(room, project.externalTemp ?? -3);
 
                   if (isEN12831) {
-                    const ventCalc     = calculateRoomVentilationEN12831(room, project);
-                    const emitterTotalW    = fabricW + ventCalc.ventEmitter;
-                    const generatorTotalW  = fabricW + ventCalc.ventGeneratorDesign;
-                    const wPerM2 = room.floorArea > 0 ? generatorTotalW / room.floorArea : 0;
+                    const ventCalc        = calculateRoomVentilationEN12831(room, project);
+                    const emitterTotalW   = fabricW + ventCalc.ventEmitter;
+                    const generatorTotalW = fabricW + ventCalc.ventGeneratorDesign;
+                    const wPerM2          = room.floorArea > 0 ? generatorTotalW / room.floorArea : 0;
+                    const isOutlier       = highWPerM2Rooms.has(room.id);
                     return (
-                      <tr key={room.id} className="border-b border-gray-200 hover:bg-gray-50">
+                      <tr key={room.id} className={`border-b border-gray-200 hover:bg-gray-50 ${isOutlier ? 'bg-amber-50' : ''}`}>
                         <td className="py-2 px-3 font-semibold">{room.name}</td>
                         <td className="py-2 px-3 text-right">{room.internalTemp}</td>
                         <td className="py-2 px-3 text-right">{room.floorArea?.toFixed(1) || '0.0'}</td>
@@ -725,22 +766,33 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                         <td className="py-2 px-3 text-right text-gray-600">{ventCalc.ventEmitter.toFixed(0)}</td>
                         <td className="py-2 px-3 text-right font-bold text-gray-700">{emitterTotalW.toFixed(0)}</td>
                         <td className="py-2 px-3 text-right font-bold text-blue-700">{generatorTotalW.toFixed(0)}</td>
-                        <td className="py-2 px-3 text-right text-gray-500">{wPerM2.toFixed(0)}</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={isOutlier ? 'text-amber-700 font-bold' : 'text-gray-500'}>
+                            {wPerM2.toFixed(0)}
+                            {isOutlier && ' ⚠'}
+                          </span>
+                        </td>
                       </tr>
                     );
                   } else {
                     const roomHeatLoss = calculateRoomHeatLoss(room, project);
                     const ventLossKW   = calculateVentilationLoss(room, project);
-                    const wPerM2 = calculateHeatLossPerM2(roomHeatLoss, room.floorArea);
+                    const wPerM2       = calculateHeatLossPerM2(roomHeatLoss, room.floorArea);
+                    const isOutlier    = highWPerM2Rooms.has(room.id);
                     return (
-                      <tr key={room.id} className="border-b border-gray-200 hover:bg-gray-50">
+                      <tr key={room.id} className={`border-b border-gray-200 hover:bg-gray-50 ${isOutlier ? 'bg-amber-50' : ''}`}>
                         <td className="py-2 px-3 font-semibold">{room.name}</td>
                         <td className="py-2 px-3 text-right">{room.internalTemp}</td>
                         <td className="py-2 px-3 text-right">{room.floorArea?.toFixed(1) || '0.0'}</td>
                         <td className="py-2 px-3 text-right text-gray-600">{(fabricW).toFixed(0)}</td>
                         <td className="py-2 px-3 text-right text-gray-600">{(ventLossKW * 1000).toFixed(0)}</td>
                         <td className="py-2 px-3 text-right font-bold text-blue-700">{(roomHeatLoss * 1000).toFixed(0)}</td>
-                        <td className="py-2 px-3 text-right text-gray-500">{wPerM2.toFixed(0)}</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={isOutlier ? 'text-amber-700 font-bold' : 'text-gray-500'}>
+                            {wPerM2.toFixed(0)}
+                            {isOutlier && ' ⚠'}
+                          </span>
+                        </td>
                       </tr>
                     );
                   }
@@ -780,6 +832,22 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
                 W/m² and heat pump sizing based on generator load.
                 Emitter total includes orientation factor ×2 on ventilation leakage per CIBSE DHDG 2026 section 2.5.4.4.
               </p>
+            )}
+
+            {highWPerM2Rooms.size > 0 && (
+              <div className="mt-3 bg-amber-50 border border-amber-300 rounded p-3">
+                <p className="text-sm font-semibold text-amber-800 mb-1">
+                  ⚠ {highWPerM2Rooms.size} room{highWPerM2Rooms.size !== 1 ? 's' : ''} with unusually high heat loss density
+                </p>
+                <p className="text-xs text-amber-700">
+                  The highlighted room{highWPerM2Rooms.size !== 1 ? 's' : ''} show{highWPerM2Rooms.size === 1 ? 's' : ''} a W/m²
+                  figure more than twice the building average ({buildingMeanWPerM2.toFixed(0)} W/m²) and above 80 W/m².
+                  This may indicate a data entry issue — common causes are an incorrect floor area, an exposed
+                  envelope area that includes deselected and re-selected elements (check Ventilation tab), or
+                  a missing element that is reducing the effective heat loss calculation. Please review the room
+                  inputs before finalising the design.
+                </p>
+              </div>
             )}
           </div>
         ) : (
