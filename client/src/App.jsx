@@ -708,6 +708,41 @@ const deleteProject = async (id) => {
   // Whole-house MVHR — distribute system rate to all rooms by volume
   // ---------------------------------------------------------------------------
 
+  // Builds the standard room API payload, mirroring the existing updateRoom handler.
+  // Used by applyWholeHouseMVHR and clearWholeHouseMVHR to avoid field mismatches.
+  const buildRoomPayload = (room, overrides = {}) => ({
+    name:              room.name,
+    internalTemp:      room.internalTemp,
+    volume:            room.volume,
+    floorArea:         room.floorArea,
+    roomLength:        room.roomLength,
+    roomWidth:         room.roomWidth,
+    roomHeight:        room.roomHeight,
+    minAirFlow:        room.ventilation.minAirFlow,
+    infiltrationRate:  room.ventilation.infiltrationRate,
+    mechanicalSupply:  room.ventilation.mechanicalSupply,
+    mechanicalExtract: room.ventilation.mechanicalExtract,
+    roomType:             room.roomType             || 'living_room',
+    hasManualACHOverride: room.hasManualACHOverride || false,
+    manualACH:            room.manualACH            || 0,
+    extractFanFlowRate:   room.extractFanFlowRate   || 0,
+    hasOpenFire:          room.hasOpenFire          || false,
+    designConnectionType:    room.designConnectionType    || 'BOE',
+    thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
+    exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
+    hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
+    isTopStorey:          room.isTopStorey           ?? 0,
+    bgVentCount:          room.bgVentCount           ?? 0,
+    bgFanCount:           room.bgFanCount            ?? 0,
+    bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
+    bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
+    bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
+    continuousVentType:   room.continuousVentType    || 'none',
+    continuousVentRateM3h:room.continuousVentRateM3h ?? 0,
+    mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
+    ...overrides,
+  });
+
   const applyWholeHouseMVHR = async (rate, efficiency) => {
     if (!currentProject?.rooms?.length) return;
 
@@ -727,49 +762,20 @@ const deleteProject = async (id) => {
       mvhrWholeHouseRate:    rate,
     }));
 
+    // Build the standard room payload (mirrors existing updateRoom handler exactly)
+    // then override the three MVHR fields.
     // Fire one api.updateRoom per room in parallel with the three MVHR fields
     try {
       await Promise.all(rooms.map(room => {
-        const roomShare = totalVolume > 0
-          ? parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1))
-          : 0;
-        return api.updateRoom(room.id, {
-          // Preserve all existing room fields
-          name:              room.name,
-          internalTemp:      room.internalTemp,
-          volume:            room.volume,
-          floorArea:         room.floorArea,
-          roomLength:        room.roomLength        ?? 0,
-          roomWidth:         room.roomWidth         ?? 0,
-          roomHeight:        room.roomHeight        ?? 0,
-          roomType:          room.roomType          || 'living_room',
-          hasManualACHOverride: room.hasManualACHOverride || false,
-          manualACH:         room.manualACH         ?? 0,
-          extractFanFlowRate:room.extractFanFlowRate ?? 0,
-          hasOpenFire:       room.hasOpenFire        || false,
-          minAirFlow:        room.ventilation?.minAirFlow        ?? 0,
-          infiltrationRate:  room.ventilation?.infiltrationRate  ?? 0.5,
-          mechanicalSupply:  room.ventilation?.mechanicalSupply  ?? 0,
-          mechanicalExtract: room.ventilation?.mechanicalExtract ?? 0,
-          designConnectionType:    room.designConnectionType    || 'BOE',
-          thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
-          exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
-          hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
-          isTopStorey:          room.isTopStorey           ?? 0,
-          bgVentCount:          room.bgVentCount           ?? 0,
-          bgFanCount:           room.bgFanCount            ?? 0,
-          bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
-          bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
-          bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
-          // MVHR fields — set by this operation
+        const roomShare = parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1));
+        return api.updateRoom(room.id, buildRoomPayload(room, {
           continuousVentType:    'mvhr',
           continuousVentRateM3h: roomShare,
           mvhrEfficiency:        efficiency,
-        });
+        }));
       }));
     } catch (roomErr) {
       console.error('applyWholeHouseMVHR: room update failed —', roomErr);
-      // Continue to design params save regardless
     }
 
     // Persist the project-level MVHR markers. saveDesignParams uses
@@ -799,40 +805,17 @@ const deleteProject = async (id) => {
       mvhrWholeHouseRate:    0,
     }));
 
-    await Promise.all(rooms.map(room =>
-      api.updateRoom(room.id, {
-        name:              room.name,
-        internalTemp:      room.internalTemp,
-        volume:            room.volume,
-        floorArea:         room.floorArea,
-        roomLength:        room.roomLength        ?? 0,
-        roomWidth:         room.roomWidth         ?? 0,
-        roomHeight:        room.roomHeight        ?? 0,
-        roomType:          room.roomType          || 'living_room',
-        hasManualACHOverride: room.hasManualACHOverride || false,
-        manualACH:         room.manualACH         ?? 0,
-        extractFanFlowRate:room.extractFanFlowRate ?? 0,
-        hasOpenFire:       room.hasOpenFire        || false,
-        minAirFlow:        room.ventilation?.minAirFlow        ?? 0,
-        infiltrationRate:  room.ventilation?.infiltrationRate  ?? 0.5,
-        mechanicalSupply:  room.ventilation?.mechanicalSupply  ?? 0,
-        mechanicalExtract: room.ventilation?.mechanicalExtract ?? 0,
-        designConnectionType:    room.designConnectionType    || 'BOE',
-        thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
-        exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
-        hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
-        isTopStorey:          room.isTopStorey           ?? 0,
-        bgVentCount:          room.bgVentCount           ?? 0,
-        bgFanCount:           room.bgFanCount            ?? 0,
-        bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
-        bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
-        bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
-        // Reset MVHR
-        continuousVentType:    'none',
-        continuousVentRateM3h: 0,
-        mvhrEfficiency:        0,
-      })
-    ));
+    try {
+      await Promise.all(rooms.map(room =>
+        api.updateRoom(room.id, buildRoomPayload(room, {
+          continuousVentType:    'none',
+          continuousVentRateM3h: 0,
+          mvhrEfficiency:        0,
+        }))
+      ));
+    } catch (roomErr) {
+      console.error('clearWholeHouseMVHR: room update failed —', roomErr);
+    }
 
     await saveDesignParams({
       ventilationSystemType: 'natural',
@@ -1099,6 +1082,13 @@ const deleteProject = async (id) => {
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
     if (!room) return;
+
+    // Block efficiency override at room level when whole-house MVHR is active —
+    // efficiency is governed by the central unit and must be changed in Ventilation Settings.
+    if (field === 'mvhrEfficiency' && currentProject.ventilationSystemType === 'mvhr') {
+      console.warn('mvhrEfficiency is controlled by whole-house MVHR — change in Ventilation Settings');
+      return;
+    }
 
     let updates = { [field]: value };
 
