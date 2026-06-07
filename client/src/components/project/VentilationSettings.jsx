@@ -8,7 +8,7 @@
 //
 // Field names are camelCase throughout, matching App.jsx loadProject() mapping.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { estimateQ50SAP } from '../../utils/en12831Calculations';
 import {
   SAP_STRUCTURAL_INFILTRATION,
@@ -39,6 +39,13 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   const [mvhrEff,  setMvhrEff]        = useState(project.mvhrEfficiency ?? 0);
   const [applying, setApplying]       = useState(false);
   const [applied,  setApplied]        = useState(false);
+
+  // Sync local MVHR inputs when project reloads (e.g. after apply or on tab switch).
+  // Same pattern as DeltaTInput — useState initialisers only run on first mount.
+  useEffect(() => {
+    setMvhrRate(project.mvhrWholeHouseRate ?? 0);
+    setMvhrEff(project.mvhrEfficiency ?? 0);
+  }, [project.mvhrWholeHouseRate, project.mvhrEfficiency]);
 
   const handleApply = async () => {
     const rate = parseFloat(mvhrRate) || 0;
