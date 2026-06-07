@@ -2113,6 +2113,23 @@ const MIGRATIONS = [
       console.log('  Migration 016 complete: mvhr_whole_house_rate_m3h added to design_params');
     },
   },
+  // ---------------------------------------------------------------------------
+  // Migration 017 — Fix mvhr_efficiency column type on design_params
+  // The original column was INTEGER (unused legacy field). Now stores a
+  // fraction 0–1 (e.g. 0.82) so must be DOUBLE PRECISION.
+  // ---------------------------------------------------------------------------
+  {
+    version: '017',
+    description: 'Fix design_params.mvhr_efficiency: INTEGER → DOUBLE PRECISION',
+    run: async () => {
+      await query(`
+        ALTER TABLE design_params
+          ALTER COLUMN mvhr_efficiency TYPE DOUBLE PRECISION
+          USING mvhr_efficiency::DOUBLE PRECISION
+      `);
+      console.log('  Migration 017 complete: mvhr_efficiency type fixed to DOUBLE PRECISION');
+    },
+  },
 ];
 
 async function runMigrations() {
