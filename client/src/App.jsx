@@ -768,12 +768,16 @@ const deleteProject = async (id) => {
       });
     }));
 
-    // Save the project-level MVHR markers to design_params
-    await api.updateDesignParams(currentProject.id, {
-      ventilationSystemType: 'mvhr',
-      mvhrEfficiency:        efficiency,
-      mvhrWholeHouseRate:    rate,
-    });
+    // Persist the project-level MVHR markers immediately using the standard
+    // payload builder (raw partial updates fail — all 65 params required).
+    await api.updateDesignParams(
+      currentProject.id,
+      buildDesignParamsPayload(currentProject, {
+        ventilationSystemType: 'mvhr',
+        mvhrEfficiency:        efficiency,
+        mvhrWholeHouseRate:    rate,
+      })
+    );
 
     await loadProject(currentProject.id, true);
   };
@@ -825,11 +829,15 @@ const deleteProject = async (id) => {
       })
     ));
 
-    await api.updateDesignParams(currentProject.id, {
-      ventilationSystemType: 'natural',
-      mvhrEfficiency:        0,
-      mvhrWholeHouseRate:    0,
-    });
+    // Persist immediately.
+    await api.updateDesignParams(
+      currentProject.id,
+      buildDesignParamsPayload(currentProject, {
+        ventilationSystemType: 'natural',
+        mvhrEfficiency:        0,
+        mvhrWholeHouseRate:    0,
+      })
+    );
 
     await loadProject(currentProject.id, true);
   };
@@ -901,6 +909,7 @@ const deleteProject = async (id) => {
     numberOfPassiveVents:     proj.numberOfPassiveVents,
     ventilationSystemType:    proj.ventilationSystemType,
     mvhrEfficiency:           proj.mvhrEfficiency,
+    mvhrWholeHouseRate:       proj.mvhrWholeHouseRate ?? 0,
     ventilationMethod:      proj.ventilationMethod,
     airPermeabilityMethod:  proj.airPermeabilityMethod,
     q50:                    proj.q50,
