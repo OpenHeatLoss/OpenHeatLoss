@@ -245,75 +245,116 @@ export default function VentilationEditor({ room, project, onUpdate }) {
         {/* Continuous mechanical ventilation                                 */}
         {/* ---------------------------------------------------------------- */}
         <div>
-          <Field
-            label="Continuous mechanical ventilation"
-            hint="Intermittent extract fans are entered above — only list continuous systems here"
-          >
-            <select
-              value={local.continuousVentType}
-              onChange={e => handleDiscreteChange('continuousVentType', e.target.value)}
-              className={inputClass}
-            >
-              {Object.entries(CONTINUOUS_VENT_TYPES).map(([k, v]) => (
-                <option key={k} value={k}>{v.label}</option>
-              ))}
-            </select>
-          </Field>
-
-          {local.continuousVentType === 'mev' && (
-            <div className="mt-2 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
-              <p className="font-semibold">⚠ Unbalanced continuous extract — outside method scope</p>
-              <p className="mt-1">
-                Rooms with continuous unbalanced mechanical extract ventilation are not suitable
-                for the CIBSE 2026 reduced method. A fully BS EN 12831-1 compliant tool should
-                be used for this room. The ventilation heat loss for this room will exclude the
-                continuous ventilation contribution.
-              </p>
-            </div>
-          )}
-
-          {(local.continuousVentType === 'mev' || local.continuousVentType === 'mvhr') && (
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field
-                label="Supply / extract rate (m³/h)"
-                hint="From ventilation system designer or manufacturer"
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={local.continuousVentRateM3h}
-                    onChange={e => handleNumberChange('continuousVentRateM3h', e.target.value)}
-                    onBlur={() => handleNumberBlur('continuousVentRateM3h')}
-                    className={inputClass + ' flex-1'}
-                  />
-                  <span className="text-sm text-gray-500">m³/h</span>
-                </div>
-              </Field>
-
-              {local.continuousVentType === 'mvhr' && (
+          {/* When whole-house MVHR is active, the type and efficiency are
+              controlled at building level — lock them and explain why.
+              The supply rate remains overrideable for room-by-room balancing. */}
+          {(() => {
+            const isWhMVHR = project?.ventilationSystemType === 'mvhr'
+                          && local.continuousVentType === 'mvhr';
+            return (
+              <>
                 <Field
-                  label="Heat recovery efficiency"
-                  hint="From manufacturer data — typically 0.75–0.90"
+                  label="Continuous mechanical ventilation"
+                  hint="Intermittent extract fans are entered above — only list continuous systems here"
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="0.95"
-                      value={local.mvhrEfficiency}
-                      onChange={e => handleNumberChange('mvhrEfficiency', e.target.value)}
-                      onBlur={() => handleNumberBlur('mvhrEfficiency')}
-                      className={inputClass + ' flex-1'}
-                    />
-                    <span className="text-sm text-gray-500">fraction</span>
-                  </div>
+                  {isWhMVHR ? (
+                    <div className="flex items-center gap-2">
+                      <div className={inputClass + ' flex-1 bg-gray-50 text-gray-500 cursor-not-allowed'}>
+                        Mechanical ventilation with heat recovery (MVHR) — balanced
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={local.continuousVentType}
+                      onChange={e => handleDiscreteChange('continuousVentType', e.target.value)}
+                      className={inputClass}
+                    >
+                      {Object.entries(CONTINUOUS_VENT_TYPES).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  )}
                 </Field>
-              )}
-            </div>
-          )}
+
+                {isWhMVHR && (
+                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-800">
+                    <p className="font-semibold">Whole-house MVHR — controlled in Ventilation Settings</p>
+                    <p className="mt-1">
+                      Heat recovery efficiency is set at building level and cannot be overridden
+                      per room. Supply rate has been distributed by room volume — you can adjust
+                      it here if the duct schedule specifies a different rate for this room.
+                    </p>
+                  </div>
+                )}
+
+                {local.continuousVentType === 'mev' && (
+                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+                    <p className="font-semibold">⚠ Unbalanced continuous extract — outside method scope</p>
+                    <p className="mt-1">
+                      Rooms with continuous unbalanced mechanical extract ventilation are not suitable
+                      for the CIBSE 2026 reduced method. A fully BS EN 12831-1 compliant tool should
+                      be used for this room. The ventilation heat loss for this room will exclude the
+                      continuous ventilation contribution.
+                    </p>
+                  </div>
+                )}
+
+                {(local.continuousVentType === 'mev' || local.continuousVentType === 'mvhr') && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <Field
+                      label="Supply / extract rate (m³/h)"
+                      hint={isWhMVHR
+                        ? 'Distributed from whole-house total by room volume — override here if duct schedule differs'
+                        : 'From ventilation system designer or manufacturer'}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={local.continuousVentRateM3h}
+                          onChange={e => handleNumberChange('continuousVentRateM3h', e.target.value)}
+                          onBlur={() => handleNumberBlur('continuousVentRateM3h')}
+                          className={inputClass + ' flex-1'}
+                        />
+                        <span className="text-sm text-gray-500">m³/h</span>
+                      </div>
+                    </Field>
+
+                    {local.continuousVentType === 'mvhr' && (
+                      <Field
+                        label="Heat recovery efficiency"
+                        hint={isWhMVHR ? 'Set in Ventilation Settings — not editable per room' : 'From manufacturer data — typically 0.75–0.90'}
+                      >
+                        {isWhMVHR ? (
+                          <div className="flex items-center gap-2">
+                            <div className={inputClass + ' flex-1 bg-gray-50 text-gray-500 cursor-not-allowed'}>
+                              {local.mvhrEfficiency}
+                            </div>
+                            <span className="text-sm text-gray-500">fraction</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="0.95"
+                              value={local.mvhrEfficiency}
+                              onChange={e => handleNumberChange('mvhrEfficiency', e.target.value)}
+                              onBlur={() => handleNumberBlur('mvhrEfficiency')}
+                              className={inputClass + ' flex-1'}
+                            />
+                            <span className="text-sm text-gray-500">fraction</span>
+                          </div>
+                        )}
+                      </Field>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {/* ---------------------------------------------------------------- */}
