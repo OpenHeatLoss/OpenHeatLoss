@@ -2096,6 +2096,23 @@ const MIGRATIONS = [
       console.log('  Migration 015 complete: balance_point and scop_emitter_type added to design_params');
     },
   },
+  // ---------------------------------------------------------------------------
+  // Migration 016 — Whole-house MVHR project-level fields
+  // Adds mvhr_whole_house_rate_m3h to design_params.
+  // ventilation_system_type = 'mvhr' (existing column) signals active.
+  // Per-room rates and efficiency remain on the rooms table (migration 010).
+  // ---------------------------------------------------------------------------
+  {
+    version: '016',
+    description: 'Whole-house MVHR: add mvhr_whole_house_rate_m3h to design_params',
+    run: async () => {
+      await query(`
+        ALTER TABLE design_params
+          ADD COLUMN IF NOT EXISTS mvhr_whole_house_rate_m3h DOUBLE PRECISION NOT NULL DEFAULT 0
+      `);
+      console.log('  Migration 016 complete: mvhr_whole_house_rate_m3h added to design_params');
+    },
+  },
 ];
 
 async function runMigrations() {

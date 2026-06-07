@@ -1,7 +1,7 @@
 // client/src/App.jsx
 import { useState, useEffect } from 'react';
 import { api } from './utils/api';
-import { calculateRoomVolume, calculateRoomFloorArea, calculateElementArea } from './utils/calculations';
+import { calculateRoomVolume, calculateRoomFloorArea, calculateElementArea, calculateSegmentsVolume, calculateSegmentsFloorArea } from './utils/calculations';
 import { HomeIcon, PlusIcon, SaveIcon, TrashIcon } from './components/common/Icons';
 import ProjectDashboard from './components/project/ProjectDashboard';
 import ProjectInfo from './components/project/ProjectInfo';
@@ -353,9 +353,17 @@ function App() {
       en14511TestPoints: (() => {
         const val = dp.en14511_test_points;
         if (!val) return [];
-        try { return JSON.parse(val); } catch { return []; }
+        // PostgreSQL JSONB columns are returned already parsed by node-postgres.
+        // Only call JSON.parse if val is still a string (legacy TEXT storage).
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          try { return JSON.parse(val); } catch { return []; }
+        }
+        return [];
       })(),
       defrostPct: dp.defrost_pct ?? 5,
+      balancePoint:    dp.balance_point      ?? 12.5,
+      scopEmitterType: dp.scop_emitter_type  || 'radiator',
 
       epcSpaceHeatingDemand: dp.epc_space_heating_demand || 0,
       epcHotWaterDemand:     dp.epc_hot_water_demand     || 0,
@@ -452,6 +460,18 @@ function App() {
           ufhReturnTemp:         room.ufhSpecs.ufh_return_temp         ?? 40,
           hasActuator:           room.ufhSpecs.has_actuator            ?? 0,
         } : null,
+        // Room segments (migration 013) — camelCase geometry fields for the client
+        segments: (room.segments || []).map(s => ({
+          id:           s.id,
+          roomId:       s.room_id,
+          label:        s.label        || '',
+          length:       s.length       ?? 0,
+          width:        s.width        ?? 0,
+          ceilingType:  s.ceiling_type || 'flat',
+          heightLow:    s.height_low   ?? 0,
+          heightHigh:   s.height_high  ?? null,
+          displayOrder: s.display_order ?? 0,
+        })),
       })),
     };
 
@@ -648,6 +668,8 @@ function App() {
       bufferVesselVolume:     currentProject.bufferVesselVolume     ?? 0,
       en14511TestPoints:      currentProject.en14511TestPoints      || [],
       defrostPct:             currentProject.defrostPct             ?? 5,
+      balancePoint:           currentProject.balancePoint           ?? 12.5,
+      scopEmitterType:        currentProject.scopEmitterType        || 'radiator',
     });
 
     await loadProjects();
@@ -776,6 +798,8 @@ const deleteProject = async (id) => {
     bufferVesselVolume:     proj.bufferVesselVolume     ?? 0,
     en14511TestPoints:      proj.en14511TestPoints      || [],
     defrostPct:             proj.defrostPct             ?? 5,
+    balancePoint:           proj.balancePoint           ?? 12.5,
+    scopEmitterType:        proj.scopEmitterType        || 'radiator',
     ...overrides,
   });
 
@@ -936,18 +960,10 @@ const deleteProject = async (id) => {
 
     let updates = { [field]: value };
 
-    // Auto-calculate volume and floor area when dimensions change
-    if (['roomLength', 'roomWidth', 'roomHeight'].includes(field)) {
-      const newLength = field === 'roomLength' ? value : room.roomLength;
-      const newWidth  = field === 'roomWidth'  ? value : room.roomWidth;
-      const newHeight = field === 'roomHeight' ? value : room.roomHeight;
-      if (newLength > 0 && newWidth > 0 && newHeight > 0) {
-        updates.volume = calculateRoomVolume(newLength, newWidth, newHeight);
-      }
-      if (newLength > 0 && newWidth > 0) {
-        updates.floorArea = calculateRoomFloorArea(newLength, newWidth);
-      }
-    }
+    // volume and floorArea are now derived from segments (see updateSegment /
+    // addSegment / deleteSegment handlers). Direct edits to roomLength/roomWidth/
+    // roomHeight are no longer used for geometry — those fields are kept in the DB
+    // for backward compat but not recalculated here.
 
     // Legacy ventilation field groups (kept for backward compat)
     const ventilationFields    = ['minAirFlow', 'infiltrationRate', 'mechanicalSupply', 'mechanicalExtract'];
@@ -1019,6 +1035,114 @@ const deleteProject = async (id) => {
     }
   };
 
+  // ── Room segment handlers ────────────────────────────────────────────────
+  // After any segment mutation, recalculate and persist volume + floorArea
+  // on the room record so everything downstream (PDF, ventilation, emitters)
+  // continues to read a single consistent figure.
+
+  const _recalcRoomFromSegments = async (roomId, segments) => {
+    const newVolume    = calculateSegmentsVolume(segments);
+    const newFloorArea = calculateSegmentsFloorArea(segments);
+    const room = currentProject.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    await api.updateRoom(roomId, {
+      name:              room.name,
+      internalTemp:      room.internalTemp,
+      volume:            newVolume,
+      floorArea:         newFloorArea,
+      roomLength:        room.roomLength,
+      roomWidth:         room.roomWidth,
+      roomHeight:        room.roomHeight,
+      minAirFlow:        room.ventilation.minAirFlow,
+      infiltrationRate:  room.ventilation.infiltrationRate,
+      mechanicalSupply:  room.ventilation.mechanicalSupply,
+      mechanicalExtract: room.ventilation.mechanicalExtract,
+      roomType:          room.roomType || 'living_room',
+      hasManualACHOverride: room.hasManualACHOverride || false,
+      manualACH:         room.manualACH || 0,
+      extractFanFlowRate: room.extractFanFlowRate || 0,
+      hasOpenFire:       room.hasOpenFire || false,
+      designConnectionType: room.designConnectionType || 'BOE',
+      thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
+      exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
+      hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
+      isTopStorey:          room.isTopStorey           ?? 0,
+      bgVentCount:          room.bgVentCount           ?? 0,
+      bgFanCount:           room.bgFanCount            ?? 0,
+      bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
+      bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
+      bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
+      continuousVentType:   room.continuousVentType    || 'none',
+      continuousVentRateM3h: room.continuousVentRateM3h ?? 0,
+      mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
+    });
+  };
+
+  const addSegment = async (roomId) => {
+    try {
+      const room = currentProject.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const nextOrder = (room.segments || []).length;
+      await api.createSegment(roomId, {
+        label:        'New area',
+        length:       0,
+        width:        0,
+        ceilingType:  'flat',
+        heightLow:    0,
+        heightHigh:   null,
+        displayOrder: nextOrder,
+      });
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error adding segment:', error);
+    }
+  };
+
+  const updateSegment = async (roomId, segmentId, data) => {
+    try {
+      await api.updateSegment(segmentId, data);
+      // Reload to get accurate segment list, then recalc room totals
+      const fresh = await api.getProject(currentProject.id);
+      const freshRoom = (fresh.rooms || []).find(r => r.id === roomId);
+      if (freshRoom) {
+        const segments = (freshRoom.segments || []).map(s => ({
+          length:      s.length  ?? 0,
+          width:       s.width   ?? 0,
+          ceilingType: s.ceiling_type || 'flat',
+          heightLow:   s.height_low   ?? 0,
+          heightHigh:  s.height_high  ?? null,
+        }));
+        await _recalcRoomFromSegments(roomId, segments);
+      }
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error updating segment:', error);
+    }
+  };
+
+  const deleteSegment = async (roomId, segmentId) => {
+    try {
+      await api.deleteSegment(segmentId);
+      const fresh = await api.getProject(currentProject.id);
+      const freshRoom = (fresh.rooms || []).find(r => r.id === roomId);
+      if (freshRoom) {
+        const segments = (freshRoom.segments || [])
+          .filter(s => s.id !== segmentId)
+          .map(s => ({
+            length:     s.length  ?? 0,
+            width:      s.width   ?? 0,
+            ceilingType: s.ceiling_type || 'flat',
+            heightLow:  s.height_low   ?? 0,
+            heightHigh: s.height_high  ?? null,
+          }));
+        await _recalcRoomFromSegments(roomId, segments);
+      }
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error deleting segment:', error);
+    }
+  };
+
   // Element handlers
   const addElement = async (roomId) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
@@ -1085,7 +1209,11 @@ const deleteProject = async (id) => {
     // as the sum of areas of all elements with includeInEnvelope = 1.
     // Use updateRoom (the App-level handler) so all field defaults are applied
     // correctly and we don't have to duplicate the full room payload here.
-    if (field === 'includeInEnvelope' || field === 'area' || field === 'length' || field === 'height') {
+    // Recompute exposedEnvelopeM2 when anything that affects it changes:
+    // - includeInEnvelope toggled directly
+    // - area/dimensions updated (gross area used for envelope)
+    // - elementType changed (changes the includeInEnvelope default)
+    if (field === 'includeInEnvelope' || field === 'area' || field === 'length' || field === 'height' || field === 'elementType') {
       const updatedElements = room.elements.map(el =>
         el.id === elementId
           ? { ...el, ...updates, area: updates.area ?? el.area }
@@ -1093,11 +1221,12 @@ const deleteProject = async (id) => {
       );
       const newEnvelope = updatedElements.reduce((sum, el) => {
         if (!(el.includeInEnvelope ?? 0)) return sum;
-        // Use effective area: subtract any child elements
-        const subtracted = updatedElements
-          .filter(s => s.subtractFromElementId === el.id)
-          .reduce((s, sub) => s + (sub.area ?? 0), 0);
-        return sum + Math.max(0, (el.area ?? 0) - subtracted);
+        // Exposed envelope uses GROSS element area — windows and external doors
+        // are NOT subtracted per CIBSE DHDG 2026 section 2.5.4.2. The envelope
+        // area represents the total exposed surface through which air leaks,
+        // including glazed and door openings. Subtraction only applies to the
+        // fabric U-value calculation in calculateTransmissionLoss().
+        return sum + (el.area ?? 0);
       }, 0);
       // updateRoom calls loadProject internally — return early to avoid double reload
       await updateRoom(room.id, 'exposedEnvelopeM2', parseFloat(newEnvelope.toFixed(2)));
@@ -1135,7 +1264,27 @@ const deleteProject = async (id) => {
 
   const deleteElement = async (elementId) => {
     try {
+      // Find the room and element before deletion so we can recalculate
+      // exposedEnvelopeM2 if the deleted element was part of the envelope.
+      const room    = currentProject.rooms.find(r => r.elements?.some(e => e.id === elementId));
+      const element = room?.elements.find(e => e.id === elementId);
+
       await api.deleteElement(elementId);
+
+      // If the deleted element contributed to the exposed envelope, recompute
+      // and save the updated total before reloading — otherwise the stored value
+      // remains inflated until the engineer manually toggles another element.
+      if (room && element && (element.includeInEnvelope ?? 0)) {
+        const remainingElements = room.elements.filter(e => e.id !== elementId);
+        const newEnvelope = remainingElements.reduce((sum, el) => {
+          if (!(el.includeInEnvelope ?? 0)) return sum;
+          // Gross area — no window/door subtraction per CIBSE DHDG 2026 s.2.5.4.2
+          return sum + (el.area ?? 0);
+        }, 0);
+        await updateRoom(room.id, 'exposedEnvelopeM2', parseFloat(newEnvelope.toFixed(2)));
+        return; // updateRoom calls loadProject internally
+      }
+
       await loadProject(currentProject.id, true);
     } catch (error) {
       console.error('Error deleting element:', error);
@@ -1302,6 +1451,7 @@ const deleteProject = async (id) => {
             mechanicalSupply:  room.ventilation?.mechanicalSupply  || 0,
             mechanicalExtract: room.ventilation?.mechanicalExtract || 0,
             designConnectionType: data.value,
+            thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10, // fix: was missing, causing reset to default on connection type change
             // EN 12831-1 fields preserved as-is
             exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
             hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
@@ -1750,6 +1900,9 @@ const deleteProject = async (id) => {
                 onUpdateEmitter={updateEmitter}
                 onDeleteEmitter={deleteEmitter}
                 onAddRadiatorSpec={addRadiatorSpec}
+                onAddSegment={addSegment}
+                onUpdateSegment={updateSegment}
+                onDeleteSegment={deleteSegment}
               />
             )}
             {activeTab === 'summary' && (
@@ -1757,6 +1910,7 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdateProject={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                buildDesignParamsPayload={buildDesignParamsPayload}
               />
             )}
             {activeTab === 'radiators' && (

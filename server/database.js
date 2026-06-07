@@ -771,8 +771,9 @@ const designParams = {
       sap_window_draught_pct = $57, sap_draught_lobby = $58,
       building_storeys = $59, building_shielding = $60, reference_temp = $61,
       balance_point = $62, scop_emitter_type = $63,
+      mvhr_whole_house_rate_m3h = $64,
       updated_at = NOW()
-    WHERE project_id = $64`,
+    WHERE project_id = $65`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
@@ -814,6 +815,7 @@ const designParams = {
       data.referenceTemp         ?? 10.6,
       data.balancePoint          ?? 12.5,
       data.scopEmitterType       || 'radiator',
+      data.mvhrWholeHouseRate    ?? 0,
       projectId,
     ]
   ),

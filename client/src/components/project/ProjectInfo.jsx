@@ -281,7 +281,7 @@ function BusGrantSection({ project, onUpdate }) {
   );
 }
 
-export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveContact, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey }) {
+export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveContact, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey, onApplyMVHR, onClearMVHR }) {
 
   // ── Customer contact details ──────────────────────────────────────────────
   const [editingContact, setEditingContact] = useState(false);
@@ -757,6 +757,8 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
           project={project}
           onUpdate={onUpdate}
           onUpdateBatch={onUpdateBatch}
+          onApplyMVHR={onApplyMVHR}    
+          onClearMVHR={onClearMVHR}    
         />
       </div>
 
