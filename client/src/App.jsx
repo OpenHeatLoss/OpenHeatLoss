@@ -728,56 +728,61 @@ const deleteProject = async (id) => {
     }));
 
     // Fire one api.updateRoom per room in parallel with the three MVHR fields
-    // set alongside all existing room data (database.js updateRoom takes full payload)
-    await Promise.all(rooms.map(room => {
-      const roomShare = totalVolume > 0
-        ? parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1))
-        : 0;
-      return api.updateRoom(room.id, {
-        // Preserve all existing room fields
-        name:              room.name,
-        internalTemp:      room.internalTemp,
-        volume:            room.volume,
-        floorArea:         room.floorArea,
-        roomLength:        room.roomLength        ?? 0,
-        roomWidth:         room.roomWidth         ?? 0,
-        roomHeight:        room.roomHeight        ?? 0,
-        roomType:          room.roomType          || 'living_room',
-        hasManualACHOverride: room.hasManualACHOverride || false,
-        manualACH:         room.manualACH         ?? 0,
-        extractFanFlowRate:room.extractFanFlowRate ?? 0,
-        hasOpenFire:       room.hasOpenFire        || false,
-        minAirFlow:        room.ventilation?.minAirFlow        ?? 0,
-        infiltrationRate:  room.ventilation?.infiltrationRate  ?? 0.5,
-        mechanicalSupply:  room.ventilation?.mechanicalSupply  ?? 0,
-        mechanicalExtract: room.ventilation?.mechanicalExtract ?? 0,
-        designConnectionType:    room.designConnectionType    || 'BOE',
-        thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
-        exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
-        hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
-        isTopStorey:          room.isTopStorey           ?? 0,
-        bgVentCount:          room.bgVentCount           ?? 0,
-        bgFanCount:           room.bgFanCount            ?? 0,
-        bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
-        bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
-        bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
-        // MVHR fields — set by this operation
-        continuousVentType:    'mvhr',
-        continuousVentRateM3h: roomShare,
-        mvhrEfficiency:        efficiency,
-      });
-    }));
+    try {
+      await Promise.all(rooms.map(room => {
+        const roomShare = totalVolume > 0
+          ? parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1))
+          : 0;
+        return api.updateRoom(room.id, {
+          // Preserve all existing room fields
+          name:              room.name,
+          internalTemp:      room.internalTemp,
+          volume:            room.volume,
+          floorArea:         room.floorArea,
+          roomLength:        room.roomLength        ?? 0,
+          roomWidth:         room.roomWidth         ?? 0,
+          roomHeight:        room.roomHeight        ?? 0,
+          roomType:          room.roomType          || 'living_room',
+          hasManualACHOverride: room.hasManualACHOverride || false,
+          manualACH:         room.manualACH         ?? 0,
+          extractFanFlowRate:room.extractFanFlowRate ?? 0,
+          hasOpenFire:       room.hasOpenFire        || false,
+          minAirFlow:        room.ventilation?.minAirFlow        ?? 0,
+          infiltrationRate:  room.ventilation?.infiltrationRate  ?? 0.5,
+          mechanicalSupply:  room.ventilation?.mechanicalSupply  ?? 0,
+          mechanicalExtract: room.ventilation?.mechanicalExtract ?? 0,
+          designConnectionType:    room.designConnectionType    || 'BOE',
+          thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
+          exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
+          hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
+          isTopStorey:          room.isTopStorey           ?? 0,
+          bgVentCount:          room.bgVentCount           ?? 0,
+          bgFanCount:           room.bgFanCount            ?? 0,
+          bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
+          bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
+          bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
+          // MVHR fields — set by this operation
+          continuousVentType:    'mvhr',
+          continuousVentRateM3h: roomShare,
+          mvhrEfficiency:        efficiency,
+        });
+      }));
+    } catch (roomErr) {
+      console.error('applyWholeHouseMVHR: room update failed —', roomErr);
+      // Continue to design params save regardless
+    }
 
-    // Persist the project-level MVHR markers immediately using the standard
-    // payload builder (raw partial updates fail — all 65 params required).
-    await api.updateDesignParams(
-      currentProject.id,
-      buildDesignParamsPayload(currentProject, {
-        ventilationSystemType: 'mvhr',
-        mvhrEfficiency:        efficiency,
-        mvhrWholeHouseRate:    rate,
-      })
-    );
+    // Persist the project-level MVHR markers. saveDesignParams uses
+    // buildDesignParamsPayload with overrides, which is the proven save path.
+    // We pass overrides explicitly because setCurrentProject above is async
+    // and currentProject won't reflect the new values yet.
+    console.log('applyWholeHouseMVHR: saving design params with', { ventilationSystemType: 'mvhr', mvhrEfficiency: efficiency, mvhrWholeHouseRate: rate });
+    await saveDesignParams({
+      ventilationSystemType: 'mvhr',
+      mvhrEfficiency:        efficiency,
+      mvhrWholeHouseRate:    rate,
+    });
+    console.log('applyWholeHouseMVHR: design params saved, reloading project');
 
     await loadProject(currentProject.id, true);
   };
@@ -829,15 +834,11 @@ const deleteProject = async (id) => {
       })
     ));
 
-    // Persist immediately.
-    await api.updateDesignParams(
-      currentProject.id,
-      buildDesignParamsPayload(currentProject, {
-        ventilationSystemType: 'natural',
-        mvhrEfficiency:        0,
-        mvhrWholeHouseRate:    0,
-      })
-    );
+    await saveDesignParams({
+      ventilationSystemType: 'natural',
+      mvhrEfficiency:        0,
+      mvhrWholeHouseRate:    0,
+    });
 
     await loadProject(currentProject.id, true);
   };
@@ -1565,6 +1566,7 @@ const deleteProject = async (id) => {
       );
     } catch (error) {
       console.error('Error saving design params:', error);
+      throw error; // rethrow so callers know it failed
     }
   };
 
