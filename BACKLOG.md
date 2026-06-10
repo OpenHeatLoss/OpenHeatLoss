@@ -188,6 +188,12 @@ based on selected age band and construction type. Engineer overrides anything
 that doesn't match. RdSAP10 already seeded as construction_library — this is
 a UI feature to surface those values during project setup.
 
+## Emitter sizing
+- [ ] Per-model EN 442 n-exponent selection — currently fixed at n=1.3 (good default
+      for panel radiators). Allow engineer to select exponent from radiator spec or
+      enter manually. Relevant range: ~1.1 (UFH/fan coil) to ~1.5 (column radiators).
+      Affects derated output calculation at low flow temperatures.
+
 **Emitter sizing — rooms with both UFH and radiators**
 Currently the bathroom case (UFH + towel rail) is not handled cleanly.
 Parked — low frequency edge case.

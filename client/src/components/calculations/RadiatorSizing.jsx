@@ -385,7 +385,8 @@ export default function RadiatorSizing({
     const ef = item.enclosure_factor ?? 1.00;
     const ff = item.finish_factor   ?? 1.00;
     const effDt50 = effectiveDt50(spec.output_dt50, ef, ff) * (item.quantity || 1);
-    return sum + calculateOutputAtMWAT(effDt50, mwat);
+    const connFactor = CONNECTION_TYPE_FACTORS[room.designConnectionType || 'BOE'] || 0.96;
+    return sum + calculateOutputAtMWAT(effDt50, mwat) * connFactor;
   }, 0);
 
   const ufhOutput = getRoomUFHOutput(room);
@@ -1460,7 +1461,7 @@ function RoomRadiatorSchedule({
     }
 
     const effDt50     = effectiveDt50(spec.output_dt50, ef, ff) * qty;
-    const designOutput = calculateOutputAtMWAT(effDt50, mwat);
+    const designOutput = calculateOutputAtMWAT(effDt50, mwat) * connectionFactor;
 
     return { item, spec, effDt50, designOutput, contributes: true };
   });
@@ -1733,7 +1734,7 @@ function RoomRadiatorSchedule({
                   </th>
                   <th className="text-right p-2 border">
                     <div>Output @ design</div>
-                    <div className="text-xs font-normal text-gray-500">eff. ΔT50 × conv. factor</div>
+                    <div className="text-xs font-normal text-gray-500">eff. ΔT50 × conv. × conn.</div>
                   </th>
                   <th className="text-right p-2 border">% vs target</th>
                   <th className="text-left p-2 border">Notes</th>
