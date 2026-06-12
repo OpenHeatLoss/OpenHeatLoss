@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { calculateRoomTotal } from '../../utils/calculations';
 import { RADIATOR_CONNECTION_TYPES, CONNECTION_TYPE_CORRECTIONS } from '../../utils/constants';
 import { PlusIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, XIcon } from '../common/Icons';
+import { api } from '../../utils/api';
+import { buildHeatLossPayload } from '../../utils/buildHeatLossPayload';
 
 //-----------------------------------------------------------------------------
 // CIBSE Domestic Heating Design Guide 2026 correction factors
@@ -322,6 +324,7 @@ export default function RadiatorSizing({
   onAddUFHEmitter,
   onRemoveUFH,
   onSaveFlowTemps,
+  currentCompany,
 }) {
   const [expandedRooms, setExpandedRooms] = useState(new Set());
   const [showAddRadiator, setShowAddRadiator] = useState(false);
@@ -331,6 +334,7 @@ export default function RadiatorSizing({
     waterVolume: 0, notes: '', source: 'library', scope: 'company',
   });
   const [exporting, setExporting] = useState(false);
+  const [generatingPack, setGeneratingPack] = useState(false);
 
 
   // Local state for flow/return temp inputs — initialised once from project on
@@ -567,14 +571,161 @@ export default function RadiatorSizing({
     setExporting(false);
   };
 
+
+  const handleGenerateCustomerPack = async () => {
+    setGeneratingPack(true);
+    try {
+      // ── Radiator schedule payload (same logic as handleExportPDF) ────────
+      const roomData = (project.rooms || []).map(room => {
+        const { heatLoss, totalOutput } = checkRoomSufficiency(room);
+        const mwat = calculateMWAT(systemSettings.flowTemp, systemSettings.returnTemp, room.internalTemp);
+        const schedule = (room.radiatorSchedule || []).map(item => {
+          const spec = project.radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
+          const ef = item.enclosure_factor ?? 1.00;
+          const ff = item.finish_factor   ?? 1.00;
+          const effDt50 = spec ? effectiveDt50(spec.output_dt50, ef, ff) * (item.quantity || 1) : 0;
+          const output = calculateOutputAtMWAT(effDt50, mwat);
+          return {
+            isExisting:     item.is_existing    || false,
+            emitterStatus:  item.emitter_status || 'new',
+            spec:           spec ? `${spec.manufacturer} ${spec.model} - ${spec.type} ${spec.height}x${spec.length}mm` : 'Unknown',
+            connectionType: item.connection_type || 'BOE',
+            quantity:       item.quantity || 1,
+            outputDt50:     spec ? spec.output_dt50 : 0,
+            outputAtDesign: output,
+            totalOutput:    output * (item.quantity || 1),
+            notes:          item.notes || '',
+          };
+        });
+        const hasUFHEmitter = room.emitters?.some(e => e.emitterType === 'UFH');
+        if (hasUFHEmitter && room.ufhSpecs) {
+          const ufh = room.ufhSpecs;
+          const ufhOutput = getRoomUFHOutputPure(room, systemSettings.flowTemp);
+          const ufhFlow   = ufh.ufhFlowTemp   ?? systemSettings.flowTemp;
+          const ufhReturn = ufh.ufhReturnTemp ?? (ufhFlow - 5);
+          const activeArea = (room.floorArea || 0) * (ufh.activeAreaFactor || 1.0);
+          const constructionLabel = ufh.floorConstruction === 'screed' ? 'Screed' : 'Timber';
+          const coveringLabel = ufh.floorCovering
+            ? ufh.floorCovering.charAt(0).toUpperCase() + ufh.floorCovering.slice(1).replace(/_/g, ' ')
+            : 'N/A';
+          schedule.push({
+            isUFH: true,
+            spec: `UFH — ${constructionLabel}, ${ufh.pipeSpacingMm || 150}mm spacing, ${coveringLabel} covering, ${activeArea.toFixed(1)}m² active area, flow ${ufhFlow}°C / return ${ufhReturn}°C`,
+            connectionType: 'UFH', quantity: 1, outputDt50: null,
+            outputAtDesign: ufhOutput, totalOutput: ufhOutput, notes: '',
+          });
+        }
+        return {
+          name: room.name, internalTemp: room.internalTemp,
+          floorArea: room.floorArea || 0, heatLoss, totalOutput, mwat, schedule,
+        };
+      });
+
+      const radiatorScheduleData = {
+        projectName:       project.name              || 'Untitled Project',
+        designer:          project.designer          || '',
+        customerTitle:     project.customerTitle     || '',
+        customerFirstName: project.customerFirstName || '',
+        customerSurname:   project.customerSurname   || '',
+        customerAddress:   project.customerAddressLine1 || '',
+        customerPostcode:  project.customerPostcode  || '',
+        flowTemp:          systemSettings.flowTemp,
+        returnTemp:        systemSettings.returnTemp,
+        externalTemp:      project.externalTemp      || -3,
+        totalHeatLoss:     roomData.reduce((s, r) => s + r.heatLoss, 0) / 1000,
+        numberOfRooms:     roomData.length,
+        rooms:             roomData,
+      };
+
+      // Heat loss payload — uses shared utility, matches Summary.jsx exactly
+      const heatLossData = buildHeatLossPayload(project, {
+        flowTemp:   systemSettings.flowTemp,
+        returnTemp: systemSettings.returnTemp,
+      });
+
+      // MCS documents — only include if snapshots exist and are non-empty
+      const mcsPerformanceData = project.mcsCalculationSnapshot
+        && Object.keys(project.mcsCalculationSnapshot).length > 0
+        ? project.mcsCalculationSnapshot : null;
+
+      const mcsSoundData = project.mcsSoundSnapshot
+        && Object.keys(project.mcsSoundSnapshot).length > 0
+        ? project.mcsSoundSnapshot : null;
+
+      // Cover letter client data
+      const propertyAddress = [
+        project.customerAddressLine1,
+        project.customerAddressLine2,
+        project.customerTown,
+        project.customerCounty,
+        project.customerPostcode,
+      ].filter(Boolean).join(', ');
+
+      // Use generator load — matches what the heat loss report sizes the HP against
+      const totalHeatLossKw = heatLossData.totalGeneratorLoad || heatLossData.totalHeatLoss || 0;
+
+      const clientData = {
+        title:           project.customerTitle     || '',
+        firstName:       project.customerFirstName || '',
+        surname:         project.customerSurname   || '',
+        propertyAddress,
+        totalHeatLossKw: Math.round(totalHeatLossKw * 10) / 10,
+        designFlowTemp:  systemSettings.flowTemp,
+        projectName:     project.name || '',
+        quoteRef:        '',
+      };
+
+      const response = await api.generateCustomerPack({
+        heatLossData, radiatorScheduleData, mcsPerformanceData, mcsSoundData, clientData,
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url  = window.URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        const clientName = [project.customerFirstName, project.customerSurname]
+          .filter(Boolean).join('_') || 'Customer';
+        a.download = `${clientName}_HeatLoss_Pack_${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || 'Failed to generate customer pack.');
+      }
+    } catch (error) {
+      console.error('Error generating customer pack:', error);
+      alert('Error generating customer pack. Please try again.');
+    } finally {
+      setGeneratingPack(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Radiator & Emitter Sizing</h2>
-        <button onClick={handleExportPDF} disabled={exporting || !project.rooms?.length}
-          className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 font-semibold transition flex items-center gap-2">
-          {exporting ? '⏳ Generating...' : '📄 Export Schedule PDF'}
-        </button>
+        <h2 className="text-2xl font-bold">Radiator &amp; Emitter Sizing</h2>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportPDF}
+            disabled={exporting || generatingPack || !project.rooms?.length}
+            className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 font-semibold transition flex items-center gap-2"
+          >
+            {exporting ? '⏳ Generating...' : '📄 Export Schedule PDF'}
+          </button>
+          <button
+            onClick={handleGenerateCustomerPack}
+            disabled={generatingPack || exporting || !project.rooms?.length}
+            title={!currentCompany?.cover_letter_template
+              ? 'Tip: add a cover letter template in Settings → Company Details'
+              : 'Generate cover letter + heat loss report + emitter schedule'}
+            className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition flex items-center gap-2"
+          >
+            {generatingPack ? '⏳ Generating pack...' : '📦 Generate Customer Pack'}
+          </button>
+        </div>
       </div>
 
       {/* System Design Conditions */}

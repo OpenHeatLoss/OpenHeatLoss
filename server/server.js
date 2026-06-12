@@ -57,7 +57,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use('/api', pdfRoutes);
 
 // ------------------------------------------------------------
 // ANONYMOUS SESSION MIDDLEWARE
@@ -136,6 +135,9 @@ function requireAdmin(req, res, next) {
     res.status(401).json({ error: 'Session expired — please log in again' });
   }
 }
+
+// Mount pdf routes here — after requireAuth is defined, passing it and companies in.
+app.use('/api', pdfRoutes(requireAuth, companies));
 
 // ------------------------------------------------------------
 // EMAIL HELPER (Resend)

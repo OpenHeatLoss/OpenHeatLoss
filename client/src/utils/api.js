@@ -575,4 +575,17 @@ export const api = {
       method: 'DELETE',
     }).then(r => r.json()),
 
+  // ==========================================================
+  // PDF GENERATION
+  // ==========================================================
+
+  // Returns raw Response (not .json()) — caller checks response.ok
+  // and calls response.blob() to get the PDF binary.
+  generateCustomerPack: (data) =>
+    fetch('/api/generate-pdf/customer-pack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
   };

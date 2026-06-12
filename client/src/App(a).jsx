@@ -284,6 +284,7 @@ function App() {
       numberOfPassiveVents:     dp.number_of_passive_vents     || 0,
       ventilationSystemType:    dp.ventilation_system_type     || 'natural',
       mvhrEfficiency:           dp.mvhr_efficiency             || 0,
+      mvhrWholeHouseRate:       dp.mvhr_whole_house_rate_m3h   ?? 0,
 
       // EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields (migration 010)
       ventilationMethod:      dp.ventilation_method        || 'en12831_cibse2026',
@@ -638,6 +639,7 @@ function App() {
       numberOfPassiveVents:     currentProject.numberOfPassiveVents,
       ventilationSystemType:    currentProject.ventilationSystemType,
       mvhrEfficiency:           currentProject.mvhrEfficiency,
+      mvhrWholeHouseRate:       currentProject.mvhrWholeHouseRate ?? 0,
       // EN 12831-1:2017 ventilation fields (migration 010)
       ventilationMethod:      currentProject.ventilationMethod,
       airPermeabilityMethod:  currentProject.airPermeabilityMethod,
@@ -700,6 +702,128 @@ const deleteProject = async (id) => {
 
   const updateProjectBatch = (updates) => {
     setCurrentProject(prev => ({ ...prev, ...updates }));
+  };
+
+  // ---------------------------------------------------------------------------
+  // Whole-house MVHR — distribute system rate to all rooms by volume
+  // ---------------------------------------------------------------------------
+
+  // Builds the standard room API payload, mirroring the existing updateRoom handler.
+  // Used by applyWholeHouseMVHR and clearWholeHouseMVHR to avoid field mismatches.
+  const buildRoomPayload = (room, overrides = {}) => ({
+    name:              room.name,
+    internalTemp:      room.internalTemp,
+    volume:            room.volume,
+    floorArea:         room.floorArea,
+    roomLength:        room.roomLength,
+    roomWidth:         room.roomWidth,
+    roomHeight:        room.roomHeight,
+    minAirFlow:        room.ventilation.minAirFlow,
+    infiltrationRate:  room.ventilation.infiltrationRate,
+    mechanicalSupply:  room.ventilation.mechanicalSupply,
+    mechanicalExtract: room.ventilation.mechanicalExtract,
+    roomType:             room.roomType             || 'living_room',
+    hasManualACHOverride: room.hasManualACHOverride || false,
+    manualACH:            room.manualACH            || 0,
+    extractFanFlowRate:   room.extractFanFlowRate   || 0,
+    hasOpenFire:          room.hasOpenFire          || false,
+    designConnectionType:    room.designConnectionType    || 'BOE',
+    thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
+    exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
+    hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
+    isTopStorey:          room.isTopStorey           ?? 0,
+    bgVentCount:          room.bgVentCount           ?? 0,
+    bgFanCount:           room.bgFanCount            ?? 0,
+    bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
+    bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
+    bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
+    continuousVentType:   room.continuousVentType    || 'none',
+    continuousVentRateM3h:room.continuousVentRateM3h ?? 0,
+    mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
+    ...overrides,
+  });
+
+  const applyWholeHouseMVHR = async (rate, efficiency) => {
+    if (!currentProject?.rooms?.length) return;
+
+    const rooms = currentProject.rooms;
+    const totalVolume = rooms.reduce((sum, r) => sum + (r.volume ?? 0), 0);
+
+    if (totalVolume <= 0) {
+      console.warn('applyWholeHouseMVHR: total room volume is zero — cannot distribute');
+      return;
+    }
+
+    // Update project-level markers immediately so VentilationSettings re-renders
+    setCurrentProject(prev => ({
+      ...prev,
+      ventilationSystemType: 'mvhr',
+      mvhrEfficiency:        efficiency,
+      mvhrWholeHouseRate:    rate,
+    }));
+
+    // Build the standard room payload (mirrors existing updateRoom handler exactly)
+    // then override the three MVHR fields.
+    // Fire one api.updateRoom per room in parallel with the three MVHR fields
+    try {
+      await Promise.all(rooms.map(room => {
+        const roomShare = parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1));
+        return api.updateRoom(room.id, buildRoomPayload(room, {
+          continuousVentType:    'mvhr',
+          continuousVentRateM3h: roomShare,
+          mvhrEfficiency:        efficiency,
+        }));
+      }));
+    } catch (roomErr) {
+      console.error('applyWholeHouseMVHR: room update failed —', roomErr);
+    }
+
+    // Persist the project-level MVHR markers. saveDesignParams uses
+    // buildDesignParamsPayload with overrides, which is the proven save path.
+    // We pass overrides explicitly because setCurrentProject above is async
+    // and currentProject won't reflect the new values yet.
+    console.log('applyWholeHouseMVHR: saving design params with', { ventilationSystemType: 'mvhr', mvhrEfficiency: efficiency, mvhrWholeHouseRate: rate });
+    await saveDesignParams({
+      ventilationSystemType: 'mvhr',
+      mvhrEfficiency:        efficiency,
+      mvhrWholeHouseRate:    rate,
+    });
+    console.log('applyWholeHouseMVHR: design params saved, reloading project');
+
+    await loadProject(currentProject.id, true);
+  };
+
+  const clearWholeHouseMVHR = async () => {
+    if (!currentProject?.rooms?.length) return;
+
+    const rooms = currentProject.rooms;
+
+    setCurrentProject(prev => ({
+      ...prev,
+      ventilationSystemType: 'natural',
+      mvhrEfficiency:        0,
+      mvhrWholeHouseRate:    0,
+    }));
+
+    try {
+      await Promise.all(rooms.map(room =>
+        api.updateRoom(room.id, buildRoomPayload(room, {
+          continuousVentType:    'none',
+          continuousVentRateM3h: 0,
+          mvhrEfficiency:        0,
+        }))
+      ));
+    } catch (roomErr) {
+      console.error('clearWholeHouseMVHR: room update failed —', roomErr);
+    }
+
+    await saveDesignParams({
+      ventilationSystemType: 'natural',
+      mvhrEfficiency:        0,
+      mvhrWholeHouseRate:    0,
+    });
+
+    await loadProject(currentProject.id, true);
   };
 
   const handleUpdateClientAddress = async (addressId, data, clientId) => {
@@ -769,6 +893,7 @@ const deleteProject = async (id) => {
     numberOfPassiveVents:     proj.numberOfPassiveVents,
     ventilationSystemType:    proj.ventilationSystemType,
     mvhrEfficiency:           proj.mvhrEfficiency,
+    mvhrWholeHouseRate:       proj.mvhrWholeHouseRate ?? 0,
     ventilationMethod:      proj.ventilationMethod,
     airPermeabilityMethod:  proj.airPermeabilityMethod,
     q50:                    proj.q50,
@@ -957,6 +1082,13 @@ const deleteProject = async (id) => {
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
     if (!room) return;
+
+    // Block efficiency override at room level when whole-house MVHR is active —
+    // efficiency is governed by the central unit and must be changed in Ventilation Settings.
+    if (field === 'mvhrEfficiency' && currentProject.ventilationSystemType === 'mvhr') {
+      console.warn('mvhrEfficiency is controlled by whole-house MVHR — change in Ventilation Settings');
+      return;
+    }
 
     let updates = { [field]: value };
 
@@ -1424,6 +1556,7 @@ const deleteProject = async (id) => {
       );
     } catch (error) {
       console.error('Error saving design params:', error);
+      throw error; // rethrow so callers know it failed
     }
   };
 
@@ -1853,6 +1986,8 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdate={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                onApplyMVHR={applyWholeHouseMVHR}
+                onClearMVHR={clearWholeHouseMVHR}
                 onSaveContact={handleSaveContact}
                 onUpdateClientAddress={handleUpdateClientAddress}
                 onSaveInstallAddress={handleSaveInstallAddress}

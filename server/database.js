@@ -410,10 +410,12 @@ const companies = {
     UPDATE companies
     SET name = $1, mcs_number = $2, recc_number = $3,
         address = $4, postcode = $5, email = $6, phone = $7, website = $8,
+        cover_letter_template = $9,
         updated_at = NOW()
-    WHERE id = $9`,
+    WHERE id = $10`,
     [data.name, data.mcsNumber, data.reccNumber,
-     data.address, data.postcode, data.email, data.phone, data.website, id]
+     data.address, data.postcode, data.email, data.phone, data.website,
+     data.coverLetterTemplate ?? null, id]
   ),
 };
 

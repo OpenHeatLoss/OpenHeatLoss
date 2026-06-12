@@ -1308,6 +1308,224 @@ function ProjectManagement({ onDeleteProject }) {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Company Details tab
+// ---------------------------------------------------------------------------
+const COVER_LETTER_DEFAULT = `Dear {client_first_name},
+
+Thank you for the opportunity to survey your property at {property_address}. I'm pleased to share the results of your heat loss assessment and emitter design.
+
+This pack contains a full room-by-room heat loss calculation carried out in accordance with BS EN 12831-1 using the CIBSE Domestic Heating Design Guide 2026 method, along with a detailed emitter schedule showing the radiators specified for your home.
+
+Your home has a calculated peak heat loss of {total_heat_loss_kw} kW at the design external temperature. The system has been designed to operate at a flow temperature of {design_flow_temp}°C, which is well suited to a heat pump installation and will allow the system to run efficiently.
+
+Please take some time to look through the enclosed documents. If you have any questions about the calculations or the proposed emitter sizes, I'm happy to talk you through them.
+
+Next steps:
+Once you are happy with the design, I will prepare a detailed quotation covering all works, equipment, and MCS registration. I will also provide the MCS 031 Performance Estimate, which gives you an independent indication of how the system is expected to perform over a typical year.
+
+I look forward to hearing from you.
+
+Kind regards,
+
+{company_name}
+{company_phone}
+{company_email}`;
+
+const MERGE_TOKENS = [
+  { token: '{client_first_name}',  desc: "Client's first name" },
+  { token: '{client_surname}',     desc: "Client's surname" },
+  { token: '{client_full_name}',   desc: 'Full name including title' },
+  { token: '{property_address}',   desc: 'Installation address' },
+  { token: '{total_heat_loss_kw}', desc: 'Calculated peak heat loss (kW)' },
+  { token: '{design_flow_temp}',   desc: 'System design flow temperature (°C)' },
+  { token: '{company_name}',       desc: 'Your company name' },
+  { token: '{company_phone}',      desc: 'Your phone number' },
+  { token: '{company_email}',      desc: 'Your email address' },
+  { token: '{date}',               desc: 'Date the pack is generated' },
+];
+
+function CompanyDetails() {
+  const [form, setForm] = useState({
+    name: '', mcsNumber: '', reccNumber: '',
+    address: '', postcode: '', email: '', phone: '', website: '',
+    coverLetterTemplate: '',
+  });
+  const [loading,    setLoading]    = useState(true);
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
+  const [showTokens, setShowTokens] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getCompany();
+        setForm({
+          name:                data.name                  || '',
+          mcsNumber:           data.mcs_number            || '',
+          reccNumber:          data.recc_number           || '',
+          address:             data.address               || '',
+          postcode:            data.postcode              || '',
+          email:               data.email                 || '',
+          phone:               data.phone                 || '',
+          website:             data.website               || '',
+          coverLetterTemplate: data.cover_letter_template || '',
+        });
+      } catch (err) {
+        console.error('Error loading company:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const handleChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateCompany(form);
+      setSaved(true);
+    } catch (err) {
+      console.error('Error saving company:', err);
+      alert('Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const insertToken = (token) => {
+    handleChange('coverLetterTemplate',
+      (form.coverLetterTemplate || COVER_LETTER_DEFAULT) + token
+    );
+  };
+
+  const resetTemplate = () => {
+    if (window.confirm('Reset to the default template? Your current text will be lost.')) {
+      handleChange('coverLetterTemplate', COVER_LETTER_DEFAULT);
+    }
+  };
+
+  const templateValue = form.coverLetterTemplate || COVER_LETTER_DEFAULT;
+
+  if (loading) return (
+    <div className="text-gray-500 text-sm py-8 text-center">Loading company details...</div>
+  );
+
+  return (
+    <div className="max-w-3xl space-y-8">
+
+      {/* Company information */}
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Company information</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Used on PDF reports and the customer pack cover letter.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          {[
+            { label: 'Company name', field: 'name',       span: 2 },
+            { label: 'MCS number',   field: 'mcsNumber'         },
+            { label: 'RECC number',  field: 'reccNumber'        },
+            { label: 'Address',      field: 'address',    span: 2 },
+            { label: 'Postcode',     field: 'postcode'          },
+            { label: 'Email',        field: 'email'             },
+            { label: 'Phone',        field: 'phone'             },
+            { label: 'Website',      field: 'website'           },
+          ].map(({ label, field, span }) => (
+            <div key={field} className={span === 2 ? 'col-span-2' : ''}>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+              <input
+                type="text"
+                value={form[field]}
+                onChange={e => handleChange(field, e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm
+                           focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Cover letter template */}
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Cover letter template</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          This letter is included as the first page of every customer pack.
+          Use merge tokens to personalise it automatically with project and client data.
+        </p>
+
+        {/* Token reference */}
+        <div className="mb-3">
+          <button
+            onClick={() => setShowTokens(v => !v)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium transition"
+          >
+            {showTokens ? '▲ Hide merge tokens' : '▼ Show merge tokens'}
+          </button>
+          {showTokens && (
+            <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700 font-semibold mb-2">
+                Click a token to append it to the letter:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {MERGE_TOKENS.map(({ token, desc }) => (
+                  <button
+                    key={token}
+                    onClick={() => insertToken(token)}
+                    title={desc}
+                    className="text-xs font-mono bg-white border border-blue-300 text-blue-700
+                               px-2 py-1 rounded hover:bg-blue-100 transition"
+                  >
+                    {token}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-blue-500 mt-2">Hover a token to see what it inserts.</p>
+            </div>
+          )}
+        </div>
+
+        <textarea
+          value={templateValue}
+          onChange={e => handleChange('coverLetterTemplate', e.target.value)}
+          rows={22}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     leading-relaxed resize-y"
+          spellCheck={true}
+        />
+        <div className="flex justify-between items-center mt-2">
+          <button
+            onClick={resetTemplate}
+            className="text-xs text-gray-500 hover:text-gray-700 underline transition"
+          >
+            Reset to default
+          </button>
+          <span className="text-xs text-gray-400">{templateValue.length} characters</span>
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-semibold
+                     hover:bg-blue-700 disabled:opacity-50 transition"
+        >
+          {saving ? 'Saving...' : 'Save company details'}
+        </button>
+        {saved && <span className="text-sm text-green-600 font-medium">✓ Saved</span>}
+      </div>
+    </div>
+  );
+}
+
 // Main Settings page — tab shell
 // ---------------------------------------------------------------------------
 const TABS = [
@@ -1367,11 +1585,7 @@ export default function SettingsPage({ onBack, onDeleteProject }) {
             {activeTab === 'rate-card'         && <RateCardSettings />}
             {activeTab === 'projects'          && <ProjectManagement onDeleteProject={onDeleteProject} />}
 
-            {activeTab === 'company' && (
-              <div className="text-gray-400 text-sm py-12 text-center">
-                Company details management — coming soon.
-              </div>
-            )}
+            {activeTab === 'company' && <CompanyDetails />}
 
             {activeTab === 'users' && (
               <div className="text-gray-400 text-sm py-12 text-center">
