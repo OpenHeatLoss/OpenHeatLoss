@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: June 2026 (pipe sizing fixes, envelope bugs, W/m² warning, documentation)
+Last updated: June 2026 (radiator sizing connection factor bug fix)
 
 ---
 
@@ -43,6 +43,16 @@ None. All known bugs resolved.
   field === 'elementType' added to envelope recalculation trigger conditions
   in App.jsx updateElement.
 - B20 — construction_library.json missing windows and doors data — resolved.
+- B21 — Radiator design output column missing connection factor — resolved.
+  calculateOutputAtMWAT(effDt50, mwat) in rowCalcs (RoomRadiatorSchedule) and
+  checkRoomSufficiency was returning raw thermal output without multiplying by
+  the room connection type factor (BOE×0.96, TBSE×1.00, TBOE×1.05). Required
+  ΔT50 target was correctly dividing by the factor, but delivered output was not
+  derated, causing isSufficient to return true when the room was actually ~4%
+  short (BOE case). Fixed in RadiatorSizing.jsx: connectionFactor applied to
+  designOutput in rowCalcs and to radOutput accumulator in checkRoomSufficiency.
+  Column header subtext updated from "eff. ΔT50 × conv. factor" to
+  "eff. ΔT50 × conv. × conn." to reflect actual calculation.
   74 window records and 6 door records added to construction_library.json.
   RdSAPUValuePicker reads from bundled JSON not DB — data was in DB (140 rows)
   but never merged into the JSON bundle.
@@ -373,6 +383,21 @@ means engineer override. Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-06 — Radiator sizing connection factor bug fix
+
+**Bugs fixed:**
+- B21: Radiator design output missing connection factor (RadiatorSizing.jsx)
+  — rowCalcs designOutput and checkRoomSufficiency radOutput both called
+  calculateOutputAtMWAT(effDt50, mwat) without applying the room connection
+  type factor. Required ΔT50 target correctly divided by connectionFactor but
+  delivered output was underated — BOE rooms could show as sufficient when ~4%
+  short. Fixed by multiplying designOutput by connectionFactor in rowCalcs, and
+  multiplying calculateOutputAtMWAT result by the room's connection factor in
+  checkRoomSufficiency. Column header subtext updated to match.
+  Documented in YouTube bugs & resolutions playlist.
+
+---
 
 ### 2026-06 — Pipe sizing fixes, envelope bugs, W/m² warning, documentation
 

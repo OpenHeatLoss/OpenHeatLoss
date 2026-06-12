@@ -2130,6 +2130,23 @@ const MIGRATIONS = [
       console.log('  Migration 017 complete: mvhr_efficiency type fixed to DOUBLE PRECISION');
     },
   },
+  // ---------------------------------------------------------------------------
+  // Migration 018 — Cover letter template on companies
+  // Adds cover_letter_template TEXT to the companies table.
+  // Stores the default cover letter body used when generating customer packs.
+  // Supports merge tokens: {client_first_name}, {client_surname},
+  // {client_full_name}, {property_address}, {total_heat_loss_kw},
+  // {design_flow_temp}, {company_name}, {company_phone}, {company_email},
+  // {date}, {quote_ref}
+  // ---------------------------------------------------------------------------
+  {
+    version: '018',
+    description: 'Add cover_letter_template to companies table',
+    run: async () => {
+      await addColumnIfMissing('companies', 'cover_letter_template', 'TEXT');
+      console.log('  Migration 018 complete: cover_letter_template added to companies');
+    },
+  },
 ];
 
 async function runMigrations() {
