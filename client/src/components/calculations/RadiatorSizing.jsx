@@ -644,13 +644,80 @@ export default function RadiatorSizing({
       });
 
       // MCS documents — only include if snapshots exist and are non-empty
-      const mcsPerformanceData = project.mcsCalculationSnapshot
-        && Object.keys(project.mcsCalculationSnapshot).length > 0
-        ? project.mcsCalculationSnapshot : null;
+      // ── MCS 031 Performance — build payload same way as MCS031PerformanceEstimator
+      // handleExportPDF does: project fields live + snapshot calculation outputs.
+      // The snapshot only stores calculation results, not project/customer info.
+      // A meaningful snapshot requires spf to be present and non-zero.
+      let mcsPerformanceData = null;
+      const s031 = project.mcsCalculationSnapshot;
+      if (s031 && s031.spf && s031.spf > 0) {
+        const calcDate = new Date(s031.calculatedAt).toLocaleDateString('en-GB', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+        });
+        mcsPerformanceData = {
+          projectName:       project.name              || 'Untitled Project',
+          location:          project.customerAddressLine1 || '',
+          designer:          project.designer           || '',
+          customerTitle:     project.customerTitle      || '',
+          customerFirstName: project.customerFirstName  || '',
+          customerSurname:   project.customerSurname    || '',
+          customerAddress:   project.customerAddressLine1 || '',
+          customerPostcode:  project.customerPostcode   || '',
+          customerTelephone: project.customerTelephone  || '',
+          customerEmail:     project.customerEmail      || '',
+          calculatedAt:      calcDate,
+          spaceHeatingDemand: s031.spaceHeatingDemand,
+          hotWaterDemand:     s031.hotWaterDemand,
+          totalFloorArea:     s031.totalFloorArea,
+          wattsPerM2:         s031.wattsPerM2,
+          heatPumpCapacity:   s031.heatPumpCapacity,
+          heatPumpType:       s031.heatPumpType,
+          systemProvides:     s031.systemProvides === 'space_and_hw' ? 'Space heat and hot water' :
+                              s031.systemProvides === 'space_only'   ? 'Space heating only' : 'Hybrid',
+          emitterType:        s031.emitterType === 'existing_radiators'  ? 'Existing radiators' :
+                              s031.emitterType === 'upgraded_radiators'  ? 'Mostly upgraded radiators' :
+                              s031.emitterType === 'mostly_ufh'          ? 'Mostly underfloor' :
+                                                                           '50% radiators, 50% UFH',
+          flowTempBand:       s031.flowTempBand,
+          spf:                s031.spf,
+          lowEstimate:        s031.lowEstimate,
+          highEstimate:       s031.highEstimate,
+          stars:              s031.stars,
+          warningNotes:       s031.warningNotes,
+        };
+      }
 
-      const mcsSoundData = project.mcsSoundSnapshot
-        && Object.keys(project.mcsSoundSnapshot).length > 0
-        ? project.mcsSoundSnapshot : null;
+      // ── MCS 020 Sound — build payload same way as MCS020SoundCalculator
+      // handleExportPDF does. The snapshot only stores a fingerprint and
+      // allPositionsPass — the actual assessment positions are in
+      // project.mcsSoundAssessments. Require at least one position with
+      // a real sound power level to include this document.
+      let mcsSoundData = null;
+      const s020 = project.mcsSoundSnapshot;
+      const soundAssessments = project.mcsSoundAssessments;
+      const hasSoundData = s020
+        && Array.isArray(soundAssessments)
+        && soundAssessments.length > 0
+        && (project.mcsHeatPumpSoundPower || 0) > 0;
+      if (hasSoundData) {
+        const calcDate = new Date(s020.calculatedAt).toLocaleDateString('en-GB', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+        });
+        mcsSoundData = {
+          projectName:       project.name              || 'Untitled Project',
+          location:          project.customerAddressLine1 || '',
+          designer:          project.designer           || '',
+          customerTitle:     project.customerTitle      || '',
+          customerFirstName: project.customerFirstName  || '',
+          customerSurname:   project.customerSurname    || '',
+          customerAddress:   project.customerAddressLine1 || '',
+          customerPostcode:  project.customerPostcode   || '',
+          soundPowerLevel:   project.mcsHeatPumpSoundPower || 0,
+          assessments:       soundAssessments,
+          calculatedAt:      calcDate,
+          overallResult:     s020.allPositionsPass ? 'COMPLIES' : 'DOES NOT COMPLY',
+        };
+      }
 
       // Cover letter client data
       const propertyAddress = [
