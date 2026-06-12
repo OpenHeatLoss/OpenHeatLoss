@@ -2062,6 +2062,7 @@ const deleteProject = async (id) => {
                 onUpdateUFHSpecs={updateUFHSpecs}
                 onAddUFHEmitter={addUFHEmitter}
                 onRemoveUFH={removeUFHSpecs}
+                currentCompany={currentCompany}
               />
             )}
             {activeTab === 'pipe-sizing' && (

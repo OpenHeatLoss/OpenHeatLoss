@@ -325,6 +325,7 @@ export default function RadiatorSizing({
   onRemoveUFH,
   onSaveFlowTemps,
   currentCompany,
+  currentUser,
 }) {
   const [expandedRooms, setExpandedRooms] = useState(new Set());
   const [showAddRadiator, setShowAddRadiator] = useState(false);
@@ -335,6 +336,7 @@ export default function RadiatorSizing({
   });
   const [exporting, setExporting] = useState(false);
   const [generatingPack, setGeneratingPack] = useState(false);
+  const canGeneratePack = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
 
 
   // Local state for flow/return temp inputs — initialised once from project on
@@ -782,16 +784,26 @@ export default function RadiatorSizing({
           >
             {exporting ? '⏳ Generating...' : '📄 Export Schedule PDF'}
           </button>
-          <button
-            onClick={handleGenerateCustomerPack}
-            disabled={generatingPack || exporting || !project.rooms?.length}
-            title={!currentCompany?.cover_letter_template
-              ? 'Tip: add a cover letter template in Settings → Company Details'
-              : 'Generate cover letter + heat loss report + emitter schedule'}
-            className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition flex items-center gap-2"
-          >
-            {generatingPack ? '⏳ Generating pack...' : '📦 Generate Customer Pack'}
-          </button>
+          {canGeneratePack ? (
+            <button
+              onClick={handleGenerateCustomerPack}
+              disabled={generatingPack || exporting || !project.rooms?.length}
+              title={!currentCompany?.cover_letter_template
+                ? 'Tip: add a cover letter template in Settings → Company Details'
+                : 'Generate cover letter + heat loss report + emitter schedule'}
+              className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition flex items-center gap-2"
+            >
+              {generatingPack ? '⏳ Generating pack...' : '📦 Generate Customer Pack'}
+            </button>
+          ) : (
+            <button
+              disabled
+              title="Customer pack is available on the multi-project plan"
+              className="bg-gray-200 text-gray-400 px-5 py-2 rounded font-semibold flex items-center gap-2 cursor-not-allowed"
+            >
+              📦 Generate Customer Pack
+            </button>
+          )}
         </div>
       </div>
 
