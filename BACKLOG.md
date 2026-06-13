@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: June 2026 (radiator sizing connection factor bug fix)
+Last updated: June 2026 (api.updateRoom audit & buildRoomPayload consolidation)
 
 ---
 
@@ -77,16 +77,87 @@ into the project. Design question to resolve first: does the survey response
 create/update rooms and elements directly, or does it create a pending import
 the engineer reviews before applying? The latter is safer but more UI work.
 
+**Quote builder and RECC checklist — plan gating**
+The Materials & Quote tab currently shows the full quote builder and RECC
+checklist to all users including free/single-project plan. These features
+are only relevant to MCS-accredited engineers on the multi-project plan.
+
+Proposed behaviour (matching customer pack button pattern):
+- Materials list: visible to all users (useful for single-project/DIY)
+- Quote section: grayed out with "available on multi-project plan" for
+  free/single-project users; fully active for pro/beta plan users
+- RECC checklist: same gating as quote section
+
+Implementation: pass currentUser into QuoteBuilder.jsx; derive
+canUseQuote = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
+render quote and checklist sections conditionally or with disabled overlay.
+Mirrors the pattern used for the customer pack button in RadiatorSizing.jsx.
+
+**Decimal place consistency sweep**
+Several fields display excessive decimal places (up to 12dp in element area
+calculations and other numeric outputs). Needs a methodical component-by-component
+sweep to enforce consistent display precision.
+
+Precision rules (display only — never round calculation inputs or intermediates):
+- Area: 2dp
+- U-values: 3dp
+- Heat loss (W): 1dp; (kW): 2dp
+- Temperatures: 1dp
+- Flow rates: 1dp
+- W/K coefficients: 2dp
+- Percentages: 1dp
+
+Approach: work through each tab's rendered output in turn — RoomEditor/
+ElementEditor, Summary, RadiatorSizing, PipeSizing — applying toFixed() or
+a shared formatNumber() utility at display time only. Calculation functions
+must remain unchanged. A shared util (e.g. fmt.area(v), fmt.kw(v)) would be
+cleaner than scattered toFixed() calls and makes future changes easier.
+
+**Calculation basis export (CSV + PDF)**
+Third-party technical reviewers (local authority building control, MCS auditors,
+collaborating engineers) currently cannot verify the inputs behind a heat loss
+figure — only the outputs are visible in the existing reports. This is a known
+gap across heat loss tools and a meaningful differentiator to address.
+
+What needs to be exportable:
+- Design parameters: external design temp, reference temp, climate region,
+  thermal bridging category, ventilation method
+- Per room: name, floor area, volume, internal temp, ceiling height,
+  exposed envelope area, ventilation method, ACH/infiltration rate,
+  ventilation loss (W)
+- Per element (within each room): type, description, gross area, net area
+  (after window/door deduction from parent wall), U-value, U-value source,
+  thermal bridging addition, effective U-value, design ΔT, design fabric
+  loss (W), reference ΔT, typical fabric loss (W)
+- Totals: per-room and building-level fabric loss, ventilation loss,
+  generator load, emitter load
+
+Two export formats serving different audiences:
+
+CSV — flat/denormalised (one row per element, room data repeated). Allows
+independent verification in Excel. Directly serves the open-data principle
+— a user can take their data out of OHL and into any other tool. Server-side
+generation is straightforward from existing normalised tables.
+New route: GET /api/projects/:id/export/csv
+
+PDF — dense room-by-room technical appendix, effectively a full Worksheet A2
+for every room showing all element inputs. For formal submission alongside
+the design report. ReportLab can handle it but layout needs care — consider
+landscape A4 or A3 for the element tables. New Python generator:
+generate_calculation_basis_pdf.py, following existing generator pattern.
+New route: POST /api/generate-pdf/calculation-basis
+
+Both exports should be accessible from the Summary tab (where the other
+report exports live), clearly labelled as "Full calculation data — CSV" and
+"Full calculation data — PDF". No plan gating — this is a core transparency
+feature appropriate for all user tiers.
+
 ### Priority 2 — Before first company subscriber
 
-**Company details settings tab** (currently a placeholder)
-Fields needed: company name, company registration number, VAT number, MCS
-number, other registrations (RECC, HIES etc.), contact email, website.
-Logo upload — see Storage section below.
-All fields feed into PDF headers and (eventually) the tool header.
-
-DB: most fields likely already on the companies table — check which are missing
-before adding a migration. Logo needs a logo_url column and a storage solution.
+~~**Company details settings tab**~~ — DONE (June 2026)
+Company name, MCS number, RECC number, address, postcode, email, phone, website
+fields implemented. Cover letter template with merge token support added.
+Logo upload deferred — needs logo_url column and storage solution (future).
 
 **User management settings tab** (currently a placeholder)
 Ability for a company admin to invite additional users (send email link, user
@@ -383,6 +454,89 @@ means engineer override. Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-06 — Customer pack PDF, company details, plan gating
+
+**Features added:**
+- Customer pack PDF generation (Generate Customer Pack button in RadiatorSizing.jsx)
+  — cover letter + heat loss report + emitter schedule + optional MCS 031/020,
+  merged into a single PDF download. Cover letter uses merge tokens populated
+  from project/client state at generation time.
+- generate_cover_letter_pdf.py — new Python/ReportLab generator matching
+  existing report style (colours, fonts, footer)
+- merge_pdfs.py — PDF merger with self-installing pypdf fallback
+  (pdftk and pikepdf not available on Railway)
+- pdf-routes.js — refactored to factory function (requireAuth + companies
+  injected); new POST /api/generate-pdf/customer-pack route fetches company
+  data server-side using session companyId
+- buildHeatLossPayload.js — shared utility in client/src/utils/ so
+  RadiatorSizing can build an identical heat loss payload to Summary.jsx
+- Company Details settings tab built out — company fields + cover letter
+  template textarea with merge token reference panel; migration 018 adds
+  cover_letter_template TEXT to companies table
+- Customer pack and Generate Customer Pack button gated to pro/beta plan users;
+  free/single-project users see a disabled grayed-out button with tooltip
+
+**Bugs fixed during this work:**
+- MCS 031/020 snapshots were passed raw to PDF generator — missing project/
+  customer info (snapshot only stores calculation outputs, not project fields).
+  Fixed: payloads now assembled from live project state + snapshot outputs,
+  matching handleExportPDF in each MCS component
+- MCS 020 assessment positions live in project.mcsSoundAssessments not in the
+  snapshot itself — customer pack now reads from the correct field; inclusion
+  guard requires soundPowerLevel > 0 and at least one assessment position
+
+**Infrastructure:**
+- Migration 018: cover_letter_template TEXT added to companies via
+  addColumnIfMissing (idempotent)
+- server.js: pdfRoutes early mount removed; factory mount added after
+  requireAuth is defined
+
+### 2026-06 — api.updateRoom audit & buildRoomPayload consolidation
+
+**Foundation work — bug class closed:**
+Three separate hand-rolled `api.updateRoom` payload objects consolidated into
+calls to the existing `buildRoomPayload` helper. This closes the silent
+data-loss bug class where fields added after a handler was written would be
+silently dropped on save with no error or crash.
+
+Call sites fixed:
+- `updateRoom` handler (pattern 2) — 53 lines of manual field conditionals
+  replaced with `buildRoomPayload(room, updates)`. Dead code removed:
+  `ventilationFields`, `sapVentilationFields`, `en12831Fields` arrays and
+  their associated ternaries were rendered redundant by the spread pattern
+  already in `buildRoomPayload`.
+- `_recalcRoomFromSegments` (pattern 3) — hand-rolled payload (field-for-field
+  identical to `buildRoomPayload`) replaced with
+  `buildRoomPayload(room, { volume: newVolume, floorArea: newFloorArea })`.
+- `updateRadiatorSchedule` connection type handler (pattern 4, found during
+  audit) — consolidated to `buildRoomPayload`. Also fixed a latent bug:
+  `infiltrationRate` was defaulting to `|| 0.5` in this handler, inconsistent
+  with both the calculation (which uses `?? 0`) and the other handlers.
+  Confirmed safe: `infiltrationRate` is not consumed by the EN 12831 path at
+  all; `0.5` minimum is a UI warning threshold only, not a calculation floor.
+
+**What "closing the bug class" means here:**
+`buildRoomPayload` is now the single authoritative source for the room payload
+shape. Adding a new room field now requires updating only `buildRoomPayload`
+— all three call sites benefit automatically. Previously, each call site had
+to be manually updated, with no safety net if one was missed.
+
+**Schema reference diagram produced:**
+Full HTML schema diagram generated showing all tables grouped by functional
+area (auth, projects, rooms/fabric, emitters, pipe sizing, quotes) with field
+types, PK/FK relationships, and ventilation generation markers (GEN/LEG).
+Ventilation layering across three generations now visible at a glance.
+Saved locally for reference during ventilation field audit (planned).
+
+**Investigations during session:**
+- `infiltrationRate || 0.5` in pattern 4 investigated before removal — confirmed
+  dead code. EN 12831 leakage rate computed from envelope data, not stored
+  `infiltrationRate`. The `0.5` minimum at `en12831Calculations.js:187` is a
+  `minACH` warning check, not a calculation floor.
+- `circuits` and `pipe_sections` JSONB columns in `design_params` noted as
+  likely migration artifacts (proper normalised tables now exist). To confirm
+  and potentially retire in ventilation audit session.
 
 ### 2026-06 — Radiator sizing connection factor bug fix
 
