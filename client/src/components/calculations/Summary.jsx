@@ -1083,7 +1083,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
           {ventWarnings.map((w, i) => (
             <p key={i} className="text-xs text-amber-700 border-t border-amber-200 pt-1">
               <span className="font-semibold">{w.roomName}:</span>{' '}
-              {w.belowMinimum && 'Calculated leakage rate below EN 12831-1 Table B.7 minimum — minimum rate used for heat loss. '}
+              {w.belowMinimum && 'Calculated leakage rate below EN 12831-1 Table B.7 minimum. Consider additional ventilation strategies. '}
               {w.contVentWarning === 'mev_unbalanced' && 'Unbalanced continuous extract (MEV) — outside CIBSE 2026 reduced method scope. A full EN 12831-1 calculation is required.'}
             </p>
           ))}
