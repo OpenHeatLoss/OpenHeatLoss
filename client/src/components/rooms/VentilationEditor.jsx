@@ -376,10 +376,9 @@ export default function VentilationEditor({ room, project, onUpdate }) {
               {calcResult.stages.leakage.belowMinimum && (
                 <p className="text-amber-600 font-medium">
                   ⚠ Calculated infiltration ({calcResult.stages.leakage.approximateRoomLeakageRate.toFixed(1)} m³/h)
-                  is below the EN 12831-1 minimum ({calcResult.stages.leakage.minimumRoomLeakageRate.toFixed(1)} m³/h / 0.5 ACH).
-                  The minimum is used for heat loss. Check that the exposed envelope area above is correct —
-                  in a typical retrofit property, envelope leakage alone usually meets this threshold.
-                  This is not a Building Regulations ventilation compliance issue.
+                  is below the EN 12831-1 minimum ({calcResult.stages.leakage.minimumRoomLeakageRate.toFixed(1)} m³/h / 0.5 ACH). 
+                  Check that the exposed envelope area above is correct — in a typical retrofit property, envelope leakage alone usually meets this threshold.
+                  This is not a Building Regulations or MCS Heat Pump design compliance issue.
                 </p>
               )}
             </div>
