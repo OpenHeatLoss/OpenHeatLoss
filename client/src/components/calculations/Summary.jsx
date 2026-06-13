@@ -1078,8 +1078,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch, build
           <p className="text-sm font-semibold text-amber-800">Ventilation notices</p>
           <p className="text-xs text-amber-700">
             The following rooms show infiltration rates below the BS EN 12831-1 Table B.7 minimum (0.5 ACH).
-            The minimum rate is used for heat loss purposes in these rooms. This does not indicate a Building
-            Regulations ventilation compliance issue. Ventilation adequacy should be considered separately.
+            This does not indicate a Building Regulations or MCS Heat Pump design compliance issue. Ventilation strategies should be considered due to the importance of adequate room ventilation.
           </p>
           {ventWarnings.map((w, i) => (
             <p key={i} className="text-xs text-amber-700 border-t border-amber-200 pt-1">

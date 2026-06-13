@@ -672,16 +672,16 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveCo
               project.externalTemp !== project.mcsOutdoorLowTemp ? (
                 <p className="text-xs mt-1">
                   <span className="text-amber-600 font-medium">✎ Custom value</span>
-                  <span className="text-gray-500"> — postcode default: {project.mcsOutdoorLowTemp}°C (MCS MGD007)</span>
+                  <span className="text-gray-500"> — postcode default: {project.mcsOutdoorLowTemp}°C (MCS 031 Appendix B)</span>
                 </p>
               ) : (
                 <p className="text-xs text-gray-500 mt-1">
-                  From postcode lookup (MCS MGD007) — editable. Custom values are preserved on save.
+                  From postcode lookup (MCS 031 Appendix B) — editable. Custom values are preserved on save.
                 </p>
               )
             ) : (
               <p className="text-xs text-gray-500 mt-1">
-                Auto-set from installation postcode using MCS MGD007. Enter postcode in Installation Address above.
+                Auto-set from installation postcode using MCS 031 Appendix B. Enter postcode in Installation Address above.
               </p>
             )}
           </div>

@@ -545,10 +545,8 @@ export default function RoomEditor({
         {/* Warnings */}
         {isEN12831 && en12831Result?.belowMinimumVentilation && (
           <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-700">
-            ⚠ Calculated infiltration is below the EN 12831-1 minimum (0.5 ACH). The minimum
-            is used for heat loss. Check that the exposed envelope area is set correctly in the
-            ventilation section — in a typical retrofit, envelope leakage alone usually meets
-            this threshold. Not a Building Regulations compliance issue.
+            ⚠ Calculated infiltration is below the EN 12831-1 minimum (0.5 ACH). Check that the exposed envelope area is set correctly in the
+            ventilation section. This is not a Building Regulations or MCS Design compliance issue. Ventilation strategies should be considered due to the importance of adequate room ventilation. 
           </div>
         )}
         {isEN12831 && en12831Result?.contVentWarning === 'mev_unbalanced' && (
