@@ -1097,61 +1097,8 @@ const deleteProject = async (id) => {
     // roomHeight are no longer used for geometry — those fields are kept in the DB
     // for backward compat but not recalculated here.
 
-    // Legacy ventilation field groups (kept for backward compat)
-    const ventilationFields    = ['minAirFlow', 'infiltrationRate', 'mechanicalSupply', 'mechanicalExtract'];
-    const sapVentilationFields = ['roomType', 'hasManualACHOverride', 'manualACH', 'extractFanFlowRate', 'hasOpenFire'];
-    const isVentilationField    = ventilationFields.includes(field);
-    const isSAPVentilationField = sapVentilationFields.includes(field);
-
-    // EN 12831-1 room ventilation fields (migration 010)
-    const en12831Fields = [
-      'exposedEnvelopeM2', 'hasSuspendedFloor', 'isTopStorey',
-      'bgVentCount', 'bgFanCount', 'bgFlueSmallCount', 'bgFlueLargeCount', 'bgOpenFireCount',
-      'continuousVentType', 'continuousVentRateM3h', 'mvhrEfficiency',
-    ];
-
     try {
-      await api.updateRoom(roomId, {
-        name:              updates.name              || room.name,
-        internalTemp:      updates.internalTemp      || room.internalTemp,
-        volume:            updates.volume            !== undefined ? updates.volume    : room.volume,
-        floorArea:         updates.floorArea         !== undefined ? updates.floorArea : room.floorArea,
-        roomLength:        updates.roomLength        !== undefined ? updates.roomLength  : room.roomLength,
-        roomWidth:         updates.roomWidth         !== undefined ? updates.roomWidth   : room.roomWidth,
-        roomHeight:        updates.roomHeight        !== undefined ? updates.roomHeight  : room.roomHeight,
-        // Legacy ventilation
-        minAirFlow:        isVentilationField && field === 'minAirFlow'        ? value : room.ventilation.minAirFlow,
-        infiltrationRate:  isVentilationField && field === 'infiltrationRate'  ? value : room.ventilation.infiltrationRate,
-        mechanicalSupply:  isVentilationField && field === 'mechanicalSupply'  ? value : room.ventilation.mechanicalSupply,
-        mechanicalExtract: isVentilationField && field === 'mechanicalExtract' ? value : room.ventilation.mechanicalExtract,
-        // SAP ventilation fields (legacy)
-        roomType:             isSAPVentilationField && field === 'roomType'             ? value : (room.roomType             || 'living_room'),
-        hasManualACHOverride: isSAPVentilationField && field === 'hasManualACHOverride' ? value : (room.hasManualACHOverride || false),
-        manualACH:            isSAPVentilationField && field === 'manualACH'            ? value : (room.manualACH            || 0),
-        extractFanFlowRate:   isSAPVentilationField && field === 'extractFanFlowRate'   ? value : (room.extractFanFlowRate   || 0),
-        hasOpenFire:          isSAPVentilationField && field === 'hasOpenFire'          ? value : (room.hasOpenFire          || false),
-        designConnectionType: updates.designConnectionType !== undefined
-          ? updates.designConnectionType
-          : (room.designConnectionType || 'BOE'),
-
-        // Thermal bridging addition (CIBSE DHDG 2026 Table 2-9, migration 011)
-        thermalBridgingAddition: updates.thermalBridgingAddition !== undefined
-          ? updates.thermalBridgingAddition
-          : (room.thermalBridgingAddition ?? 0.10),
-
-        // EN 12831-1 ventilation fields (migration 010)
-        exposedEnvelopeM2:    en12831Fields.includes(field) && field === 'exposedEnvelopeM2'    ? value : (room.exposedEnvelopeM2    ?? 0),
-        hasSuspendedFloor:    en12831Fields.includes(field) && field === 'hasSuspendedFloor'    ? value : (room.hasSuspendedFloor    ?? 0),
-        isTopStorey:          en12831Fields.includes(field) && field === 'isTopStorey'          ? value : (room.isTopStorey           ?? 0),
-        bgVentCount:          en12831Fields.includes(field) && field === 'bgVentCount'          ? value : (room.bgVentCount          ?? 0),
-        bgFanCount:           en12831Fields.includes(field) && field === 'bgFanCount'           ? value : (room.bgFanCount           ?? 0),
-        bgFlueSmallCount:     en12831Fields.includes(field) && field === 'bgFlueSmallCount'     ? value : (room.bgFlueSmallCount     ?? 0),
-        bgFlueLargeCount:     en12831Fields.includes(field) && field === 'bgFlueLargeCount'     ? value : (room.bgFlueLargeCount     ?? 0),
-        bgOpenFireCount:      en12831Fields.includes(field) && field === 'bgOpenFireCount'      ? value : (room.bgOpenFireCount      ?? 0),
-        continuousVentType:   en12831Fields.includes(field) && field === 'continuousVentType'   ? value : (room.continuousVentType   || 'none'),
-        continuousVentRateM3h:en12831Fields.includes(field) && field === 'continuousVentRateM3h'? value : (room.continuousVentRateM3h ?? 0),
-        mvhrEfficiency:       en12831Fields.includes(field) && field === 'mvhrEfficiency'       ? value : (room.mvhrEfficiency       ?? 0),
-      });
+      await api.updateRoom(roomId, buildRoomPayload(room, updates));
       await loadProject(currentProject.id, true);
     } catch (error) {
       console.error('Error updating room:', error);
@@ -1177,37 +1124,7 @@ const deleteProject = async (id) => {
     const newFloorArea = calculateSegmentsFloorArea(segments);
     const room = currentProject.rooms.find(r => r.id === roomId);
     if (!room) return;
-    await api.updateRoom(roomId, {
-      name:              room.name,
-      internalTemp:      room.internalTemp,
-      volume:            newVolume,
-      floorArea:         newFloorArea,
-      roomLength:        room.roomLength,
-      roomWidth:         room.roomWidth,
-      roomHeight:        room.roomHeight,
-      minAirFlow:        room.ventilation.minAirFlow,
-      infiltrationRate:  room.ventilation.infiltrationRate,
-      mechanicalSupply:  room.ventilation.mechanicalSupply,
-      mechanicalExtract: room.ventilation.mechanicalExtract,
-      roomType:          room.roomType || 'living_room',
-      hasManualACHOverride: room.hasManualACHOverride || false,
-      manualACH:         room.manualACH || 0,
-      extractFanFlowRate: room.extractFanFlowRate || 0,
-      hasOpenFire:       room.hasOpenFire || false,
-      designConnectionType: room.designConnectionType || 'BOE',
-      thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10,
-      exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
-      hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
-      isTopStorey:          room.isTopStorey           ?? 0,
-      bgVentCount:          room.bgVentCount           ?? 0,
-      bgFanCount:           room.bgFanCount            ?? 0,
-      bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
-      bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
-      bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
-      continuousVentType:   room.continuousVentType    || 'none',
-      continuousVentRateM3h: room.continuousVentRateM3h ?? 0,
-      mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
-    });
+    await api.updateRoom(roomId, buildRoomPayload(room, { volume: newVolume, floorArea: newFloorArea }));
   };
 
   const addSegment = async (roomId) => {
@@ -1566,38 +1483,7 @@ const deleteProject = async (id) => {
       if (action === 'connectionType') {
           const room = currentProject.rooms.find(r => r.id === roomId);
           if (!room) return;
-          await api.updateRoom(roomId, {
-            name:              room.name,
-            internalTemp:      room.internalTemp,
-            volume:            room.volume,
-            floorArea:         room.floorArea,
-            roomLength:        room.roomLength,
-            roomWidth:         room.roomWidth,
-            roomHeight:        room.roomHeight,
-            roomType:          room.roomType          || 'living_room',
-            hasManualACHOverride: room.hasManualACHOverride || false,
-            manualACH:         room.manualACH          || 0,
-            extractFanFlowRate:room.extractFanFlowRate  || 0,
-            hasOpenFire:       room.hasOpenFire         || false,
-            minAirFlow:        room.ventilation?.minAirFlow        || 0,
-            infiltrationRate:  room.ventilation?.infiltrationRate  || 0.5,
-            mechanicalSupply:  room.ventilation?.mechanicalSupply  || 0,
-            mechanicalExtract: room.ventilation?.mechanicalExtract || 0,
-            designConnectionType: data.value,
-            thermalBridgingAddition: room.thermalBridgingAddition ?? 0.10, // fix: was missing, causing reset to default on connection type change
-            // EN 12831-1 fields preserved as-is
-            exposedEnvelopeM2:    room.exposedEnvelopeM2    ?? 0,
-            hasSuspendedFloor:    room.hasSuspendedFloor    ?? 0,
-            isTopStorey:          room.isTopStorey           ?? 0,
-            bgVentCount:          room.bgVentCount           ?? 0,
-            bgFanCount:           room.bgFanCount            ?? 0,
-            bgFlueSmallCount:     room.bgFlueSmallCount      ?? 0,
-            bgFlueLargeCount:     room.bgFlueLargeCount      ?? 0,
-            bgOpenFireCount:      room.bgOpenFireCount       ?? 0,
-            continuousVentType:   room.continuousVentType    || 'none',
-            continuousVentRateM3h:room.continuousVentRateM3h ?? 0,
-            mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
-          });
+          await api.updateRoom(roomId, buildRoomPayload(room, { designConnectionType: data.value }));
           await loadProject(currentProject.id, true);
 
         } else if (action === 'add') {
