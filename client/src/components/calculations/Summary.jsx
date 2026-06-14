@@ -13,6 +13,7 @@ import {
 } from '../../utils/en12831Calculations';
 import { calculateTransmissionLoss } from '../../utils/calculations';
 import { api } from '../../utils/api';
+import { buildDesignParamsPayload } from '../../utils/projectPayloads';
 import {
   fitEta,
   calculateSpaceHeatingScop,
@@ -21,7 +22,7 @@ import {
   EMITTER_EXPONENTS,
 } from '../../utils/scopCalculations';
 
-export default function Summary({ project, onUpdateProject, onUpdateBatch, buildDesignParamsPayload }) {
+export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const [editingHeatPump, setEditingHeatPump] = useState(false);
   const [heatPumpData, setHeatPumpData] = useState({
     manufacturer:    project.heatPumpManufacturer    || '',

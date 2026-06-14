@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: June 2026 (api.updateRoom audit & buildRoomPayload consolidation)
+Last updated: June 2026 (App.jsx decomposition Phase 1)
 
 ---
 
@@ -454,6 +454,49 @@ means engineer override. Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-06 — App.jsx decomposition Phase 1
+
+**Refactoring (no logic changes):**
+- Extracted AuthModal, ForgotPasswordModal, ResetPasswordModal into
+  client/src/components/auth/AuthModal.jsx (~234 lines removed from App.jsx)
+- Extracted buildRoomPayload and buildDesignParamsPayload into
+  client/src/utils/projectPayloads.js (~110 lines removed from App.jsx)
+- Summary.jsx now imports buildDesignParamsPayload directly from projectPayloads.js
+  rather than receiving it as a prop — prop removed from App.jsx JSX and Summary
+  prop destructuring
+- App.jsx reduced from 2,251 to ~1,900 lines
+
+**Phase 2 (next decomposition session):**
+- Extract loadProject into client/src/utils/loadProject.js — highest value
+  remaining extraction; makes the four-layer field mapping explicitly auditable
+
+### 2026-06 — Local development environment setup
+
+**Infrastructure added:**
+- Local PostgreSQL database `ohldb_dev` created (PG16, localhost:5432)
+- User `ohldev` created with appropriate permissions
+- `.env` file created in project root with local DATABASE_URL and JWT_SECRET
+- `dotenv` installed in server and configured to load `.env` from project root
+- Production data restored locally via `pg_dump` from Railway + `psql` restore
+- Local app confirmed running at http://localhost:5173 with real project data
+
+**Key technical notes:**
+- `database.js` already had SSL auto-detection (`!includes('localhost')`) — no code changes needed
+- Vite proxy to Express on port 3000 was already configured in `vite.config.js`
+- `pg_dump` must use `/usr/lib/postgresql/18/bin/pg_dump` (not default PG16 binary) to match Railway PG18
+- `transaction_timeout` ERROR on restore is harmless — PG18 setting not recognised by PG16
+- Local cluster is PG16; Railway is PG18 — minor version difference, no practical impact for development
+
+**Workflow going forward:**
+- All development and testing done locally first
+- `git push` to deploy to Railway only after local testing confirms correctness
+- Refresh local data periodically: drop `ohldb_dev`, recreate, restore from fresh Railway dump
+- Pre-migration snapshot: always `pg_dump` from Railway before running any migration against production
+
+**Also noted:**
+- `backup-ohldb.sh` should use full path `/usr/lib/postgresql/18/bin/pg_dump`
+- Local PG upgrade to version 18 would eliminate the version mismatch entirely — deferred
 
 ### 2026-06 — Customer pack PDF, company details, plan gating
 
