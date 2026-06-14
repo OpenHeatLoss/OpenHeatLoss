@@ -134,7 +134,6 @@ module.exports = function pdfRoutes(requireAuth, companies) {
 
   // ── Heat Loss Report ─────────────────────────────────────────────────────
   router.post('/generate-pdf/heat-loss', async (req, res) => {
-    let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_heat_loss_pdf.py', req.body, 'heat_loss');
       await sendPdf(res, pdfFile, 'Heat_Loss_Report.pdf');

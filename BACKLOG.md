@@ -63,12 +63,11 @@ None. All known bugs resolved.
 
 ### Priority 1 — Next sessions
 
-**Pipe sizing PDF revision**
-The pipe sizing PDF was built against the old JSON blob storage format for pipe
-sections. That column no longer exists (pipe sections are now in their own
-normalised table). PDF is currently outputting mostly zeros. Needs rewriting to
-query pipe_sections + pipe_materials + fittings tables directly, same as the
-UI does. Upload generate_pipe_sizing_pdf.py (or equivalent) to start.
+**PDF polish session**
+A dedicated pass across all PDF outputs to refine layout, column widths,
+table spacing, and typography. Heat loss and pipe sizing PDFs are functionally
+correct but visual refinement would improve the impression for professional
+use. Cover letter and customer pack also in scope.
 
 **Survey form — load-back workflow**
 The QR code launch and static HTML survey form exist. What's missing is the
@@ -454,6 +453,26 @@ means engineer override. Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-06 — Heat loss PDF address fields fix
+
+**Bugs fixed:**
+- Location and customer address fields blank in heat loss PDF.
+  Root cause: two separate places building the heat loss payload —
+  buildHeatLossPayload.js (used by customer pack) and an inline payload
+  in Summary.jsx (used by standalone export). Both had stale flat field
+  references (project.location, project.customerAddress) that no longer
+  exist in project state. Fixed in both files by joining the normalised
+  address fields (customerAddressLine1, customerAddressLine2, customerTown,
+  customerPostcode) with filter(Boolean).join(', ').
+- Address field now wraps correctly in PDF using ReportLab Paragraph.
+
+**Also confirmed working:**
+- Pipe sizing PDF is correct and complete (backlog note was outdated).
+- Heat loss PDF calculation content is current and accurate.
+
+**Deferred:**
+- PDF visual polish pass (layout, column widths, table spacing) — separate session.
 
 ### 2026-06 — App.jsx decomposition Phase 1
 

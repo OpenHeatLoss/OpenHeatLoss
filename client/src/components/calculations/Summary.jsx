@@ -351,12 +351,14 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
       const pdfData = {
         isEN12831,
         projectName:       project.name              || 'Untitled Project',
-        location:          project.location          || '',
+        location:         [project.customerAddressLine1, project.customerAddressLine2, project.customerTown, project.customerPostcode]
+                            .filter(Boolean).join(', ') || '',
         designer:          project.designer          || '',
         customerTitle:     project.customerTitle     || '',
         customerFirstName: project.customerFirstName || '',
         customerSurname:   project.customerSurname   || '',
-        customerAddress:   project.customerAddress   || '',
+        customerAddress:  [project.customerAddressLine1, project.customerAddressLine2, project.customerTown]
+                            .filter(Boolean).join(', ') || '',
         customerPostcode:  project.customerPostcode  || '',
         customerTelephone: project.customerTelephone || '',
         externalTemp,

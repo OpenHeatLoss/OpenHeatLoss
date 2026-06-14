@@ -115,14 +115,14 @@ export function buildHeatLossPayload(project, opts = {}) {
   return {
     isEN12831,
     projectName:       project.name              || 'Untitled Project',
-    location:          project.location          || '',
+    location:         [project.customerAddressLine1, project.customerAddressLine2, project.customerTown, project.customerPostcode]
+                        .filter(Boolean).join(', ') || '',
     designer:          project.designer          || '',
     customerTitle:     project.customerTitle     || '',
     customerFirstName: project.customerFirstName || '',
     customerSurname:   project.customerSurname   || '',
-    // Note: project.customerAddress is not mapped in loadProject — this is
-    // always '' in current project state. customerAddressLine1 is the real field.
-    customerAddress:   project.customerAddressLine1 || '',
+    customerAddress:  [project.customerAddressLine1, project.customerAddressLine2, project.customerTown]
+                        .filter(Boolean).join(', ') || '',
     customerPostcode:  project.customerPostcode  || '',
     customerTelephone: project.customerTelephone || '',
     externalTemp,

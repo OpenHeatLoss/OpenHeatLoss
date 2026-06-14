@@ -120,16 +120,17 @@ def create_heat_loss_pdf(data, output_filename):
     story.append(Spacer(1, 0.3*cm))
 
     # ── Project & Customer info side by side ─────────────────────────────
+    wrap_style = ParagraphStyle('wrap', fontName='Helvetica', fontSize=9, leading=13)
     proj = [
         ['Project:', data.get('projectName', 'N/A')],
-        ['Location:', data.get('location', 'N/A')],
+        ['Location:', Paragraph(data.get('location', 'N/A'), wrap_style)],
         ['Designer:', data.get('designer', 'N/A')],
         ['External Design Temp:', f"{data.get('externalTemp', -3)}°C"],
     ]
     cust_name = f"{data.get('customerTitle','')} {data.get('customerFirstName','')} {data.get('customerSurname','')}".strip()
     cust = [
         ['Customer:', cust_name or 'N/A'],
-        ['Address:', data.get('customerAddress', 'N/A')],
+        ['Address:', Paragraph(data.get('customerAddress', 'N/A'), wrap_style)],
         ['Postcode:', data.get('customerPostcode', 'N/A')],
         ['Telephone:', data.get('customerTelephone', 'N/A')],
     ]
