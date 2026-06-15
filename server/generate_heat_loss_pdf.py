@@ -652,8 +652,8 @@ def create_heat_loss_pdf(data, output_filename):
             story.append(Paragraph("Ventilation Notices", heading_style))
             story.append(Paragraph(
                 "The following rooms show infiltration rates below the BS EN 12831-1 Table B.7 minimum (0.5 ACH). "
-                "The minimum rate is used for heat loss purposes in these rooms. This does not indicate a Building "
-                "Regulations ventilation compliance issue. Ventilation adequacy should be considered separately.",
+                "This does not indicate a Building Regulations ventilation or MCS design compliance issue."
+                "Ventilation adequacy should be considered separately.",
                 small_style
             ))
             story.append(Spacer(1, 0.15*cm))
