@@ -544,6 +544,7 @@ export default function RadiatorSizing({
       });
       const pdfData = {
         projectName: project.name || 'Untitled Project',
+        location: project.customerAddressLine1 || '',
         designer: project.designer || '',
         customerTitle: project.customerTitle || '',
         customerFirstName: project.customerFirstName || '',
