@@ -5,6 +5,7 @@ import { RADIATOR_CONNECTION_TYPES, CONNECTION_TYPE_CORRECTIONS } from '../../ut
 import { PlusIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, XIcon } from '../common/Icons';
 import { api } from '../../utils/api';
 import { buildHeatLossPayload } from '../../utils/buildHeatLossPayload';
+import { buildRadiatorSchedulePayload } from '../../utils/buildRadiatorSchedulePayload';
 
 //-----------------------------------------------------------------------------
 // CIBSE Domestic Heating Design Guide 2026 correction factors
@@ -542,22 +543,7 @@ export default function RadiatorSizing({
         }
         return { name: room.name, internalTemp: room.internalTemp, floorArea: room.floorArea || 0, heatLoss, totalOutput, mwat, schedule };
       });
-      const pdfData = {
-        projectName: project.name || 'Untitled Project',
-        location: project.customerAddressLine1 || '',
-        designer: project.designer || '',
-        customerTitle: project.customerTitle || '',
-        customerFirstName: project.customerFirstName || '',
-        customerSurname: project.customerSurname || '',
-        customerAddress: project.customerAddressLine1 || '',
-        customerPostcode: project.customerPostcode || '',
-        flowTemp: systemSettings.flowTemp,
-        returnTemp: systemSettings.returnTemp,
-        externalTemp: project.externalTemp || -3,
-        totalHeatLoss: roomData.reduce((s, r) => s + r.heatLoss, 0) / 1000,
-        numberOfRooms: roomData.length,
-        rooms: roomData,
-      };
+      const pdfData = buildRadiatorSchedulePayload(project, systemSettings, roomData);
       const response = await fetch('/api/generate-pdf/radiator-schedule', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pdfData),
       });
@@ -624,21 +610,7 @@ export default function RadiatorSizing({
         };
       });
 
-      const radiatorScheduleData = {
-        projectName:       project.name              || 'Untitled Project',
-        designer:          project.designer          || '',
-        customerTitle:     project.customerTitle     || '',
-        customerFirstName: project.customerFirstName || '',
-        customerSurname:   project.customerSurname   || '',
-        customerAddress:   project.customerAddressLine1 || '',
-        customerPostcode:  project.customerPostcode  || '',
-        flowTemp:          systemSettings.flowTemp,
-        returnTemp:        systemSettings.returnTemp,
-        externalTemp:      project.externalTemp      || -3,
-        totalHeatLoss:     roomData.reduce((s, r) => s + r.heatLoss, 0) / 1000,
-        numberOfRooms:     roomData.length,
-        rooms:             roomData,
-      };
+      const radiatorScheduleData = buildRadiatorSchedulePayload(project, systemSettings, roomData);
 
       // Heat loss payload — uses shared utility, matches Summary.jsx exactly
       const heatLossData = buildHeatLossPayload(project, {

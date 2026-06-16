@@ -14,6 +14,7 @@ import {
 import { calculateTransmissionLoss } from '../../utils/calculations';
 import { api } from '../../utils/api';
 import { buildDesignParamsPayload } from '../../utils/projectPayloads';
+import { buildHeatLossPayload } from '../../utils/buildHeatLossPayload';
 import {
   fitEta,
   calculateSpaceHeatingScop,
@@ -311,106 +312,16 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const handleExportPDF = async () => {
     setExporting(true);
     try {
-      const externalTemp = project.externalTemp || -3;
-
-      const roomData = rooms.map(room => {
-        const fabricW = calculateTransmissionLoss(room, externalTemp);
-
-        if (isEN12831) {
-          const ventCalc     = calculateRoomVentilationEN12831(room, project);
-          const emitterTotal   = fabricW + ventCalc.ventEmitter;
-          const generatorTotal = fabricW + ventCalc.ventGeneratorDesign;
-          const wPerM2 = room.floorArea > 0 ? generatorTotal / room.floorArea : 0;
-          return {
-            name:          room.name,
-            internalTemp:  room.internalTemp,
-            floorArea:     room.floorArea || 0,
-            volume:        room.volume    || 0,
-            fabricLoss:    fabricW,
-            ventEmitter:   ventCalc.ventEmitter,
-            emitterTotal,
-            generatorTotal,
-            wPerM2,
-          };
-        } else {
-          const roomHeatLoss = calculateRoomHeatLoss(room, project);
-          const ventLoss     = calculateVentilationLoss(room, project);
-          return {
-            name:            room.name,
-            internalTemp:    room.internalTemp,
-            floorArea:       room.floorArea || 0,
-            volume:          room.volume    || 0,
-            fabricLoss:      fabricW,
-            ventilationLoss: ventLoss  * 1000,
-            totalHeatLoss:   roomHeatLoss * 1000,
-            wPerM2: room.floorArea > 0 ? (roomHeatLoss / room.floorArea) * 1000 : 0,
-          };
-        }
+      // Pass live component state via opts so the PDF reflects any unsaved
+      // SCOP inputs currently displayed on screen.
+      const pdfData = buildHeatLossPayload(project, {
+        flowTemp:    project.designFlowTemp  || 50,
+        returnTemp:  project.designReturnTemp || 40,
+        testPoints,
+        defrostPct,
+        balancePoint,
+        emitterType,
       });
-
-      const pdfData = {
-        isEN12831,
-        projectName:       project.name              || 'Untitled Project',
-        location:         [project.customerAddressLine1, project.customerAddressLine2, project.customerTown, project.customerPostcode]
-                            .filter(Boolean).join(', ') || '',
-        designer:          project.designer          || '',
-        customerTitle:     project.customerTitle     || '',
-        customerFirstName: project.customerFirstName || '',
-        customerSurname:   project.customerSurname   || '',
-        customerAddress:  [project.customerAddressLine1, project.customerAddressLine2, project.customerTown]
-                            .filter(Boolean).join(', ') || '',
-        customerPostcode:  project.customerPostcode  || '',
-        customerTelephone: project.customerTelephone || '',
-        externalTemp,
-        referenceTemp:     project.referenceTemp ?? 10.6,
-        // EN 12831 figures
-        totalGeneratorLoad,
-        totalHeatLossEmitter,
-        totalVentGeneratorW,
-        totalVentEmitterW,
-        totalTypicalLoad,
-        minModKw,
-        minModulationTemp,
-        // Shared / legacy
-        totalHeatLoss,
-        totalFabricLoss,
-        totalVentilationLoss: totalVentLoss,
-        totalFloorArea,
-        totalVolume,
-        heatLossPerM2: totalFloorArea > 0 ? (sizingBase / totalFloorArea) * 1000 : 0,
-        heatLossCoefficient,
-        numberOfRooms: rooms.length,
-        heatPump: {
-          manufacturer:  project.heatPumpManufacturer  || '',
-          model:         project.heatPumpModel         || '',
-          ratedOutput:   project.heatPumpRatedOutput   || 0,
-          minModulation: project.heatPumpMinModulation || 0,
-          flowTemp:      project.designFlowTemp        || 50,
-          returnTemp:    project.designReturnTemp      || 40,
-          sizingMargin:  heatPumpSizingMargin,
-        },
-        ventWarnings,
-        rooms: roomData,
-        // SCOP estimator — only included if calculated
-        scop: shScop ? {
-          shScop:          shScop.scop,
-          shScopNoDefrost: shScop.scopNoDefrost,
-          shHeatKwh:       shScop.totalHeatKwh,
-          shElecKwh:       shScop.totalElecKwh,
-          dhwScop:         dhwScop ? dhwScop.dhwScop    : null,
-          dhwCopPast:      dhwScop ? dhwScop.copPast    : null,
-          dhwHeatKwh:      dhwScop ? dhwScop.totalDHWHeatKwh : null,
-          dhwElecKwh:      dhwScop ? dhwScop.totalElecKwh    : null,
-          occupants:       project.mcsOccupants       || null,
-          cylinderLitres:  project.mcsCylinderVolume  || null,
-          wholeScop:       wholeScop ? wholeScop.wholeSystemScop : null,
-          wholeTotalHeatKwh: wholeScop ? wholeScop.totalHeatKwh  : null,
-          wholeTotalElecKwh: wholeScop ? wholeScop.totalElecKwh  : null,
-          defrostPct,
-          balancePoint,
-          emitterType,
-        } : null,
-      };
 
       const response = await fetch('/api/generate-pdf/heat-loss', {
         method: 'POST',

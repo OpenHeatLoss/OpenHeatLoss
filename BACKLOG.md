@@ -63,6 +63,20 @@ None. All known bugs resolved.
 
 ### Priority 1 — Next sessions
 
+**MCS payload address field sweep**
+The MCS 031 and MCS 020 payload builders in `RadiatorSizing.jsx` still use
+`project.customerAddressLine1 || ''` for their `location` field — the same
+single-field bug that was fixed for the heat loss and radiator schedule
+payloads in June 2026. These payloads are built inline rather than via a
+shared utility, so the fix wasn't applied at the same time.
+
+Scope: replace `project.customerAddressLine1 || ''` with the full joined
+address in the MCS 031 payload (lines ~634) and MCS 020 payload (lines ~683)
+in `RadiatorSizing.jsx`. Consider whether these payloads should also be
+extracted to shared utilities (`buildMCS031Payload`, `buildMCS020Payload`)
+to prevent future divergence — same pattern as `buildHeatLossPayload` and
+`buildRadiatorSchedulePayload`.
+
 **PDF polish session**
 A dedicated pass across all PDF outputs to refine layout, column widths,
 table spacing, and typography. Heat loss and pipe sizing PDFs are functionally

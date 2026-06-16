@@ -1,11 +1,19 @@
 // client/src/utils/buildHeatLossPayload.js
 //
 // Shared utility that assembles the heat loss PDF payload from project state.
-// Used by both Summary.jsx (for the standalone heat loss PDF export) and
-// RadiatorSizing.jsx (for the customer pack).
+// Used by Summary.jsx (standalone heat loss PDF) and RadiatorSizing.jsx
+// (customer pack). Any changes to the PDF format should be made here only.
 //
-// Mirrors Summary.jsx handleExportPDF — any changes to the PDF format should
-// be kept in sync here.
+// opts:
+//   flowTemp      — pass from local component state if unsaved (RadiatorSizing)
+//   returnTemp    — as above
+//   testPoints    — Summary passes its live (possibly unsaved) test point state
+//   defrostPct    — Summary passes its live state
+//   balancePoint  — Summary passes its live state
+//   emitterType   — Summary passes its live state
+//
+// When opts are not supplied, all values are derived from project fields
+// (i.e. last-saved state). This is correct for the customer pack.
 
 import {
   calculateRoomHeatLoss,
@@ -17,20 +25,24 @@ import {
   calculateBuildingVentilationEN12831,
 } from './en12831Calculations';
 import { calculateTransmissionLoss } from './calculations';
+import {
+  fitEta,
+  calculateSpaceHeatingScop,
+  calculateDHWScop,
+  calculateWholeSystemScop,
+  EMITTER_EXPONENTS,
+} from './scopCalculations';
 
 export function buildHeatLossPayload(project, opts = {}) {
-  // opts.flowTemp / opts.returnTemp allow RadiatorSizing to pass its local
-  // (possibly unsaved) system settings. Summary doesn't need this because it
-  // reads directly from project, but RadiatorSizing holds them in local state.
   const flowTemp   = opts.flowTemp   ?? project.designFlowTemp   ?? 50;
   const returnTemp = opts.returnTemp ?? project.designReturnTemp ?? 40;
 
-  const rooms       = project.rooms || [];
-  const externalTemp = project.externalTemp ?? -3;
+  const rooms        = project.rooms || [];
+  const externalTemp = project.externalTemp  ?? -3;
   const referenceTemp = project.referenceTemp ?? 10.6;
-  const isEN12831   = (project.ventilationMethod ?? 'en12831_cibse2026') === 'en12831_cibse2026';
+  const isEN12831    = (project.ventilationMethod ?? 'en12831_cibse2026') === 'en12831_cibse2026';
 
-  // ── Building totals ────────────────────────────────────────────────────────
+  // ── Building totals ──────────────────────────────────────────────────────
   const totalFabricLossW = rooms.reduce((sum, room) =>
     sum + calculateTransmissionLoss(room, externalTemp), 0);
   const totalFabricLoss = totalFabricLossW / 1000;
@@ -39,11 +51,11 @@ export function buildHeatLossPayload(project, opts = {}) {
     ? calculateBuildingVentilationEN12831(rooms, project)
     : null;
 
-  const totalVentEmitterW          = buildingVent ? buildingVent.buildingVentEmitter            : 0;
-  const totalVentGeneratorW        = buildingVent ? buildingVent.buildingVentGeneratorDesign     : 0;
-  const totalVentTypicalW          = buildingVent ? buildingVent.buildingVentGeneratorTypical    : 0;
-  const totalHeatLossEmitter       = totalFabricLoss + (totalVentEmitterW / 1000);
-  const totalGeneratorLoad         = totalFabricLoss + (totalVentGeneratorW / 1000);
+  const totalVentEmitterW       = buildingVent ? buildingVent.buildingVentEmitter            : 0;
+  const totalVentGeneratorW     = buildingVent ? buildingVent.buildingVentGeneratorDesign     : 0;
+  const totalVentTypicalW       = buildingVent ? buildingVent.buildingVentGeneratorTypical    : 0;
+  const totalHeatLossEmitter    = totalFabricLoss + (totalVentEmitterW    / 1000);
+  const totalGeneratorLoad      = totalFabricLoss + (totalVentGeneratorW  / 1000);
 
   const totalFabricTypicalW = rooms.reduce((sum, room) =>
     sum + calculateTransmissionLoss(room, referenceTemp), 0);
@@ -76,11 +88,11 @@ export function buildHeatLossPayload(project, opts = {}) {
 
   const ventWarnings = buildingVent?.warnings || [];
 
-  // ── Per-room data ──────────────────────────────────────────────────────────
+  // ── Per-room data ────────────────────────────────────────────────────────
   const roomData = rooms.map(room => {
     const fabricW = calculateTransmissionLoss(room, externalTemp);
     if (isEN12831) {
-      const ventCalc     = calculateRoomVentilationEN12831(room, project);
+      const ventCalc       = calculateRoomVentilationEN12831(room, project);
       const emitterTotal   = fabricW + ventCalc.ventEmitter;
       const generatorTotal = fabricW + ventCalc.ventGeneratorDesign;
       const wPerM2 = room.floorArea > 0 ? generatorTotal / room.floorArea : 0;
@@ -111,17 +123,82 @@ export function buildHeatLossPayload(project, opts = {}) {
     }
   });
 
-  // ── Assembled payload ──────────────────────────────────────────────────────
+  // ── SCOP ─────────────────────────────────────────────────────────────────
+  // Resolved in priority order: opts (live component state) → project fields
+  // (saved state). The customer pack never passes opts, so always uses saved
+  // state. Summary passes its live state so the PDF matches what's on screen.
+  const testPoints  = opts.testPoints  ?? project.en14511TestPoints ?? [];
+  const defrostPct  = opts.defrostPct  ?? project.defrostPct        ?? 5;
+  const balancePoint = opts.balancePoint ?? project.balancePoint    ?? 12.5;
+  const emitterType = opts.emitterType ?? (project.scopEmitterType  || 'radiator');
+
+  const validTestPoints = testPoints
+    .filter(p => p.cop !== '' && parseFloat(p.cop) > 0)
+    .map(p => ({ tAir: parseFloat(p.tAir), tFlow: parseFloat(p.tFlow), cop: parseFloat(p.cop) }));
+
+  const { eta } = validTestPoints.length >= 2
+    ? fitEta(validTestPoints)
+    : { eta: 0 };
+
+  const emitterN = EMITTER_EXPONENTS[emitterType]?.n ?? 1.3;
+
+  const shScop = eta > 0 && heatLossCoefficient > 0
+    ? calculateSpaceHeatingScop({
+        eta,
+        heatLossCoefficient,
+        avgInternalTemp,
+        externalTemp,
+        designFlowTemp:  project.designFlowTemp  || 50,
+        designReturnTemp: project.designReturnTemp || 40,
+        emitterN,
+        defrostPct,
+        balancePoint,
+      })
+    : null;
+
+  const dhwScop = eta > 0 && (project.mcsOccupants || 0) > 0
+    ? calculateDHWScop({
+        eta,
+        occupants:      project.mcsOccupants     || 0,
+        cylinderLitres: project.mcsCylinderVolume || 200,
+        storeTemp:      55,
+      })
+    : null;
+
+  const wholeScop = calculateWholeSystemScop(shScop, dhwScop);
+
+  const scop = shScop ? {
+    shScop:            shScop.scop,
+    shScopNoDefrost:   shScop.scopNoDefrost,
+    shHeatKwh:         shScop.totalHeatKwh,
+    shElecKwh:         shScop.totalElecKwh,
+    dhwScop:           dhwScop ? dhwScop.dhwScop          : null,
+    dhwCopPast:        dhwScop ? dhwScop.copPast           : null,
+    dhwHeatKwh:        dhwScop ? dhwScop.totalDHWHeatKwh  : null,
+    dhwElecKwh:        dhwScop ? dhwScop.totalElecKwh     : null,
+    occupants:         project.mcsOccupants      || null,
+    cylinderLitres:    project.mcsCylinderVolume  || null,
+    wholeScop:         wholeScop ? wholeScop.wholeSystemScop : null,
+    wholeTotalHeatKwh: wholeScop ? wholeScop.totalHeatKwh    : null,
+    wholeTotalElecKwh: wholeScop ? wholeScop.totalElecKwh    : null,
+    defrostPct,
+    balancePoint,
+    emitterType,
+  } : null;
+
+  // ── Assembled payload ────────────────────────────────────────────────────
   return {
     isEN12831,
     projectName:       project.name              || 'Untitled Project',
-    location:         [project.customerAddressLine1, project.customerAddressLine2, project.customerTown, project.customerPostcode]
+    location:         [project.customerAddressLine1, project.customerAddressLine2,
+                       project.customerTown, project.customerPostcode]
                         .filter(Boolean).join(', ') || '',
     designer:          project.designer          || '',
     customerTitle:     project.customerTitle     || '',
     customerFirstName: project.customerFirstName || '',
     customerSurname:   project.customerSurname   || '',
-    customerAddress:  [project.customerAddressLine1, project.customerAddressLine2, project.customerTown]
+    customerAddress:  [project.customerAddressLine1, project.customerAddressLine2,
+                       project.customerTown]
                         .filter(Boolean).join(', ') || '',
     customerPostcode:  project.customerPostcode  || '',
     customerTelephone: project.customerTelephone || '',
@@ -155,8 +232,6 @@ export function buildHeatLossPayload(project, opts = {}) {
     },
     ventWarnings,
     rooms: roomData,
-    // SCOP is not included — caller can merge it in if needed (Summary does this).
-    // The customer pack cover letter and heat loss report don't require SCOP.
-    scop: null,
+    scop,
   };
 }
