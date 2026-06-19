@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: June 2026 (App.jsx decomposition Phase 1)
+Last updated: June 2026 (security hardening & Strict Mode boot fix)
 
 ---
 
@@ -8,6 +8,33 @@ Last updated: June 2026 (App.jsx decomposition Phase 1)
 
 ### Active
 None. All known bugs resolved.
+
+### Closed (this session)
+- B22 — Unauthenticated access to project data via GET /api/projects/:id —
+  resolved. An anonymous session (anon_token cookie present, no auth_token)
+  could fetch any registered project by guessing its ID. Fixed in
+  getCompleteProject (database.js): anonymous sessions (companyId === null)
+  are now blocked from accessing any project with company_id set. Closes
+  both the unauthenticated access case and the post-logout exposure (anon_token
+  cookie persists after logout but must not grant access to registered data).
+- B23 — Address routes missing ownership checks — resolved. Three routes had
+  no ownership verification: POST /api/projects/:projectId/addresses, PUT
+  /api/addresses/:id, POST /api/projects/:projectId/addresses/link. Fixed in
+  server.js using the existing ownsProject pattern. New getProjectForAddress
+  helper added to database.js (joins project_addresses → projects). GDPR
+  obligation: customer addresses are personal data; these routes are now
+  correctly gated. GET /api/projects/:projectId/u-values remains an open
+  low-risk gap (tracked in SECURITY.md — U-values are not personal data).
+- B24 — React Strict Mode double-invoking boot sequence in development —
+  resolved. Strict Mode runs useEffect twice on mount in dev builds. The boot
+  sequence called POST /api/anonymous/project on both invocations, creating
+  two projects with the same session_token 8ms apart. On registration,
+  claimForUser claimed both; the lookup returned the empty duplicate rather
+  than the project with the user's work. Fixed with a useRef guard (bootedRef)
+  in App.jsx that short-circuits the second invocation. Production unaffected
+  (Strict Mode is stripped from production builds). Pre-existing latent bug
+  made visible by closer DB inspection during security testing — real users
+  on the live site were never affected.
 
 ### Closed
 - B1/T1 — Auth scoping and company_id hardcoding — resolved
@@ -63,25 +90,12 @@ None. All known bugs resolved.
 
 ### Priority 1 — Next sessions
 
-**MCS payload address field sweep**
-The MCS 031 and MCS 020 payload builders in `RadiatorSizing.jsx` still use
-`project.customerAddressLine1 || ''` for their `location` field — the same
-single-field bug that was fixed for the heat loss and radiator schedule
-payloads in June 2026. These payloads are built inline rather than via a
-shared utility, so the fix wasn't applied at the same time.
-
-Scope: replace `project.customerAddressLine1 || ''` with the full joined
-address in the MCS 031 payload (lines ~634) and MCS 020 payload (lines ~683)
-in `RadiatorSizing.jsx`. Consider whether these payloads should also be
-extracted to shared utilities (`buildMCS031Payload`, `buildMCS020Payload`)
-to prevent future divergence — same pattern as `buildHeatLossPayload` and
-`buildRadiatorSchedulePayload`.
-
-**PDF polish session**
-A dedicated pass across all PDF outputs to refine layout, column widths,
-table spacing, and typography. Heat loss and pipe sizing PDFs are functionally
-correct but visual refinement would improve the impression for professional
-use. Cover letter and customer pack also in scope.
+**Pipe sizing PDF revision**
+The pipe sizing PDF was built against the old JSON blob storage format for pipe
+sections. That column no longer exists (pipe sections are now in their own
+normalised table). PDF is currently outputting mostly zeros. Needs rewriting to
+query pipe_sections + pipe_materials + fittings tables directly, same as the
+UI does. Upload generate_pipe_sizing_pdf.py (or equivalent) to start.
 
 **Survey form — load-back workflow**
 The QR code launch and static HTML survey form exist. What's missing is the
@@ -468,69 +482,6 @@ means engineer override. Snapshots capture the full state at a point in time.
 
 ## Session log
 
-### 2026-06 — Heat loss PDF address fields fix
-
-**Bugs fixed:**
-- Location and customer address fields blank in heat loss PDF.
-  Root cause: two separate places building the heat loss payload —
-  buildHeatLossPayload.js (used by customer pack) and an inline payload
-  in Summary.jsx (used by standalone export). Both had stale flat field
-  references (project.location, project.customerAddress) that no longer
-  exist in project state. Fixed in both files by joining the normalised
-  address fields (customerAddressLine1, customerAddressLine2, customerTown,
-  customerPostcode) with filter(Boolean).join(', ').
-- Address field now wraps correctly in PDF using ReportLab Paragraph.
-
-**Also confirmed working:**
-- Pipe sizing PDF is correct and complete (backlog note was outdated).
-- Heat loss PDF calculation content is current and accurate.
-
-**Deferred:**
-- PDF visual polish pass (layout, column widths, table spacing) — separate session.
-
-### 2026-06 — App.jsx decomposition Phase 1
-
-**Refactoring (no logic changes):**
-- Extracted AuthModal, ForgotPasswordModal, ResetPasswordModal into
-  client/src/components/auth/AuthModal.jsx (~234 lines removed from App.jsx)
-- Extracted buildRoomPayload and buildDesignParamsPayload into
-  client/src/utils/projectPayloads.js (~110 lines removed from App.jsx)
-- Summary.jsx now imports buildDesignParamsPayload directly from projectPayloads.js
-  rather than receiving it as a prop — prop removed from App.jsx JSX and Summary
-  prop destructuring
-- App.jsx reduced from 2,251 to ~1,900 lines
-
-**Phase 2 (next decomposition session):**
-- Extract loadProject into client/src/utils/loadProject.js — highest value
-  remaining extraction; makes the four-layer field mapping explicitly auditable
-
-### 2026-06 — Local development environment setup
-
-**Infrastructure added:**
-- Local PostgreSQL database `ohldb_dev` created (PG16, localhost:5432)
-- User `ohldev` created with appropriate permissions
-- `.env` file created in project root with local DATABASE_URL and JWT_SECRET
-- `dotenv` installed in server and configured to load `.env` from project root
-- Production data restored locally via `pg_dump` from Railway + `psql` restore
-- Local app confirmed running at http://localhost:5173 with real project data
-
-**Key technical notes:**
-- `database.js` already had SSL auto-detection (`!includes('localhost')`) — no code changes needed
-- Vite proxy to Express on port 3000 was already configured in `vite.config.js`
-- `pg_dump` must use `/usr/lib/postgresql/18/bin/pg_dump` (not default PG16 binary) to match Railway PG18
-- `transaction_timeout` ERROR on restore is harmless — PG18 setting not recognised by PG16
-- Local cluster is PG16; Railway is PG18 — minor version difference, no practical impact for development
-
-**Workflow going forward:**
-- All development and testing done locally first
-- `git push` to deploy to Railway only after local testing confirms correctness
-- Refresh local data periodically: drop `ohldb_dev`, recreate, restore from fresh Railway dump
-- Pre-migration snapshot: always `pg_dump` from Railway before running any migration against production
-
-**Also noted:**
-- `backup-ohldb.sh` should use full path `/usr/lib/postgresql/18/bin/pg_dump`
-- Local PG upgrade to version 18 would eliminate the version mismatch entirely — deferred
-
 ### 2026-06 — Customer pack PDF, company details, plan gating
 
 **Features added:**
@@ -714,3 +665,32 @@ Saved locally for reference during ventilation field audit (planned).
   system volume; SCOP estimator; MCS031/020; radiator library seeding;
   RdSAP10 U-value library; PDF generation for all outputs; project dashboard;
   password reset; admin page
+
+### 2026-06 — Security hardening & Strict Mode boot fix
+
+**Security fixes:**
+- B22: getCompleteProject (database.js) — anonymous sessions now blocked from
+  accessing registered projects (company_id !== null check). Closes both
+  unauthenticated access and post-logout exposure via persistent anon_token cookie.
+- B23: Three address routes in server.js now gated with ownsProject check —
+  POST /api/projects/:projectId/addresses, PUT /api/addresses/:id,
+  POST /api/projects/:projectId/addresses/link. New getProjectForAddress helper
+  in database.js looks up owning project via project_addresses join. GDPR
+  obligation — customer addresses are personal data.
+- Smoke test section 11 added: access control checks for ownership, auth
+  required, rate limiting, CORS, and known remaining gaps.
+
+**Bug fix:**
+- B24: useRef bootedRef guard added to App.jsx boot useEffect — prevents
+  React Strict Mode double-invocation creating duplicate anonymous projects
+  in development. One import change (useRef added), one ref declaration,
+  one guard line at the top of useEffect.
+
+**Files changed:**
+- server.js — getProjectForAddress imported; ownership checks on 3 address routes
+- database.js — getProjectForAddress helper + export; anonymous session block
+  in getCompleteProject
+- App.jsx — useRef imported; bootedRef guard on boot useEffect
+
+**SECURITY.md updated** — B22 and B23 closed; GET /api/projects/:projectId/u-values
+remains as sole tracked open gap (low risk, not personal data).

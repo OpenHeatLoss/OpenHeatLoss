@@ -1233,11 +1233,13 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
 
   // Ownership check:
   // - Registered user (companyId set): project must belong to their company.
-  // - Anonymous user (companyId null, sessionToken set): project session_token
-  //   must match. Only applies to anonymous projects (session_token NOT NULL) —
-  //   claimed/registered projects have session_token NULL and are skipped.
   if (companyId !== null && project.company_id !== companyId) return null;
-  if (companyId === null && sessionToken !== null && project.session_token !== null && project.session_token !== sessionToken) return null;
+  // - Anonymous session (no companyId): must never access a registered project.
+  //   Closes post-logout exposure — after logout the anon_token cookie persists
+  //   but must not grant access to the formerly-logged-in user's data.
+  if (companyId === null && project.company_id !== null) return null;
+  // - Anonymous user owning an anonymous project: session_token must match.
+  if (companyId === null && project.session_token !== null && project.session_token !== sessionToken) return null;
 
   const roomIds = projectRooms.map(r => r.id);
 
@@ -1339,6 +1341,13 @@ async function getProjectForScheduleItem(scheduleItemId) {
   return getQuery(
     'SELECT p.* FROM projects p JOIN rooms r ON r.project_id = p.id JOIN radiator_schedule s ON s.room_id = r.id WHERE s.id = $1',
     [scheduleItemId]
+  );
+}
+
+async function getProjectForAddress(addressId) {
+  return getQuery(
+    'SELECT p.* FROM projects p JOIN project_addresses pa ON pa.project_id = p.id WHERE pa.address_id = $1',
+    [addressId]
   );
 }
 
@@ -1790,6 +1799,7 @@ module.exports = {
   getProjectForUValue,
   getProjectForEmitter,
   getProjectForScheduleItem,
+  getProjectForAddress,
   ownsProject,
   passwordResetTokens,
   pipeMaterialsLib,

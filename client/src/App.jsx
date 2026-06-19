@@ -1,5 +1,5 @@
 // client/src/App.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from './utils/api';
 import { calculateRoomVolume, calculateRoomFloorArea, calculateElementArea, calculateSegmentsVolume, calculateSegmentsFloorArea } from './utils/calculations';
 import { HomeIcon, PlusIcon, SaveIcon, TrashIcon } from './components/common/Icons';
@@ -48,7 +48,14 @@ function App() {
   // 1. Check if already logged in (auth_token cookie via /api/auth/me)
   // 2. If yes  → load their most recent project, registered mode
   // 3. If no   → check for / create anonymous session project
+  // Prevents React Strict Mode double-invoking the boot sequence in development,
+  // which creates duplicate anonymous projects (both runs share the same anon_token).
+  const bootedRef = useRef(false);
+
   useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+
     // Check for password reset link (?reset=TOKEN) before anything else.
     const params = new URLSearchParams(window.location.search);
     const resetParam = params.get('reset');

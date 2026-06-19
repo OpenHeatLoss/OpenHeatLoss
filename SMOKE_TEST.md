@@ -154,3 +154,11 @@ Add a new checklist item whenever:
 - A new feature ships that has its own critical path
 - A calculation changes and produces a new set of expected reference values
   (update the table in section 2 at the same time)
+
+Run dev server and client:
+
+# Terminal 1
+cd ~/heatloss/server && node server.js
+
+# Terminal 2  
+cd ~/heatloss/client && npm run dev

@@ -94,7 +94,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   const router = express.Router();
 
   // ── MCS Performance Estimate ─────────────────────────────────────────────
-  router.post('/generate-pdf/performance', async (req, res) => {
+  router.post('/generate-pdf/performance', requireAuth, async (req, res) => {
     let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_mcs_performance_pdf.py', req.body, 'mcs_perf');
@@ -107,7 +107,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   });
 
   // ── MCS Sound Assessment ─────────────────────────────────────────────────
-  router.post('/generate-pdf/sound', async (req, res) => {
+  router.post('/generate-pdf/sound', requireAuth, async (req, res) => {
     let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_mcs_sound_pdf.py', req.body, 'mcs_sound');
@@ -120,7 +120,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   });
 
   // ── Pipe Sizing Report ───────────────────────────────────────────────────
-  router.post('/generate-pdf/pipe-sizing', async (req, res) => {
+  router.post('/generate-pdf/pipe-sizing', requireAuth, async (req, res) => {
     let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_pipe_sizing_pdf.py', req.body, 'pipe_sizing');
@@ -133,7 +133,8 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   });
 
   // ── Heat Loss Report ─────────────────────────────────────────────────────
-  router.post('/generate-pdf/heat-loss', async (req, res) => {
+  router.post('/generate-pdf/heat-loss', requireAuth, async (req, res) => {
+    let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_heat_loss_pdf.py', req.body, 'heat_loss');
       await sendPdf(res, pdfFile, 'Heat_Loss_Report.pdf');
@@ -145,7 +146,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   });
 
   // ── Radiator Schedule ────────────────────────────────────────────────────
-  router.post('/generate-pdf/radiator-schedule', async (req, res) => {
+  router.post('/generate-pdf/radiator-schedule', requireAuth, async (req, res) => {
     let pdfFile = null;
     try {
       pdfFile = await runPythonScript('generate_radiator_schedule_pdf.py', req.body, 'rad_sched');

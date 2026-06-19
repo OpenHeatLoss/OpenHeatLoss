@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 // JWT secret — set JWT_SECRET env var in Railway. Falls back to a random
 // secret in development (users will be logged out on server restart, which
 // is acceptable locally but not in production).
+const rateLimit = require('express-rate-limit');
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const BCRYPT_ROUNDS = 12;
 
@@ -37,6 +38,7 @@ const {
   getProjectForElement,
   getProjectForUValue,
   getProjectForEmitter,
+  getProjectForAddress,
   ownsProject,
   passwordResetTokens,
   pipeMaterialsLib,
@@ -54,10 +56,25 @@ const pdfRoutes = require('./pdf-routes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.APP_URL || 'https://app.openheatloss.com',
+  credentials: true,
+}));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Rate limiting — auth endpoints only.
+// 10 attempts per 15 minutes per IP. Applies to login, register,
+// forgot-password. Reset-password uses a time-limited token so is
+// less critical but included for consistency.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts — please try again in 15 minutes' },
+});
 
 // ------------------------------------------------------------
 // ANONYMOUS SESSION MIDDLEWARE
@@ -199,7 +216,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // Body: { email, password, name }
 // Creates a company-of-one, creates the user, claims the anonymous
 // project for this session (if one exists), issues a JWT cookie.
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   const { email, password, name } = req.body;
 
   if (!email || !password || !name) {
@@ -272,7 +289,7 @@ app.post('/api/auth/register', async (req, res) => {
 // Body: { email, password }
 // Verifies credentials, issues JWT cookie.
 // Returns { user, projectId } — projectId is their most recent project.
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -322,7 +339,7 @@ app.post('/api/auth/logout', (req, res) => {
 // Body: { email }
 // Generates a one-time reset token, stores it, sends an email via Resend.
 // Always returns 200 regardless of whether the email exists — prevents enumeration.
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
@@ -366,7 +383,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 // POST /api/auth/reset-password
 // Body: { token, password }
 // Validates the token and sets a new password.
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) {
     return res.status(400).json({ error: 'Token and password are required' });
@@ -664,6 +681,8 @@ app.post('/api/clients/:clientId/addresses', requireAuth, async (req, res) => {
 // Add a new address and link it to a project
 app.post('/api/projects/:projectId/addresses', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const { addressType = 'installation', isPrimary = true, ...addressData } = req.body;
     const addrResult = await addresses.create({ ...addressData, companyId: req.user?.companyId || null });
     await addresses.linkToProject(
@@ -683,6 +702,8 @@ app.post('/api/projects/:projectId/addresses', requireAuthOrAnon, async (req, re
 // Update an address record directly
 app.put('/api/addresses/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForAddress(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await addresses.update(req.params.id, req.body);
     const updated = await addresses.getById(req.params.id);
     res.json(updated);
@@ -696,6 +717,8 @@ app.put('/api/addresses/:id', requireAuthOrAnon, async (req, res) => {
 // (used when "use client's address" is selected at project creation)
 app.post('/api/projects/:projectId/addresses/link', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const { addressId, addressType = 'installation', isPrimary = true } = req.body;
     await addresses.linkToProject(
       req.params.projectId, addressId, addressType, isPrimary
@@ -772,6 +795,8 @@ app.post('/api/projects', requireAuthOrAnon, async (req, res) => {
 // Update project core fields (name, status, designer, brief_notes, BUS grant lifecycle)
 app.put('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await projects.update(req.params.id, req.body);
     const updatedProject = await projects.getById(req.params.id);
     res.json(updatedProject);
@@ -784,6 +809,8 @@ app.put('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
 // Lightweight status-only update (used by dashboard cards)
 app.patch('/api/projects/:id/status', requireAuth, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const { status } = req.body;
     const validStatuses = [
       'enquiry', 'survey_booked', 'survey_done',
@@ -807,6 +834,8 @@ app.patch('/api/projects/:id/status', requireAuth, async (req, res) => {
 
 app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await projects.delete(req.params.id);
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
@@ -823,6 +852,8 @@ app.delete('/api/projects/:id', requireAuth, async (req, res) => {
 
 app.put('/api/projects/:id/design-params', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await designParams.update(req.params.id, req.body);
     const updated = await designParams.getByProjectId(req.params.id);
     res.json(updated);
@@ -838,6 +869,8 @@ app.put('/api/projects/:id/design-params', requireAuthOrAnon, async (req, res) =
 
 app.get('/api/projects/:projectId/rooms', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const projectRooms = await rooms.getByProjectId(req.params.projectId);
     res.json(projectRooms);
   } catch (error) {
@@ -957,6 +990,8 @@ app.delete('/api/segments/:id', requireAuthOrAnon, async (req, res) => {
 
 app.get('/api/rooms/:roomId/elements', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const roomElements = await elements.getByRoomId(req.params.roomId);
     res.json(roomElements);
   } catch (error) {
@@ -1100,7 +1135,7 @@ app.post('/api/radiator-specs', requireAuthOrAnon, async (req, res) => {
 // PUT /api/radiator-specs/:id
 // Only allows updating specs owned by the caller — cannot edit global specs
 // or another company's specs.
-app.put('/api/radiator-specs/:id', async (req, res) => {
+app.put('/api/radiator-specs/:id', requireAuthOrAnon, async (req, res) => {
   try {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
@@ -1140,7 +1175,7 @@ app.put('/api/radiator-specs/:id', async (req, res) => {
 
 // DELETE /api/radiator-specs/:id
 // Only allows deleting specs owned by the caller — cannot delete global specs.
-app.delete('/api/radiator-specs/:id', async (req, res) => {
+app.delete('/api/radiator-specs/:id', requireAuthOrAnon, async (req, res) => {
   try {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
@@ -1171,7 +1206,7 @@ app.delete('/api/radiator-specs/:id', async (req, res) => {
 
 // GET /api/radiator-specs/:id/usage
 // Unchanged — no ownership check needed, read-only.
-app.get('/api/radiator-specs/:id/usage', async (req, res) => {
+app.get('/api/radiator-specs/:id/usage', requireAuthOrAnon, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT COUNT(*) as count FROM radiator_schedule WHERE radiator_spec_id = $1',
@@ -1481,6 +1516,8 @@ app.delete('/api/room-emitters/:id', requireAuthOrAnon, async (req, res) => {
 // Get UFH spec for a room
 app.get('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const spec = await ufhSpecs.getByRoomId(req.params.roomId);
     res.json(spec || null);
   } catch (error) {
@@ -1492,6 +1529,8 @@ app.get('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
 // Create or update UFH spec for a room (upsert)
 app.put('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await ufhSpecs.upsert(req.params.roomId, req.body);
     const updated = await ufhSpecs.getByRoomId(req.params.roomId);
     res.json(updated);
@@ -1503,6 +1542,8 @@ app.put('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
 
 app.delete('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await getProjectForRoom(req.params.roomId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await ufhSpecs.delete(req.params.roomId);
     res.json({ success: true });
   } catch (error) {
@@ -1518,6 +1559,8 @@ app.delete('/api/rooms/:roomId/ufh-specs', requireAuthOrAnon, async (req, res) =
 // Get saved survey for a project (returns null if none saved yet)
 app.get('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const { rows } = await pool.query(
       'SELECT data FROM survey_checklists WHERE project_id = $1',
       [req.params.id]
@@ -1533,6 +1576,8 @@ app.get('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
 // Save (upsert) survey data for a project
 app.post('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await pool.query(
       `INSERT INTO survey_checklists (project_id, data, updated_at)
        VALUES ($1, $2, NOW())
@@ -1555,6 +1600,8 @@ app.post('/api/projects/:id/survey', requireAuthOrAnon, async (req, res) => {
 // Get the most recent quote for a project, with its line items
 app.get('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const quoteRes = await pool.query(
       'SELECT * FROM quotes WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
       [req.params.id]
@@ -1585,6 +1632,8 @@ app.get('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
 // Auto-generates the reference: YYYY-NNN (sequential across all quotes)
 app.post('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const year = new Date().getFullYear();
 
     // Count quotes created this year to get the next sequential number
@@ -1618,6 +1667,10 @@ app.post('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
 // Update quote header fields
 app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
   try {
+    const quoteRow = await pool.query('SELECT project_id FROM quotes WHERE id = $1', [req.params.id]);
+    if (!quoteRow.rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    const project = await projects.getById(quoteRow.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const d = req.body;
     await pool.query(
       `UPDATE quotes SET
@@ -1662,6 +1715,10 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
 // delete all existing items and insert the current set.
 app.put('/api/quotes/:id/items', requireAuthOrAnon, async (req, res) => {
   try {
+    const quoteRow = await pool.query('SELECT project_id FROM quotes WHERE id = $1', [req.params.id]);
+    if (!quoteRow.rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    const project = await projects.getById(quoteRow.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const items = req.body.items || [];
 
     await pool.query('DELETE FROM quote_items WHERE quote_id = $1', [req.params.id]);
@@ -1699,6 +1756,10 @@ app.put('/api/quotes/:id/items', requireAuthOrAnon, async (req, res) => {
 // List snapshots for a quote (summary only — no snapshot_data)
 app.get('/api/quotes/:id/snapshots', requireAuthOrAnon, async (req, res) => {
   try {
+    const quoteRow = await pool.query('SELECT project_id FROM quotes WHERE id = $1', [req.params.id]);
+    if (!quoteRow.rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    const project = await projects.getById(quoteRow.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const snapshots = await quoteSnapshots.getForQuote(req.params.id);
     res.json(snapshots);
   } catch (error) {
@@ -1712,6 +1773,10 @@ app.get('/api/quote-snapshots/:id', requireAuthOrAnon, async (req, res) => {
   try {
     const snapshot = await quoteSnapshots.getById(req.params.id);
     if (!snapshot) return res.status(404).json({ error: 'Snapshot not found' });
+    const quoteRow = await pool.query('SELECT project_id FROM quotes WHERE id = $1', [snapshot.quote_id]);
+    if (!quoteRow.rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    const project = await projects.getById(quoteRow.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     res.json(snapshot);
   } catch (error) {
     console.error('Error fetching snapshot:', error);
@@ -1722,6 +1787,10 @@ app.get('/api/quote-snapshots/:id', requireAuthOrAnon, async (req, res) => {
 // Create a snapshot (manual trigger from UI)
 app.post('/api/quotes/:id/snapshots', requireAuthOrAnon, async (req, res) => {
   try {
+    const quoteRow = await pool.query('SELECT project_id FROM quotes WHERE id = $1', [req.params.id]);
+    if (!quoteRow.rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    const project = await projects.getById(quoteRow.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const d = req.body;
     if (!d.versionLabel) {
       return res.status(400).json({ error: 'versionLabel is required' });
@@ -1751,6 +1820,8 @@ app.post('/api/quotes/:id/snapshots', requireAuthOrAnon, async (req, res) => {
 // Get all materials list items for a project
 app.get('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const items = await materialsListItems.getForProject(req.params.id);
     res.json(items);
   } catch (error) {
@@ -1762,6 +1833,8 @@ app.get('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
 // Create a single materials list item
 app.post('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const result = await materialsListItems.create(req.params.id, req.body);
     res.status(201).json({ id: result.id });
   } catch (error) {
@@ -1778,6 +1851,8 @@ app.put('/api/materials/:id', requireAuthOrAnon, async (req, res) => {
       'SELECT project_id FROM materials_list_items WHERE id = $1', [req.params.id]
     );
     if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    const project = await projects.getById(item.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await materialsListItems.update(req.params.id, item.rows[0].project_id, req.body);
     res.json({ saved: true });
   } catch (error) {
@@ -1793,6 +1868,8 @@ app.delete('/api/materials/:id', requireAuthOrAnon, async (req, res) => {
       'SELECT project_id FROM materials_list_items WHERE id = $1', [req.params.id]
     );
     if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    const project = await projects.getById(item.rows[0].project_id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     await materialsListItems.delete(req.params.id, item.rows[0].project_id);
     res.json({ deleted: true });
   } catch (error) {
@@ -1804,6 +1881,8 @@ app.delete('/api/materials/:id', requireAuthOrAnon, async (req, res) => {
 // Import new radiators from radiator schedule into materials list
 app.post('/api/projects/:id/materials/import-radiators', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const inserted = await materialsListItems.importFromRadiatorSchedule(
       req.params.id,
       req.body.parentCategory || 'radiators'
@@ -1818,6 +1897,8 @@ app.post('/api/projects/:id/materials/import-radiators', requireAuthOrAnon, asyn
 // Import pipe sections into materials list
 app.post('/api/projects/:id/materials/import-pipe-sections', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.id);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const inserted = await materialsListItems.importFromPipeSections(
       req.params.id,
       req.body.parentCategory || 'pipework'
@@ -1908,6 +1989,7 @@ app.get('/api/labour-rate-cards/:id', requireAuth, async (req, res) => {
   try {
     const card = await labourRateCards.getById(req.params.id);
     if (!card) return res.status(404).json({ error: 'Rate card not found' });
+    if (card.company_id !== req.user.companyId) return res.status(403).json({ error: 'Not authorised' });
     res.json(card);
   } catch (error) {
     console.error('Error fetching rate card:', error);
@@ -1940,6 +2022,9 @@ app.put('/api/labour-rate-cards/:id', requireAuth, async (req, res) => {
 // Add an item to a rate card
 app.post('/api/labour-rate-cards/:id/items', requireAuth, async (req, res) => {
   try {
+    const card = await labourRateCards.getById(req.params.id);
+    if (!card) return res.status(404).json({ error: 'Rate card not found' });
+    if (card.company_id !== req.user.companyId) return res.status(403).json({ error: 'Not authorised' });
     const result = await labourRateCards.addItem(req.params.id, req.body);
     res.status(201).json({ id: result.id });
   } catch (error) {
@@ -1951,6 +2036,12 @@ app.post('/api/labour-rate-cards/:id/items', requireAuth, async (req, res) => {
 // Update a rate card item
 app.put('/api/labour-rate-items/:id', requireAuth, async (req, res) => {
   try {
+    const item = await pool.query(
+      'SELECT lrc.company_id FROM labour_rate_items lri JOIN labour_rate_cards lrc ON lrc.id = lri.rate_card_id WHERE lri.id = $1',
+      [req.params.id]
+    );
+    if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    if (item.rows[0].company_id !== req.user.companyId) return res.status(403).json({ error: 'Not authorised' });
     await labourRateCards.updateItem(req.params.id, req.body);
     res.json({ saved: true });
   } catch (error) {
@@ -1962,6 +2053,12 @@ app.put('/api/labour-rate-items/:id', requireAuth, async (req, res) => {
 // Delete a rate card item
 app.delete('/api/labour-rate-items/:id', requireAuth, async (req, res) => {
   try {
+    const item = await pool.query(
+      'SELECT lrc.company_id FROM labour_rate_items lri JOIN labour_rate_cards lrc ON lrc.id = lri.rate_card_id WHERE lri.id = $1',
+      [req.params.id]
+    );
+    if (!item.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    if (item.rows[0].company_id !== req.user.companyId) return res.status(403).json({ error: 'Not authorised' });
     await labourRateCards.deleteItem(req.params.id);
     res.json({ deleted: true });
   } catch (error) {
