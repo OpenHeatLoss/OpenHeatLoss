@@ -1071,6 +1071,7 @@ export default function QuoteBuilder({ project }) {
         setValidDays(quote.valid_days || 30);
         setVatRate(0);
         setDepositAmount(quote.deposit_amount || 0);
+        setAdvanceAmount(quote.advance_amount || 0);
         setHourlyRate(quote.hourly_rate || 0);
         setMarkupPct(quote.markup_pct || 0);
         setRateCardId(quote.rate_card_id || null);
@@ -1149,6 +1150,7 @@ export default function QuoteBuilder({ project }) {
         busGrant:           busGrantAmt,
         clientPays,
         depositAmount,
+        advanceAmount,
         hourlyRate,
         checklist,
         markupPct,
@@ -1163,7 +1165,7 @@ export default function QuoteBuilder({ project }) {
     }
   }, [
     quoteId, surveyBasis, preparedBy, validDays, vatRate,
-    depositAmount, hourlyRate, checklist, markupPct,
+    depositAmount, advanceAmount, hourlyRate, checklist, markupPct,
     categoryOverrides, rateCardId, materials,
   ]);
 

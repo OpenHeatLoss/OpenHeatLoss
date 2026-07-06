@@ -2147,6 +2147,14 @@ const MIGRATIONS = [
       console.log('  Migration 018 complete: cover_letter_template added to companies');
     },
   },
+  {
+    version: '019',
+    description: 'Add advance_amount to quotes (payment schedule — further advance field)',
+    run: async () => {
+      await addColumnIfMissing('quotes', 'advance_amount', 'DOUBLE PRECISION NOT NULL DEFAULT 0');
+      console.log('  Migration 019 complete: advance_amount added to quotes');
+    },
+  },
 ];
 
 async function runMigrations() {
