@@ -1546,6 +1546,41 @@ const materialsLibrary = {
 };
 
 // ---------------------------------------------------------------------------
+// COMPANY CATEGORY MARKUP DEFAULTS
+// Company-scoped default markup % per category. Settings-managed.
+// Absence of a row for a category means no policy set — callers fall back
+// to 0%, never inventing a figure. Used to pre-fill markup_pct on new
+// materials_list_items rows (see materialsListItems.create()).
+// ---------------------------------------------------------------------------
+const companyCategoryMarkupDefaults = {
+  getForCompany: (companyId) =>
+    allQuery(
+      `SELECT * FROM company_category_markup_defaults WHERE company_id = $1`,
+      [companyId]
+    ),
+
+  getOne: async (companyId, categoryKey) => {
+    if (!companyId) return 0; // anonymous sessions have no company policy
+    const row = await getQuery(
+      `SELECT default_markup_pct FROM company_category_markup_defaults
+       WHERE company_id = $1 AND category_key = $2`,
+      [companyId, categoryKey]
+    );
+    return row?.default_markup_pct ?? 0;
+  },
+
+  set: (companyId, categoryKey, defaultMarkupPct) =>
+    runQuery(
+      `INSERT INTO company_category_markup_defaults (company_id, category_key, default_markup_pct)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (company_id, category_key) DO UPDATE SET
+         default_markup_pct = EXCLUDED.default_markup_pct,
+         updated_at = NOW()`,
+      [companyId, categoryKey, defaultMarkupPct]
+    ),
+};
+
+// ---------------------------------------------------------------------------
 // MATERIALS LIST ITEMS
 // Job-level child line items. Prices copied at time of addition — not live
 // references — so historical job costs are always recoverable.
@@ -1562,30 +1597,22 @@ const materialsListItems = {
       [projectId]
     ),
 
-  create: (projectId, data) => {
+  create: async (projectId, companyId, data) => {
+    const markupPct = data.markupPct ?? await companyCategoryMarkupDefaults.getOne(companyId, data.parentCategory);
     const totalCost = data.pricingMode === 'flat'
       ? (data.unitCost || 0)
       : (data.quantity || 0) * (data.unitCost || 0);
     return runQuery(
       `INSERT INTO materials_list_items
          (project_id, parent_category, description, pricing_mode,
-          unit_label, quantity, unit_cost, total_cost,
+          unit_label, quantity, unit_cost, total_cost, markup_pct,
           source, source_id, library_item_id, display_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id`,
       [
-        projectId,
-        data.parentCategory,
-        data.description,
-        data.pricingMode || 'unit',
-        data.unitLabel || null,
-        data.quantity || 1,
-        data.unitCost || 0,
-        totalCost,
-        data.source || 'manual',
-        data.sourceId || null,
-        data.libraryItemId || null,
-        data.displayOrder ?? 0,
+        projectId, data.parentCategory, data.description, data.pricingMode || 'unit',
+        data.unitLabel || null, data.quantity || 1, data.unitCost || 0, totalCost, markupPct,
+        data.source || 'manual', data.sourceId || null, data.libraryItemId || null, data.displayOrder ?? 0,
       ]
     );
   },
@@ -1598,17 +1625,12 @@ const materialsListItems = {
       `UPDATE materials_list_items SET
          parent_category = $1, description = $2, pricing_mode = $3,
          unit_label = $4, quantity = $5, unit_cost = $6, total_cost = $7,
-         display_order = $8, updated_at = NOW()
-       WHERE id = $9 AND project_id = $10`,
+         markup_pct = $8, display_order = $9, updated_at = NOW()
+       WHERE id = $10 AND project_id = $11`,
       [
-        data.parentCategory,
-        data.description,
-        data.pricingMode || 'unit',
-        data.unitLabel || null,
-        data.quantity || 1,
-        data.unitCost || 0,
-        totalCost,
-        data.displayOrder ?? 0,
+        data.parentCategory, data.description, data.pricingMode || 'unit',
+        data.unitLabel || null, data.quantity || 1, data.unitCost || 0,
+        totalCost, data.markupPct ?? 0, data.displayOrder ?? 0,
         id, projectId,
       ]
     );
@@ -1624,8 +1646,7 @@ const materialsListItems = {
   // Returns inserted item IDs. Skips schedule rows that already have a
   // materials_list_item with source='radiator_schedule' and the same source_id
   // so re-running import is idempotent.
-  importFromRadiatorSchedule: async (projectId, parentCategory) => {
-    // Fetch all 'new' schedule items for this project with spec details
+  importFromRadiatorSchedule: async (projectId, companyId, parentCategory) => {
     const scheduleItems = await allQuery(
       `SELECT rs.id, rs.quantity, rs.notes,
               rs2.manufacturer, rs2.model, rs2.type, rs2.height, rs2.length
@@ -1636,14 +1657,14 @@ const materialsListItems = {
          AND rs.emitter_status = 'new'`,
       [projectId]
     );
-
-    // Find which schedule IDs are already imported
     const existing = await allQuery(
       `SELECT source_id FROM materials_list_items
        WHERE project_id = $1 AND source = 'radiator_schedule'`,
       [projectId]
     );
     const existingIds = new Set(existing.map(r => r.source_id));
+    const category = parentCategory || 'radiators';
+    const markupPct = await companyCategoryMarkupDefaults.getOne(companyId, category);
 
     const inserted = [];
     for (const item of scheduleItems) {
@@ -1652,10 +1673,11 @@ const materialsListItems = {
       const result = await runQuery(
         `INSERT INTO materials_list_items
            (project_id, parent_category, description, pricing_mode,
-            unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
-         VALUES ($1, $2, $3, 'unit', 'each', $4, 0, 0, 'radiator_schedule', $5, 99)
+            unit_label, quantity, unit_cost, total_cost, markup_pct,
+            source, source_id, display_order)
+         VALUES ($1, $2, $3, 'unit', 'each', $4, 0, 0, $5, 'radiator_schedule', $6, 99)
          RETURNING id`,
-        [projectId, parentCategory || 'radiators', description, item.quantity, item.id]
+        [projectId, category, description, item.quantity, markupPct, item.id]
       );
       inserted.push(result.id);
     }
@@ -1667,7 +1689,7 @@ const materialsListItems = {
   // pricing_mode = 'per_metre', quantity = length_m.
   // Fittings (if detailed method) are imported as separate 'unit' items.
   // Idempotent: skips sections already imported.
-  importFromPipeSections: async (projectId, parentCategory) => {
+  importFromPipeSections: async (projectId, companyId, parentCategory) => {
     const sections = await allQuery(
       `SELECT ps.id, ps.name, ps.length_m, ps.nominal_size,
               ps.fittings_method,
@@ -1697,6 +1719,9 @@ const materialsListItems = {
     );
     const existingIds = new Set(existing.map(r => r.source_id));
 
+    const category = parentCategory || 'pipework';
+    const markupPct = await companyCategoryMarkupDefaults.getOne(companyId, category);
+
     const inserted = [];
     for (const sec of sections) {
       if (existingIds.has(sec.id)) continue;
@@ -1707,10 +1732,11 @@ const materialsListItems = {
       await runQuery(
         `INSERT INTO materials_list_items
            (project_id, parent_category, description, pricing_mode,
-            unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
-         VALUES ($1, $2, $3, 'per_metre', 'm', $4, 0, 0, 'pipe_sections', $5, 99)
+            unit_label, quantity, unit_cost, total_cost, markup_pct,
+            source, source_id, display_order)
+         VALUES ($1, $2, $3, 'per_metre', 'm', $4, 0, 0, $5, 'pipe_sections', $6, 99)
          RETURNING id`,
-        [projectId, parentCategory || 'pipework', desc, sec.length_m, sec.id]
+        [projectId, category, desc, sec.length_m, markupPct, sec.id]
       );
 
       // If detailed fittings, import each fitting type as a unit item.
@@ -1722,11 +1748,11 @@ const materialsListItems = {
           await runQuery(
             `INSERT INTO materials_list_items
                (project_id, parent_category, description, pricing_mode,
-                unit_label, quantity, unit_cost, total_cost, source, source_id, display_order)
-             VALUES ($1, $2, $3, 'unit', 'each', $4, $5, $6, 'pipe_sections', $7, 99)
+                unit_label, quantity, unit_cost, total_cost, markup_pct,
+                source, source_id, display_order)
+             VALUES ($1, $2, $3, 'unit', 'each', $4, $5, $6, $7, 'pipe_sections', $8, 99)
              RETURNING id`,
-            [projectId, parentCategory || 'pipework', f.name,
-             f.quantity, f.unit_cost || 0, total, sec.id]
+            [projectId, category, f.name, f.quantity, f.unit_cost || 0, total, markupPct, sec.id]
           );
         }
       }
@@ -1807,6 +1833,7 @@ module.exports = {
   pipeSections,
   labourRateCards,
   materialsLibrary,
+  companyCategoryMarkupDefaults,
   materialsListItems,
   quoteSnapshots,
   // waitForDb is gone — no longer needed with Postgres connection pool.

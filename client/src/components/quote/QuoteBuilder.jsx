@@ -120,16 +120,23 @@ function categorySubtotal(materials, catKey) {
     .reduce((sum, m) => sum + (m.total_cost || 0), 0);
 }
 
+function markedUpSubtotal(materials, catKey) {
+  return materials
+    .filter(m => m.parent_category === catKey)
+    .reduce((sum, m) => sum + (m.total_cost || 0) * (1 + (m.markup_pct || 0) / 100), 0);
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // Single child item row in the materials list
-function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }) {
-  const [desc, setDesc]         = useState(item.description || '');
-  const [qty, setQty]           = useState(item.quantity ?? 1);
-  const [cost, setCost]         = useState(item.unit_cost ?? 0);
-  const [mode, setMode]         = useState(item.pricing_mode || 'unit');
+function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems, categoryDefaultMarkup }) {
+  const [desc, setDesc]           = useState(item.description || '');
+  const [qty, setQty]             = useState(item.quantity ?? 1);
+  const [cost, setCost]           = useState(item.unit_cost ?? 0);
+  const [mode, setMode]           = useState(item.pricing_mode || 'unit');
   const [unitLabel, setUnitLabel] = useState(item.unit_label || '');
-  const [saving, setSaving]     = useState(false);
+  const [markupPct, setMarkupPct] = useState(item.markup_pct ?? 0);
+  const [saving, setSaving]       = useState(false);
   const debounce = useRef(null);
 
   // Sync from parent when item changes (e.g. after import)
@@ -139,9 +146,11 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
     setCost(item.unit_cost ?? 0);
     setMode(item.pricing_mode || 'unit');
     setUnitLabel(item.unit_label || '');
+    setMarkupPct(item.markup_pct ?? 0);
   }, [item.id]);
 
   const total = mode === 'flat' ? cost : qty * cost;
+  const markedUpTotal = total * (1 + markupPct / 100);
 
   const debouncedSave = useCallback((patch) => {
     clearTimeout(debounce.current);
@@ -155,7 +164,7 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
     const patch = {
       parentCategory: item.parent_category,
       description: desc, quantity: qty, unitCost: cost,
-      pricingMode: mode, unitLabel,
+      pricingMode: mode, unitLabel, markupPct,
       [field]: value,
     };
     if (field === 'description') setDesc(value);
@@ -163,6 +172,7 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
     if (field === 'unitCost')    setCost(value);
     if (field === 'pricingMode') setMode(value);
     if (field === 'unitLabel')   setUnitLabel(value);
+    if (field === 'markupPct')   setMarkupPct(value);
     debouncedSave(patch);
   };
 
@@ -243,30 +253,50 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
         </div>
       </div>
 
-      {/* Total */}
+      {/* Total (marked up) */}
       <div className="col-span-1 text-sm text-right text-gray-700 font-medium pr-1">
-        £{total.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          <span className={`block text-xs text-gray-300 font-normal ${saving ? 'opacity-100' : 'opacity-0'}`}>
-            saving
+        £{markedUpTotal.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {markupPct !== (categoryDefaultMarkup ?? 0) && (
+          <span className="block text-xs text-amber-400 font-normal">
+            {markupPct > 0 ? `+${markupPct}%` : `${markupPct}%`}
           </span>
+        )}
+        <span className={`block text-xs text-gray-300 font-normal ${saving ? 'opacity-100' : 'opacity-0'}`}>
+          saving
+        </span>
       </div>
 
-      {/* Actions */}
-      <div className="col-span-1 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => onSaveToLibrary(item)}
-          title="Save to company library"
-          className="text-xs text-blue-400 hover:text-blue-600 px-1"
-        >
-          ↗
-        </button>
-        <button
-          onClick={() => onDelete(item.id)}
-          title="Remove"
-          className="text-red-300 hover:text-red-500 text-base leading-none"
-        >
-          ×
-        </button>
+      {/* Markup % input + actions (revealed on hover) */}
+      <div className="col-span-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="relative mb-1">
+          <input
+            type="number"
+            value={markupPct}
+            onChange={e => handleChange('markupPct', parseFloat(e.target.value) || 0)}
+            min="-100"
+            max="1000"
+            step="1"
+            title="Markup %"
+            className="w-full text-xs text-right border border-gray-200 rounded px-1 pr-4 py-0.5 bg-gray-50 focus:ring-1 focus:ring-blue-500 focus:bg-white"
+          />
+          <span className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+        </div>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onSaveToLibrary(item)}
+            title="Save to company library"
+            className="text-xs text-blue-400 hover:text-blue-600 px-1"
+          >
+            ↗
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            title="Remove"
+            className="text-red-300 hover:text-red-500 text-base leading-none"
+          >
+            ×
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -276,6 +306,7 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
 function MaterialsCategory({
   category, items, libraryItems, rateCard, onAddItem, onAddFromLibrary,
   onAddFromRateCard, onUpdate, onDelete, onSaveToLibrary, defaultOpen,
+  categoryDefaultMarkup,
 }) {
   const [open,        setOpen]        = useState(defaultOpen ?? false);
   const [showLibPick, setShowLibPick] = useState(false);
@@ -365,6 +396,7 @@ function MaterialsCategory({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onSaveToLibrary={onSaveToLibrary}
+                categoryDefaultMarkup={categoryDefaultMarkup}
               />
             ))}
           </div>
@@ -457,50 +489,9 @@ function MaterialsCategory({
   );
 }
 
-function CategoryOverrideRow({ row, isOverridden, onCommit }) {
-  const [draft, setDraft] = useState(
-    (isOverridden ? row.quotePrice : row.withMarkup).toFixed(2)
-  );
-
-  // Re-sync local buffer when the underlying value changes for reasons
-  // other than this input's own edits — e.g. markup % changed elsewhere,
-  // or the override was reset via the ↺ button.
-  useEffect(() => {
-    setDraft((isOverridden ? row.quotePrice : row.withMarkup).toFixed(2));
-  }, [row.key, isOverridden, row.quotePrice, row.withMarkup]);
-
-  const commit = () => {
-    const parsed = parseFloat(draft) || 0;
-    onCommit(row.key, parsed);
-  };
-
-  return (
-    <div className="col-span-3">
-      <div className="relative">
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">£</span>
-        <input
-          type="number"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => { if (e.key === 'Enter') { commit(); e.target.blur(); } }}
-          min="0"
-          step="0.01"
-          className={`w-full text-sm text-right border rounded pl-5 pr-2 py-1 focus:ring-1 focus:ring-blue-500 ${
-            isOverridden
-              ? 'border-amber-300 bg-amber-50 font-medium'
-              : 'border-gray-200 bg-gray-50'
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
-
-// Quote summary — category totals + markup + VAT + BUS grant
+// Quote summary — category totals + VAT + BUS grant
 function QuoteSummary({
-  materials, markupPct, setMarkupPct,
-  categoryOverrides, setCategoryOverride,
+  materials,
   vatRate, setVatRate,
   depositAmount, setDepositAmount,
   advanceAmount, setAdvanceAmount,
@@ -509,10 +500,8 @@ function QuoteSummary({
 }) {
   const rows = CATEGORIES.map(cat => {
     const materialsTotal = categorySubtotal(materials, cat.key);
-    const withMarkup     = materialsTotal * (1 + markupPct / 100);
-    const override       = categoryOverrides[cat.key];
-    const quotePrice     = override !== null && override !== undefined ? override : withMarkup;
-    return { ...cat, materialsTotal, withMarkup, quotePrice };
+    const quotePrice      = markedUpSubtotal(materials, cat.key);
+    return { ...cat, materialsTotal, quotePrice };
   });
 
   const totalExVat  = rows.reduce((s, r) => s + r.quotePrice, 0);
@@ -540,77 +529,38 @@ function QuoteSummary({
 
   return (
     <div className="space-y-4">
-      {/* Markup */}
       <div className="bg-white border border-gray-200 rounded-lg p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Quote summary</h3>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Markup</label>
-            <div className="relative">
-              <input
-                type="number"
-                value={markupPct}
-                onChange={e => setMarkupPct(parseFloat(e.target.value) || 0)}
-                min="0"
-                max="200"
-                step="1"
-                className="w-20 text-sm text-right border border-gray-300 rounded px-2 py-1 pr-5 focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-            </div>
-          </div>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Quote summary</h3>
 
         {/* Category rows */}
         <div className="space-y-0">
           {/* Headers */}
-          <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">
+          <div className="grid grid-cols-9 gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">
             <div className="col-span-4">Category</div>
             <div className="col-span-2 text-right">Materials</div>
-            <div className="col-span-2 text-right">+ Markup</div>
             <div className="col-span-3 text-right">Quote price £</div>
-            <div className="col-span-1"></div>
           </div>
 
-          {rows.map(row => {
-            const isOverridden = categoryOverrides[row.key] !== null && categoryOverrides[row.key] !== undefined;
-            return (
-              <div key={row.key} className="grid grid-cols-12 gap-2 items-center py-1.5 border-b border-gray-50 last:border-0">
-                <div className="col-span-4 flex items-center gap-2">
-                  <span className="text-sm text-gray-700">{row.label}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${
-                    row.itemType === 'goods' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-                  }`}>{row.itemType}</span>
-                </div>
-                <div className="col-span-2 text-sm text-right text-gray-500">
-                  {row.materialsTotal > 0
-                    ? `£${row.materialsTotal.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                    : '—'}
-                </div>
-                <div className="col-span-2 text-sm text-right text-gray-500">
-                  {row.withMarkup > 0
-                    ? `£${row.withMarkup.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                    : '—'}
-                </div>
-                <CategoryOverrideRow
-                  row={row}
-                  isOverridden={isOverridden}
-                  onCommit={setCategoryOverride}
-                />
-                <div className="col-span-1 text-center">
-                  {isOverridden && (
-                    <button
-                      onClick={() => setCategoryOverride(row.key, null)}
-                      title="Reset to materials + markup"
-                      className="text-xs text-amber-500 hover:text-amber-700"
-                    >
-                      ↺
-                    </button>
-                  )}
-                </div>
+          {rows.map(row => (
+            <div key={row.key} className="grid grid-cols-9 gap-2 items-center py-1.5 border-b border-gray-50 last:border-0">
+              <div className="col-span-4 flex items-center gap-2">
+                <span className="text-sm text-gray-700">{row.label}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  row.itemType === 'goods' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
+                }`}>{row.itemType}</span>
               </div>
-            );
-          })}
+              <div className="col-span-2 text-sm text-right text-gray-500">
+                {row.materialsTotal > 0
+                  ? `£${row.materialsTotal.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  : '—'}
+              </div>
+              <div className="col-span-3 text-sm text-right font-medium text-gray-700">
+                {row.quotePrice > 0
+                  ? `£${row.quotePrice.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  : '—'}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* VAT */}
@@ -1059,10 +1009,9 @@ export default function QuoteBuilder({ project }) {
   const [depositAmount, setDepositAmount] = useState(0);
   const [advanceAmount, setAdvanceAmount] = useState(0);
   const [hourlyRate,    setHourlyRate]    = useState(0);
-  const [markupPct,     setMarkupPct]     = useState(0);
-  const [categoryOverrides, setCategoryOverrides] = useState({});
   const [rateCardId,    setRateCardId]    = useState(null);
   const [checklist,     setChecklist]     = useState(emptyChecklist);
+  const [markupDefaults, setMarkupDefaults] = useState([]);
 
   // Materials list state
   const [materials,      setMaterials]     = useState([]);
@@ -1080,12 +1029,13 @@ export default function QuoteBuilder({ project }) {
     async function load() {
       setLoading(true);
       try {
-        // Load quote + materials + library + rate card in parallel
-        const [quoteData, materialsData, libraryData, rateCardData] = await Promise.all([
+        // Load quote + materials + library + rate card + markup defaults in parallel
+        const [quoteData, materialsData, libraryData, rateCardData, markupDefaultsData] = await Promise.all([
           api.getQuote(project.id),
           api.getMaterials(project.id),
           api.getMaterialsLibrary().catch(() => []),
           api.getCurrentLabourRateCard().catch(() => null),
+          api.getMarkupDefaults().catch(() => []),
         ]);
 
         let quote = quoteData;
@@ -1102,22 +1052,7 @@ export default function QuoteBuilder({ project }) {
         setDepositAmount(quote.deposit_amount || 0);
         setAdvanceAmount(quote.advance_amount || 0);
         setHourlyRate(quote.hourly_rate || 0);
-        setMarkupPct(quote.markup_pct || 0);
         setRateCardId(quote.rate_card_id || null);
-
-        // Parse category_overrides — null means auto (materials + markup)
-        const overrides = {};
-        if (quote.category_overrides) {
-          const raw = typeof quote.category_overrides === 'string'
-            ? JSON.parse(quote.category_overrides)
-            : quote.category_overrides;
-          CATEGORIES.forEach(cat => {
-            overrides[cat.key] = raw[cat.key] !== undefined ? raw[cat.key] : null;
-          });
-        } else {
-          CATEGORIES.forEach(cat => { overrides[cat.key] = null; });
-        }
-        setCategoryOverrides(overrides);
 
         if (quote.notes) {
           try { setChecklist(JSON.parse(quote.notes)); } catch { /* keep default */ }
@@ -1125,6 +1060,7 @@ export default function QuoteBuilder({ project }) {
 
         setMaterials(Array.isArray(materialsData) ? materialsData : []);
         setLibraryItems(Array.isArray(libraryData) ? libraryData : []);
+        setMarkupDefaults(Array.isArray(markupDefaultsData) ? markupDefaultsData : []);
 
         // Store the full rate card object for the UI pickers
         if (rateCardData) {
@@ -1149,41 +1085,27 @@ export default function QuoteBuilder({ project }) {
     setSaving(true);
     try {
       // Compute totals from current state for storage
-      const rows = CATEGORIES.map(cat => {
-        const materialsTotal = categorySubtotal(materials, cat.key);
-        const withMarkup     = materialsTotal * (1 + markupPct / 100);
-        const override       = categoryOverrides[cat.key];
-        return override !== null && override !== undefined ? override : withMarkup;
-      });
-      const totalExVat  = rows.reduce((s, v) => s + v, 0);
+      const totalExVat  = CATEGORIES.reduce((s, cat) => s + markedUpSubtotal(materials, cat.key), 0);
       const vatAmount   = totalExVat * (vatRate / 100);
       const totalIncVat = totalExVat + vatAmount;
       const busGrantAmt = project.busGrantStatus !== 'not_applicable'
         ? (project.busGrantAmount || 0) : 0;
       const clientPays  = Math.max(0, totalIncVat - busGrantAmt);
 
-      // Build category_overrides object — only store non-null overrides
-      const overridesForSave = {};
-      CATEGORIES.forEach(cat => {
-        overridesForSave[cat.key] = categoryOverrides[cat.key] ?? null;
-      });
-
       await api.updateQuote(quoteId, {
-        status:             'draft',
+        status:       'draft',
         surveyBasis,
         preparedBy,
         validDays,
         totalExVat,
         vatAmount,
         totalIncVat,
-        busGrant:           busGrantAmt,
+        busGrant:     busGrantAmt,
         clientPays,
         depositAmount,
         advanceAmount,
         hourlyRate,
         checklist,
-        markupPct,
-        categoryOverrides:  overridesForSave,
         rateCardId,
       });
       setLastSaved(new Date());
@@ -1194,8 +1116,8 @@ export default function QuoteBuilder({ project }) {
     }
   }, [
     quoteId, surveyBasis, preparedBy, validDays, vatRate,
-    depositAmount, advanceAmount, hourlyRate, checklist, markupPct,
-    categoryOverrides, rateCardId, materials,
+    depositAmount, advanceAmount, hourlyRate, checklist,
+    rateCardId, materials,
   ]);
 
   useEffect(() => {
@@ -1283,6 +1205,7 @@ export default function QuoteBuilder({ project }) {
         quantity:        patch.quantity        ?? m.quantity,
         unit_cost:       patch.unitCost        ?? m.unit_cost,
         total_cost:      totalCost,
+        markup_pct:      patch.markupPct       ?? m.markup_pct,
       };
     }));
   }, []);
@@ -1336,21 +1259,9 @@ export default function QuoteBuilder({ project }) {
     }
   };
 
-  // ── Category override helper ──
-  const setCategoryOverride = useCallback((key, value) => {
-    setCategoryOverrides(prev => ({ ...prev, [key]: value }));
-  }, []);
-
   // ── Snapshot ──
   const handleSaveSnapshot = useCallback(async (label, note, triggeredBy) => {
-    // Build snapshot data from current state
-    const rows = CATEGORIES.map(cat => {
-      const materialsTotal = categorySubtotal(materials, cat.key);
-      const withMarkup     = materialsTotal * (1 + markupPct / 100);
-      const override       = categoryOverrides[cat.key];
-      return override !== null && override !== undefined ? override : withMarkup;
-    });
-    const totalExVat  = rows.reduce((s, v) => s + v, 0);
+    const totalExVat  = CATEGORIES.reduce((s, cat) => s + markedUpSubtotal(materials, cat.key), 0);
     const vatAmount   = totalExVat * (vatRate / 100);
     const totalIncVat = totalExVat + vatAmount;
     const busGrantAmt = project.busGrantStatus !== 'not_applicable'
@@ -1358,7 +1269,7 @@ export default function QuoteBuilder({ project }) {
     const clientPays  = Math.max(0, totalIncVat - busGrantAmt);
 
     const snapshotData = {
-      quote: { reference, preparedBy, markupPct, surveyBasis, validDays },
+      quote: { reference, preparedBy, surveyBasis, validDays },
       materials: materials.map(m => ({
         parent_category: m.parent_category,
         description:     m.description,
@@ -1366,8 +1277,8 @@ export default function QuoteBuilder({ project }) {
         quantity:        m.quantity,
         unit_cost:       m.unit_cost,
         total_cost:      m.total_cost,
+        markup_pct:      m.markup_pct,
       })),
-      categoryOverrides,
       rateCard: currentRateCard ? {
         id:             currentRateCard.id,
         effective_from: currentRateCard.effective_from,
@@ -1390,8 +1301,8 @@ export default function QuoteBuilder({ project }) {
       snapshotData,
     });
     return { ...result, version_label: label, note, triggered_by: triggeredBy, created_at: new Date().toISOString() };
-  }, [quoteId, reference, preparedBy, markupPct, surveyBasis, validDays,
-      materials, categoryOverrides, rateCardId, vatRate]);
+  }, [quoteId, reference, preparedBy, surveyBasis, validDays,
+      materials, rateCardId, vatRate]);
 
   // ── New radiators in schedule — badge count ──
   const newRadiatorCount = project.rooms
@@ -1530,6 +1441,7 @@ export default function QuoteBuilder({ project }) {
             onDelete={handleDeleteItem}
             onSaveToLibrary={handleSaveToLibrary}
             defaultOpen={i === 0}
+            categoryDefaultMarkup={markupDefaults.find(d => d.category_key === cat.key)?.default_markup_pct ?? 0}
           />
         ))}
       </div>
@@ -1537,10 +1449,6 @@ export default function QuoteBuilder({ project }) {
       {/* ── QUOTE SUMMARY ── */}
       <QuoteSummary
         materials={materials}
-        markupPct={markupPct}
-        setMarkupPct={setMarkupPct}
-        categoryOverrides={categoryOverrides}
-        setCategoryOverride={setCategoryOverride}
         vatRate={vatRate}
         setVatRate={setVatRate}
         depositAmount={depositAmount}

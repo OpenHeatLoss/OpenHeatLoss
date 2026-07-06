@@ -46,6 +46,7 @@ const {
   pipeSections,
   labourRateCards,
   materialsLibrary,
+  companyCategoryMarkupDefaults,
   materialsListItems,
   quoteSnapshots,
 } = require('./database');
@@ -1836,7 +1837,8 @@ app.post('/api/projects/:id/materials', requireAuthOrAnon, async (req, res) => {
   try {
     const project = await projects.getById(req.params.id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
-    const result = await materialsListItems.create(req.params.id, req.body);
+    const companyId = req.user?.companyId ?? null;
+    const result = await materialsListItems.create(req.params.id, companyId, req.body);
     res.status(201).json({ id: result.id });
   } catch (error) {
     console.error('Error creating material item:', error);
@@ -1884,8 +1886,10 @@ app.post('/api/projects/:id/materials/import-radiators', requireAuthOrAnon, asyn
   try {
     const project = await projects.getById(req.params.id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const companyId = req.user?.companyId ?? null;
     const inserted = await materialsListItems.importFromRadiatorSchedule(
       req.params.id,
+      companyId,
       req.body.parentCategory || 'radiators'
     );
     res.json({ inserted: inserted.length, ids: inserted });
@@ -1900,14 +1904,43 @@ app.post('/api/projects/:id/materials/import-pipe-sections', requireAuthOrAnon, 
   try {
     const project = await projects.getById(req.params.id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const companyId = req.user?.companyId ?? null;
     const inserted = await materialsListItems.importFromPipeSections(
       req.params.id,
+      companyId,
       req.body.parentCategory || 'pipework'
     );
     res.json({ inserted: inserted.length, ids: inserted });
   } catch (error) {
     console.error('Error importing pipe sections:', error);
     res.status(500).json({ error: 'Failed to import pipe sections' });
+  }
+});
+
+// ============================================================
+// COMPANY CATEGORY MARKUP DEFAULTS
+// ============================================================
+
+app.get('/api/company/markup-defaults', requireAuth, async (req, res) => {
+  try {
+    const rows = await companyCategoryMarkupDefaults.getForCompany(req.user.companyId);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching markup defaults:', error);
+    res.status(500).json({ error: 'Failed to fetch markup defaults' });
+  }
+});
+
+app.put('/api/company/markup-defaults/:categoryKey', requireAuth, async (req, res) => {
+  try {
+    await companyCategoryMarkupDefaults.set(
+      req.user.companyId, req.params.categoryKey, req.body.defaultMarkupPct || 0
+    );
+    const rows = await companyCategoryMarkupDefaults.getForCompany(req.user.companyId);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error updating markup default:', error);
+    res.status(500).json({ error: 'Failed to update markup default' });
   }
 });
 

@@ -90,6 +90,76 @@ None. All known bugs resolved.
 
 ### Priority 1 — Next sessions
 
+~~**Per-item markup implementation**~~ — DONE (2026-07). See Session log and
+Design decisions. Migration 020 applied; company_category_markup_defaults
+table + materials_list_items.markup_pct live on local dev; database.js,
+server.js, api.js, QuoteBuilder.jsx, SettingsPage.jsx all updated and
+smoke-tested by Simon on local dev machine.
+
+**Editable / hierarchical materials categories — needs scoping session**
+Raised while using the new per-item markup feature (2026-07): Simon wants
+the ability to add sub-categories under the existing 9 fixed categories, or
+possibly let each company fully customise their category set (rename, add,
+archive), similar in spirit to a Xero-style editable chart of accounts.
+
+Not yet scoped — deliberately parked rather than designed in the same
+session that shipped per-item markup, because it's a materially bigger
+change than it first appears:
+
+- Categories are currently a **hardcoded closed enum** duplicated across two
+  files (CATEGORIES in QuoteBuilder.jsx, MAT_CATEGORIES in SettingsPage.jsx),
+  referenced as free-text strings (parent_category, category_key) with no
+  DB-level referential integrity. Making them user-editable means promoting
+  this to a real company_categories table — a structural change, not a
+  content change.
+- Renaming or archiving a category has real consequences for historical
+  data: existing quote_snapshots bake in category labels at the time of
+  snapshot; a live rename shouldn't silently alter what a past PDF/snapshot
+  shows. Precedent: the "existing quotes are not touched or recalculated"
+  principle from the per-item markup work applies here too — likely archive-
+  don't-delete (Xero's own pattern for chart-of-accounts entries with
+  historical transactions), not hard delete/rename-in-place.
+- **Editable categories** (flat, rename/add/archive) and **sub-categories**
+  (hierarchy) are two distinct features with different blast radius, not one:
+  editable-flat is a data-source change; hierarchy changes the *shape* of
+  every "group by category" operation in the app (Quote Summary rollups,
+  RECC checklist scope-of-works assumptions, and the not-yet-built quote/
+  contract PDF generator).
+- Sequencing question resolved (2026-07): proceed with PDF generation now
+  using the current fixed 9 categories; revisit category editability once
+  Simon has clarified the actual use case (how deep nesting genuinely needs
+  to go — likely much shallower than full accounting-style chart-of-accounts
+  depth, since these categories serve quote presentation to a domestic
+  customer, not tax/P&L structure). Building the PDF generator against a
+  category model that might still change would design it against a moving
+  target.
+
+Next step: Simon to think through the actual use case (what sub-categories
+he'd actually use day to day) before this gets scoped properly.
+
+**Quote/contract document generation — needs scoping session**
+Not yet designed. Simon wants to move away from the RECC document structure
+(considered unwieldy for customers) toward a more digestible customer-facing
+format, while still covering what's legally/compliance-necessary. Per-item
+markup work has now landed, so this is no longer blocked. Simon to re-share
+current RECC reference documents when scoping this properly.
+
+**Quote/contract document generation — needs scoping session**
+Not yet designed. Simon wants to move away from the RECC document structure
+(considered unwieldy for customers) toward a more digestible customer-facing
+format, while still covering what's legally/compliance-necessary. Depends on
+the per-item markup work above landing first, since the PDF needs a settled
+pricing model to render. Simon to re-share current RECC reference documents
+when scoping this properly.
+
+**RECC checklist — remove RECC-specific framing**
+The pre-send checklist in QuoteBuilder.jsx (CHECKLIST_SECTIONS, ReccChecklist
+component) is useful and should stay, but RECC membership is not universal
+among users and won't be an MCS requirement going forward. Remove "RECC"
+labelling/badges from the checklist items and section framing; keep the
+underlying checks (most reflect genuinely good practice regardless of RECC
+membership) reworded to stand on their own.
+
 **Pipe sizing PDF revision**
 The pipe sizing PDF was built against the old JSON blob storage format for pipe
 sections. That column no longer exists (pipe sections are now in their own
@@ -289,6 +359,20 @@ could theoretically probe. Before multi-company scale, every sub-resource PUT/
 DELETE should join back to projects.company_id and verify against req.user.companyId.
 One session to do this systematically across server.js.
 
+**api.updateQuote / PUT /api/quotes/:id payload audit**
+The quotes update handler in server.js uses the same hand-rolled, manually-
+listed payload pattern that api.updateRoom used before the buildRoomPayload
+consolidation (see 2026-06 session log). Every field added to the quotes
+payload (most recently advance_amount; imminently the per-item markup work)
+requires manually editing the SQL and the destructure in this one handler,
+with no whitelist helper and no safety net if a field is missed. Same bug
+class as the resolved api.updateRoom issue — deliberately deferred rather
+than fixed inline during the advance_amount bug fix (2026-07) and the
+per-item markup design work, to avoid conflating a structural refactor with
+either of those focused changes. Do this once, after the per-item markup
+work lands, so the audit accounts for the final field set rather than
+needing to be revisited twice more.
+
 **Auth hardening / SaaS auth layer**
 Current: bcrypt + JWT in httpOnly cookies, hand-rolled. Works fine for small
 scale. For a paid SaaS with multiple companies: consider Auth0 or Clerk (both
@@ -348,6 +432,16 @@ Parked — low frequency edge case.
 Manufacturers quote minimum modulation at varying conditions. Add a note and
 optional condition input field to make clear what the modulation check assumes.
 
+**MCS Quality Management System workflow**
+Simon has flagged the MCS QMS requirement and the associated document/folder
+workflow (currently managed manually outside the app) as a real pain point.
+Deliberately not scoped or actioned yet — flagged during the quote/pricing
+redesign session (2026-07) and explicitly parked to avoid scope creep into
+that work. Worth a dedicated discussion on whether/how OHL could reduce this
+admin burden, once the quote and document-generation work has landed — likely
+touches document storage (see Cloudflare R2 note below) and possibly the
+customer project share feature.
+
 ---
 
 ## Testing
@@ -388,6 +482,46 @@ pattern.
 ---
 
 ## Design decisions (rationale recorded)
+
+**Per-item markup, not per-category or blanket — quote pricing model redesign (planned)**
+The original quote pricing model (migration 011) used a single blanket
+markup_pct applied to every category, with an escape hatch (category_overrides)
+for typing in an absolute price when the blanket rate didn't fit. In practice
+this was too coarse: markup needs differ by category (e.g. 20% on heat pumps
+vs 30% on radiator valves/fittings, which carry higher transaction cost) and
+even within a single category, by item (e.g. MCS registration filed under
+"labour" needs 0% markup — it's a pass-through fee — while subcontracted
+labour on the same job might need a real markup).
+
+Decision: markup lives on the item, not the category or the quote.
+- `materials_list_items` gains `markup_pct` (per row, freely editable)
+- New `company_category_markup_defaults` table (company_id, category_key,
+  default_markup_pct) — Settings-managed, same shape as materials_library —
+  pre-fills new items' markup_pct based on category, but doesn't constrain
+  what an item is actually saved with
+- Category totals in the Quote Summary become pure read-only rollups:
+  sum of (unit_cost × quantity × (1 + markup_pct/100)) per category —
+  no editable input at the category level anymore
+- The old absolute-price override (quotes.category_overrides) becomes
+  unnecessary once per-item markup gives sufficient granularity — dropped
+  from the UI, though the column itself is left in place (not backfilled,
+  not dropped) since it's still read by old quotes' stored totals
+- quotes.markup_pct is likewise left in place but unused by new code
+
+Existing quotes are NOT touched or recalculated. materials_list_items.markup_pct
+defaults to 0 for pre-existing rows (an honest "no markup recorded" value, not
+an invented figure) and old quotes' already-computed totals
+(total_ex_vat/total_inc_vat etc. on the quotes table) are untouched — this was
+a deliberate choice to avoid any silent change to a quote that may already be
+issued or accepted. New markup only applies going forward, to new items or
+items explicitly edited after this ships.
+
+UI: MaterialRow's markup_pct field is hidden by default (revealed on hover/
+click, same convention as the existing save-to-library/delete icons) but the
+row's total always reflects it, with a muted indicator shown when an item's
+markup differs from its category's company default — preserves the ability
+to scan a category and spot anomalies (e.g. two labour lines with different
+treatment) without permanently widening every row.
 
 **Unheated space / party wall delta T — engineer inputs boundary temperature**
 Do not auto-derive the boundary temperature from a lookup table by space type.
@@ -482,12 +616,15 @@ on raw DB rows (snake_case) causes silent zero transmission loss because
 el.uValue is undefined. Safe: any React component receiving project via props.
 Unsafe: raw fetch() responses before loadProject() mapping.
 
-### Materials / quote data model (migration 011)
+### Materials / quote data model (migration 011; markup model superseded — see Design decisions)
 - materials_library: company-scoped reusable item templates
 - materials_list_items: job-level child lines, prices copied at time of use
 - quote_snapshots: immutable version history, JSONB blob per snapshot
 - labour_rate_cards + labour_rate_items: versioned company rate cards
-- quotes.markup_pct, category_overrides, rate_card_id: added in migration 011
+- quotes.markup_pct, category_overrides, rate_card_id: added in migration 011,
+  but markup_pct and category_overrides are legacy once the per-item markup
+  redesign ships — see "Per-item markup" design decision above. rate_card_id
+  remains current/in-use (unrelated to this change).
 
 ### Pipe sections data model (migration 010)
 Pipe sections are stored in the normalised pipe_sections table, not in a JSON
@@ -511,14 +648,127 @@ spread wins. See B15 and B16 for examples of this pattern causing bugs.
 - Any new field: migration → database.js → App.jsx loadProject() → App.jsx save handler
 
 ### Quote → materials relationship
-Materials list is internal cost tracking. Quote shows category totals to client.
-Markup applied at quote level (single %). Category overrides stored as JSONB
-on quotes.category_overrides — null means auto (materials + markup), a number
-means engineer override. Snapshots capture the full state at a point in time.
+Materials list is internal cost tracking. Quote shows category totals to
+client — computed as a rollup of each item's own markup_pct, not a single
+category-level or quote-level rate (see "Per-item markup" design decision).
+Snapshots capture the full state at a point in time.
 
 ---
 
 ## Session log
+
+### 2026-07 — Per-item markup implementation shipped; categories discussion parked
+
+**Feature shipped:**
+Per-item markup fully implemented per the design agreed in the prior session
+(see Design decisions — "Per-item markup, not per-category or blanket").
+
+- Migration 020: company_category_markup_defaults table (company_id,
+  category_key, default_markup_pct, UNIQUE(company_id, category_key));
+  materials_list_items.markup_pct column (default 0, not backfilled)
+- database.js: new companyCategoryMarkupDefaults object (getForCompany,
+  getOne, set — upsert via ON CONFLICT); materialsListItems.create() signature
+  changed to (projectId, companyId, data) — looks up company default via
+  getOne() when markupPct not explicitly supplied (explicit 0 is respected,
+  only undefined/null triggers fallback); materialsListItems.update() takes
+  markup_pct directly, no fallback logic (edits never silently revert to
+  policy); both import functions (importFromRadiatorSchedule,
+  importFromPipeSections) gained companyId parameter, look up the company
+  default once per import batch (not per row) and apply it to all imported
+  items — deliberate per Simon's instruction that imports (e.g. 10+ radiators)
+  should benefit from company policy the same way manual entry does
+- server.js: companyId threaded through to materialsListItems.create() and
+  both import routes via req.user?.companyId ?? null (anonymous sessions get
+  null → 0% markup, no company policy exists for them); two new routes,
+  GET/PUT /api/company/markup-defaults(/:categoryKey), requireAuth only
+  (anonymous users have no company to manage defaults for)
+- api.js: getMarkupDefaults, setMarkupDefault added, matching this file's
+  plain fetch().then(r => r.json()) convention (no wrapper abstraction exists
+  in this file — confirmed against actual source before writing, not assumed)
+- QuoteBuilder.jsx: MaterialRow gained markup_pct field, hover/click reveal
+  (matching the existing save-to-library/delete icon convention), muted
+  anomaly indicator shown when an item's markup differs from its category's
+  company default; QuoteSummary rewritten — blanket markup_pct input and
+  CategoryOverrideRow/absolute-override UI removed entirely, category rows
+  are now pure read-only rollups (materials total, marked-up total via new
+  markedUpSubtotal() helper); quotes.markup_pct and quotes.category_overrides
+  DB columns left in place, unused by new code (not dropped — still read by
+  any pre-existing quote rows, though none needed backfilling per the
+  decision not to touch existing quotes)
+- SettingsPage.jsx: markup defaults management nested as a sub-section
+  inside the existing Materials Library tab (Simon's call — conceptually
+  the same "categories" the tab already manages), not a new top-level tab
+
+Confirmed working and smoke-tested by Simon on local dev machine.
+
+**Bug found and fixed during this session (tooling, not app code):**
+migrate.js had no dotenv loading step, unlike server.js which does
+`require('dotenv').config(...)` at the top. Running `node server/migrate.js`
+directly failed to connect — DATABASE_URL was undefined in that process even
+though it's correctly set in .env, because nothing had loaded the .env file
+before migrate.js tried to read process.env.DATABASE_URL. Only worked
+previously via the Railway deploy command, where Railway injects the env var
+directly (dotenv.config() no-ops harmlessly there since there's no local
+.env file to find). Fixed by adding the same dotenv line to migrate.js that
+server.js already has. Pre-existing gap, not introduced by this session's
+work — root cause confirmed before applying the fix rather than adopting the
+inline `DATABASE_URL=... node migrate.js` workaround initially suggested,
+since that pattern risks someone eventually pasting a production connection
+string inline out of habit.
+
+**Design discussion — not actioned, logged for future scoping:**
+Editable/hierarchical materials categories raised by Simon after using the
+new markup feature (see Priority 1 — "Editable / hierarchical materials
+categories"). Deliberately not scoped in this session — identified as a
+structurally bigger change than it first appears (categories are currently
+a hardcoded closed enum, not a data model concept; hierarchy changes the
+shape of every category-grouping operation in the app, not just its source).
+Sequencing decided: proceed with quote/contract PDF generation next using
+the current fixed category set, rather than let PDF generation design get
+blocked on a category model that might still change.
+
+### 2026-07 — Input bug fixes (QuoteBuilder) and markup model design
+
+**Bugs fixed:**
+- Materials list row flicker while typing — the debounced-save "saving"
+  indicator in MaterialRow was conditionally rendered (mounted/unmounted),
+  changing the row's height when it appeared, pushing all content below it
+  down and back. Fixed by always rendering the indicator and toggling opacity
+  instead of presence, so row height never changes.
+- Quote summary category override input mangled typed figures (e.g. typing
+  "2000" over "1400.00" produced "2.00") — the input was fully controlled by
+  a derived value reformatted to 2dp on every keystroke, fighting cursor
+  position while typing. Extracted CategoryOverrideRow with local string
+  buffer, committing to parent state on blur/Enter only — matching the
+  existing MaterialRow local-state pattern.
+- Payment schedule "further advance" figure did not persist at all —
+  advance_amount was pure client-side state, never sent to the server and
+  never hydrated on load (four-layer rule violation; the column didn't exist
+  in the DB at all). Migration 019 adds quotes.advance_amount; PUT
+  /api/quotes/:id and QuoteBuilder.jsx load/save updated accordingly.
+
+**Design work (no code yet — see Design decisions above):**
+- Quote pricing model redesigned from blanket markup_pct + absolute
+  category_overrides to per-item markup_pct on materials_list_items, with
+  company-level per-category defaults (new company_category_markup_defaults
+  table) as a starting point rather than a constraint. Existing quotes
+  explicitly not touched or recalculated.
+- Noted but deferred: quotes update handler (PUT /api/quotes/:id) has the
+  same hand-rolled payload bug class as the resolved api.updateRoom issue —
+  tracked as a Priority 3 audit item, to be done once the per-item markup
+  fields land rather than mid-fix.
+- Noted but deferred: BUS grant amount/status has no input in the Quote
+  Summary UI despite the underlying project fields existing — surfaced while
+  diagnosing the advance_amount bug, not yet actioned.
+- Noted but deferred: MCS Quality Management System document/folder workflow
+  pain point — flagged by Simon, explicitly parked to avoid scope creep into
+  the pricing redesign; worth a dedicated session later.
+- RECC-specific framing in the pre-send checklist flagged for removal (RECC
+  membership not universal, not an MCS requirement going forward) — checks
+  themselves retained, just reworded; not yet implemented.
+- Quote/contract PDF generation scoping explicitly deferred until the
+  per-item markup work lands, since the PDF needs a settled pricing model to
+  render against.
 
 ### 2026-06 — Customer pack PDF, company details, plan gating
 

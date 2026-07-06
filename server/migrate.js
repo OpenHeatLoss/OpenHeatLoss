@@ -16,6 +16,8 @@
 // exactly as before. Each migration is a named async function. Add new
 // migrations at the bottom of the MIGRATIONS array.
 
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const { Pool } = require('pg');
 const { readFileSync } = require('fs');
 const path = require('path');
@@ -2153,6 +2155,24 @@ const MIGRATIONS = [
     run: async () => {
       await addColumnIfMissing('quotes', 'advance_amount', 'DOUBLE PRECISION NOT NULL DEFAULT 0');
       console.log('  Migration 019 complete: advance_amount added to quotes');
+    },
+  },
+  {
+    version: '020',
+    description: 'Per-item markup: company_category_markup_defaults table + materials_list_items.markup_pct',
+    run: async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS company_category_markup_defaults (
+          id                  SERIAL PRIMARY KEY,
+          company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          category_key        TEXT NOT NULL,
+          default_markup_pct  DOUBLE PRECISION NOT NULL DEFAULT 0,
+          updated_at          TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(company_id, category_key)
+        )
+      `);
+      await addColumnIfMissing('materials_list_items', 'markup_pct', 'DOUBLE PRECISION NOT NULL DEFAULT 0');
+      console.log('  Migration 020 complete: company_category_markup_defaults table + materials_list_items.markup_pct');
     },
   },
 ];

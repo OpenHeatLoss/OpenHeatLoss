@@ -483,13 +483,14 @@ const MAT_PRICING_MODES = [
 ];
 
 function MaterialsLibrarySettings() {
-  const [items,       setItems]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [editingId,   setEditingId]   = useState(null);
-  const [editDraft,   setEditDraft]   = useState({});
-  const [saving,      setSaving]      = useState(false);
-  const [filterCat,   setFilterCat]   = useState('all');
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [items,          setItems]          = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [editingId,      setEditingId]      = useState(null);
+  const [editDraft,      setEditDraft]      = useState({});
+  const [saving,         setSaving]         = useState(false);
+  const [filterCat,      setFilterCat]      = useState('all');
+  const [showAddForm,    setShowAddForm]    = useState(false);
+  const [markupDefaults, setMarkupDefaults] = useState([]);
   const [newItem, setNewItem] = useState({
     categoryKey:     'pipework',
     description:     '',
@@ -502,12 +503,26 @@ function MaterialsLibrarySettings() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await api.getMaterialsLibrary();
+      const [data, defaults] = await Promise.all([
+        api.getMaterialsLibrary(),
+        api.getMarkupDefaults().catch(() => []),
+      ]);
       setItems(Array.isArray(data) ? data : []);
+      setMarkupDefaults(Array.isArray(defaults) ? defaults : []);
     } catch (err) {
       console.error('Error loading materials library:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkupBlur = async (categoryKey, value) => {
+    const pct = parseFloat(value) || 0;
+    try {
+      const updated = await api.setMarkupDefault(categoryKey, pct);
+      setMarkupDefaults(Array.isArray(updated) ? updated : []);
+    } catch (err) {
+      console.error('Error saving markup default:', err);
     }
   };
 
@@ -801,6 +816,49 @@ function MaterialsLibrarySettings() {
                       </td>
                     </>
                   )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Markup defaults */}
+      <div className="mt-8">
+        <h4 className="font-semibold text-gray-800 mb-1">Default markup by category</h4>
+        <p className="text-sm text-gray-500 mb-4">
+          Default markup applied to new materials list items in this category. Adjustable per item on any job.
+        </p>
+        <table className="w-full text-sm border-collapse">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="text-left p-2 border border-gray-200">Category</th>
+              <th className="text-right p-2 border border-gray-200 w-32">Markup %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {MAT_CATEGORIES.map(cat => {
+              const saved = markupDefaults.find(d => d.category_key === cat.key);
+              const current = saved?.default_markup_pct ?? 0;
+              return (
+                <tr key={cat.key} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="p-2 border border-gray-200 text-gray-700">{cat.label}</td>
+                  <td className="p-1 border border-gray-200">
+                    <div className="relative flex items-center justify-end">
+                      <input
+                        type="number"
+                        defaultValue={current}
+                        key={current}
+                        min="-100"
+                        max="1000"
+                        step="1"
+                        onBlur={e => handleMarkupBlur(cat.key, e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                        className="w-24 text-sm text-right border border-gray-300 rounded px-2 py-1 pr-6 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <span className="absolute right-2 text-xs text-gray-400 pointer-events-none">%</span>
+                    </div>
+                  </td>
                 </tr>
               );
             })}

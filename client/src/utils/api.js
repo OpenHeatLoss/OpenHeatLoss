@@ -452,6 +452,20 @@ export const api = {
     }).then(r => r.json()),
 
   // ==========================================================
+  // COMPANY CATEGORY MARKUP DEFAULTS
+  // ==========================================================
+
+  getMarkupDefaults: () =>
+    fetch(`${API_BASE}/company/markup-defaults`).then(r => r.json()),
+
+  setMarkupDefault: (categoryKey, defaultMarkupPct) =>
+    fetch(`${API_BASE}/company/markup-defaults/${categoryKey}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultMarkupPct }),
+    }).then(r => r.json()),
+
+  // ==========================================================
   // LABOUR RATE CARDS
   // ==========================================================
 
