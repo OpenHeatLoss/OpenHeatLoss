@@ -455,6 +455,46 @@ function MaterialsCategory({
   );
 }
 
+function CategoryOverrideRow({ row, isOverridden, onCommit }) {
+  const [draft, setDraft] = useState(
+    (isOverridden ? row.quotePrice : row.withMarkup).toFixed(2)
+  );
+
+  // Re-sync local buffer when the underlying value changes for reasons
+  // other than this input's own edits — e.g. markup % changed elsewhere,
+  // or the override was reset via the ↺ button.
+  useEffect(() => {
+    setDraft((isOverridden ? row.quotePrice : row.withMarkup).toFixed(2));
+  }, [row.key, isOverridden, row.quotePrice, row.withMarkup]);
+
+  const commit = () => {
+    const parsed = parseFloat(draft) || 0;
+    onCommit(row.key, parsed);
+  };
+
+  return (
+    <div className="col-span-3">
+      <div className="relative">
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">£</span>
+        <input
+          type="number"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') { commit(); e.target.blur(); } }}
+          min="0"
+          step="0.01"
+          className={`w-full text-sm text-right border rounded pl-5 pr-2 py-1 focus:ring-1 focus:ring-blue-500 ${
+            isOverridden
+              ? 'border-amber-300 bg-amber-50 font-medium'
+              : 'border-gray-200 bg-gray-50'
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Quote summary — category totals + markup + VAT + BUS grant
 function QuoteSummary({
   materials, markupPct, setMarkupPct,
@@ -550,24 +590,11 @@ function QuoteSummary({
                     ? `£${row.withMarkup.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                     : '—'}
                 </div>
-                <div className="col-span-3">
-                  <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">£</span>
-                    <input
-                      type="number"
-                      value={isOverridden ? row.quotePrice.toFixed(2) : row.withMarkup.toFixed(2)}
-                      onChange={e => setCategoryOverride(row.key, parseFloat(e.target.value) || 0)}
-                      min="0"
-                      step="0.01"
-                      placeholder={row.withMarkup.toFixed(2)}
-                      className={`w-full text-sm text-right border rounded pl-5 pr-2 py-1 focus:ring-1 focus:ring-blue-500 ${
-                        isOverridden
-                          ? 'border-amber-300 bg-amber-50 font-medium'
-                          : 'border-gray-200 bg-gray-50'
-                      }`}
-                    />
-                  </div>
-                </div>
+                <CategoryOverrideRow
+                  row={row}
+                  isOverridden={isOverridden}
+                  onCommit={setCategoryOverride}
+                />
                 <div className="col-span-1 text-center">
                   {isOverridden && (
                     <button
