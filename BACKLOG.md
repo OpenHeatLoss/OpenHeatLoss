@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: June 2026 (security hardening & Strict Mode boot fix)
+Last updated: June 2026 (security hardening, Strict Mode boot fix, element type enhancements backlog)
 
 ---
 
@@ -119,6 +119,44 @@ Implementation: pass currentUser into QuoteBuilder.jsx; derive
 canUseQuote = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
 render quote and checklist sections conditionally or with disabled overlay.
 Mirrors the pattern used for the customer pack button in RadiatorSizing.jsx.
+
+**Element type data integrity enhancements**
+Two related improvements to prevent silent heat loss errors caused by incorrect
+default ΔT values on element creation. Both follow the Ground Floor (Slab) /
+Ground Floor (Suspended) type-split precedent already in the codebase.
+
+*1. Ceiling (below unheated loft) element type*
+Currently the tool uses RdSAP's "insulation at joists vs insulation at rafters"
+framing for roof/ceiling elements. This is technically correct (it identifies
+where the thermal boundary sits) but is opaque to engineers unfamiliar with
+the RdSAP convention — "insulation at joists" does not obviously mean "this
+element is a ceiling losing heat to a cold loft." Discovered during real-project
+review: easy to miscategorise, and the error inflates heat loss for that room.
+
+Add "Ceiling (below unheated loft)" as an explicit element type, mirroring the
+Ground Floor split. This makes the thermal boundary unambiguous in the UI
+without requiring prior knowledge of the RdSAP convention. The RdSAP
+"insulation at joists" type can remain for backwards compatibility or be
+migrated. Carries full external design ΔT (same as an external wall), not zero.
+
+In-app help implication: the existing in-app help backlog item should include
+a tooltip for roof/ceiling element types explaining the thermal boundary
+distinction — this is the most common miscategorisation point for new users.
+
+*2. Auto-set customDeltaT = 0 for elements between heated spaces*
+New elements currently inherit the room's full design ΔT regardless of type.
+For internal elements between two heated spaces (internal wall, internal
+ceiling to heated room above, internal floor to heated room below) this
+silently overstates heat loss. Zero is the correct default and the safer
+error direction — an underestimate here is minor; an overestimate propagates
+into radiator and pipe sizing.
+
+Prerequisite: confirm ELEMENT_TYPES already distinguishes "internal to heated
+space" from "internal to unheated space" (or add that distinction first).
+"Ceiling (below unheated loft)" and "Roof (insulation at joists)" must
+explicitly carry the full external ΔT and must not be included in the zero-ΔT
+auto-set group. Implementation follows the existing updateElement handler
+pattern for Ground Floor (Slab).
 
 **Decimal place consistency sweep**
 Several fields display excessive decimal places (up to 12dp in element area

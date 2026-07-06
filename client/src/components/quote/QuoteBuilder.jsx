@@ -246,7 +246,9 @@ function MaterialRow({ item, onUpdate, onDelete, onSaveToLibrary, libraryItems }
       {/* Total */}
       <div className="col-span-1 text-sm text-right text-gray-700 font-medium pr-1">
         £{total.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        {saving && <span className="block text-xs text-gray-300 font-normal">saving</span>}
+          <span className={`block text-xs text-gray-300 font-normal ${saving ? 'opacity-100' : 'opacity-0'}`}>
+            saving
+          </span>
       </div>
 
       {/* Actions */}
