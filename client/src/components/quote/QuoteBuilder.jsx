@@ -495,6 +495,7 @@ function QuoteSummary({
   vatRate, setVatRate,
   depositAmount, setDepositAmount,
   advanceAmount, setAdvanceAmount,
+  advanceTrigger, setAdvanceTrigger,
   hourlyRate, setHourlyRate,
   busGrant,
 }) {
@@ -621,6 +622,16 @@ function QuoteSummary({
               type="number"
               value={advanceAmount || ''}
               onChange={e => setAdvanceAmount(parseFloat(e.target.value) || 0)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Further advance triggered by</label>
+            <input
+              type="text"
+              value={advanceTrigger}
+              onChange={e => setAdvanceTrigger(e.target.value)}
+              placeholder="e.g. on receipt of goods on site"
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -998,7 +1009,7 @@ function ReccChecklist({ checklist, setChecklist }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function QuoteBuilder({ project }) {
+export default function QuoteBuilder({ project, currentCompany, currentUser }) {
   // Quote header state
   const [quoteId,       setQuoteId]       = useState(null);
   const [reference,     setReference]     = useState('');
@@ -1007,11 +1018,15 @@ export default function QuoteBuilder({ project }) {
   const [validDays,     setValidDays]     = useState(30);
   const [vatRate,       setVatRate]       = useState(0);
   const [depositAmount, setDepositAmount] = useState(0);
-  const [advanceAmount, setAdvanceAmount] = useState(0);
-  const [hourlyRate,    setHourlyRate]    = useState(0);
+  const [advanceAmount,  setAdvanceAmount]  = useState(0);
+  const [advanceTrigger, setAdvanceTrigger] = useState('on receipt of goods on site');
+  const [hourlyRate,     setHourlyRate]     = useState(0);
   const [rateCardId,    setRateCardId]    = useState(null);
   const [checklist,     setChecklist]     = useState(emptyChecklist);
   const [markupDefaults, setMarkupDefaults] = useState([]);
+  const [jobSpecification,        setJobSpecification]        = useState('');
+  const [installationEstimate,    setInstallationEstimate]    = useState('');
+  const [subcontractorDisclosure, setSubcontractorDisclosure] = useState('');
 
   // Materials list state
   const [materials,      setMaterials]     = useState([]);
@@ -1020,9 +1035,11 @@ export default function QuoteBuilder({ project }) {
   const [importing,      setImporting]     = useState(null); // 'radiators' | 'pipe'
 
   // UI state
-  const [loading,   setLoading]   = useState(true);
-  const [saving,    setSaving]    = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [saving,         setSaving]         = useState(false);
+  const [lastSaved,      setLastSaved]      = useState(null);
+  const [generatingPack, setGeneratingPack] = useState(false);
+  const canGeneratePack = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
 
   // ── Load on mount ──
   useEffect(() => {
@@ -1051,8 +1068,12 @@ export default function QuoteBuilder({ project }) {
         setVatRate(0);
         setDepositAmount(quote.deposit_amount || 0);
         setAdvanceAmount(quote.advance_amount || 0);
+        setAdvanceTrigger(quote.advance_trigger || 'on receipt of goods on site');
         setHourlyRate(quote.hourly_rate || 0);
         setRateCardId(quote.rate_card_id || null);
+        setJobSpecification(quote.job_specification || '');
+        setInstallationEstimate(quote.installation_estimate || '');
+        setSubcontractorDisclosure(quote.subcontractor_disclosure || '');
 
         if (quote.notes) {
           try { setChecklist(JSON.parse(quote.notes)); } catch { /* keep default */ }
@@ -1104,7 +1125,11 @@ export default function QuoteBuilder({ project }) {
         clientPays,
         depositAmount,
         advanceAmount,
+        advanceTrigger,
         hourlyRate,
+        jobSpecification,
+        installationEstimate,
+        subcontractorDisclosure,
         checklist,
         rateCardId,
       });
@@ -1116,8 +1141,9 @@ export default function QuoteBuilder({ project }) {
     }
   }, [
     quoteId, surveyBasis, preparedBy, validDays, vatRate,
-    depositAmount, advanceAmount, hourlyRate, checklist,
-    rateCardId, materials,
+    depositAmount, advanceAmount, advanceTrigger, hourlyRate,
+    jobSpecification, installationEstimate, subcontractorDisclosure,
+    checklist, rateCardId, materials,
   ]);
 
   useEffect(() => {
@@ -1125,6 +1151,18 @@ export default function QuoteBuilder({ project }) {
     const t = setTimeout(save, 1500);
     return () => clearTimeout(t);
   }, [save, quoteId, loading]);
+
+  // ── Scope of Works ──
+  const handleResetJobSpecification = async () => {
+    if (!window.confirm('Replace the current scope of works with your company\'s standard template? This cannot be undone.')) return;
+    try {
+      const { template } = await api.getJobSpecificationDefault();
+      setJobSpecification(template || '');
+    } catch (error) {
+      console.error('Error fetching job specification default:', error);
+      alert('Could not fetch the company default. Please try again.');
+    }
+  };
 
   // ── Materials CRUD ──
   const handleAddItem = async (categoryKey) => {
@@ -1304,6 +1342,106 @@ export default function QuoteBuilder({ project }) {
   }, [quoteId, reference, preparedBy, surveyBasis, validDays,
       materials, rateCardId, vatRate]);
 
+  // ── Quote pack generation ──
+  const handleGenerateQuotePack = async () => {
+    setGeneratingPack(true);
+    try {
+      const categoryRows = CATEGORIES.map(cat => ({
+        key: cat.key,
+        label: cat.label,
+        materialsTotal: categorySubtotal(materials, cat.key),
+        quotePrice: markedUpSubtotal(materials, cat.key),
+      }));
+      const totalExVat  = categoryRows.reduce((s, r) => s + r.quotePrice, 0);
+      const vatAmount   = totalExVat * (vatRate / 100);
+      const totalIncVat = totalExVat + vatAmount;
+      const busGrantAmt = project.busGrantStatus !== 'not_applicable'
+        ? (project.busGrantAmount || 0) : 0;
+      const clientPays  = Math.max(0, totalIncVat - busGrantAmt);
+      const balanceOnCompletion = Math.max(0, clientPays - depositAmount - advanceAmount);
+
+      const propertyAddress = [
+        project.customerAddressLine1, project.customerAddressLine2,
+        project.customerTown, project.customerCounty, project.customerPostcode,
+      ].filter(Boolean).join(', ');
+
+      const quoteData = {
+        reference, preparedBy, surveyBasis, validDays,
+        categoryRows,
+        vatRate, vatAmount, totalExVat, totalIncVat,
+        busGrant: busGrantAmt, clientPays,
+        depositAmount, advanceAmount, advanceTrigger, hourlyRate,
+        balanceOnCompletion,
+        jobSpecification, installationEstimate, subcontractorDisclosure,
+      };
+
+      const clientData = {
+        title: project.customerTitle || '', firstName: project.customerFirstName || '',
+        surname: project.customerSurname || '', propertyAddress,
+        quoteRef: reference, companyName: currentCompany?.name || '',
+      };
+
+      // MCS performance — same conditional pattern as RadiatorSizing.jsx's
+      // handleGenerateCustomerPack
+      let mcsPerformanceData = null;
+      const s031 = project.mcsCalculationSnapshot;
+      if (s031 && s031.spf && s031.spf > 0) {
+        mcsPerformanceData = {
+          projectName: project.name || 'Untitled Project',
+          location: project.location || '',
+          designer: project.designer || '',
+          customerTitle: project.customerTitle || '',
+          customerFirstName: project.customerFirstName || '',
+          customerSurname: project.customerSurname || '',
+          customerAddress: propertyAddress,
+          customerPostcode: project.customerPostcode || '',
+          customerTelephone: project.customerTelephone || '',
+          customerEmail: project.customerEmail || '',
+          spaceHeatingDemand: s031.spaceHeatingDemand,
+          hotWaterDemand: s031.hotWaterDemand,
+          totalFloorArea: s031.totalFloorArea,
+          wattsPerM2: s031.wattsPerM2,
+          heatPumpCapacity: s031.heatPumpCapacity,
+          heatPumpType: s031.heatPumpType,
+          systemProvides: project.mcsSystemProvides === 'space_and_hw' ? 'Space heat and hot water' :
+            project.mcsSystemProvides === 'space_only' ? 'Space heating only' : 'Hybrid',
+          emitterType: project.mcsEmitterType === 'existing_radiators' ? 'Existing radiators' :
+            project.mcsEmitterType === 'upgraded_radiators' ? 'Mostly upgraded radiators' :
+            project.mcsEmitterType === 'mostly_ufh' ? 'Mostly underfloor' : '50% radiators, 50% UFH',
+          flowTempBand: s031.flowTempBand,
+          spf: s031.spf,
+          lowEstimate: s031.lowEstimate,
+          highEstimate: s031.highEstimate,
+          stars: s031.stars,
+          warningNotes: s031.warningNotes,
+        };
+      }
+
+      const response = await api.generateQuotePack({ quoteData, clientData, mcsPerformanceData });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url  = window.URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        const clientName = [project.customerFirstName, project.customerSurname].filter(Boolean).join('_') || 'Customer';
+        a.download = `${clientName}_Quote_Pack_${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || 'Failed to generate quote pack.');
+      }
+    } catch (error) {
+      console.error('Error generating quote pack:', error);
+      alert('Error generating quote pack. Please try again.');
+    } finally {
+      setGeneratingPack(false);
+    }
+  };
+
   // ── New radiators in schedule — badge count ──
   const newRadiatorCount = project.rooms
     ? project.rooms.reduce((sum, room) =>
@@ -1341,12 +1479,36 @@ export default function QuoteBuilder({ project }) {
           <h2 className="text-2xl font-bold text-gray-800">Quote</h2>
           <div className="text-sm text-gray-500 mt-0.5">Ref: {reference}</div>
         </div>
-        <div className="text-xs text-gray-400">
-          {saving
-            ? 'Saving...'
-            : lastSaved
-              ? `Saved ${lastSaved.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-              : ''}
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-gray-400">
+            {saving
+              ? 'Saving...'
+              : lastSaved
+                ? `Saved ${lastSaved.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+                : ''}
+          </div>
+          {canGeneratePack ? (
+            <button
+              onClick={handleGenerateQuotePack}
+              disabled={generatingPack}
+              title={
+                !currentCompany?.quote_cover_letter_template && !currentCompany?.contract_terms_template
+                  ? 'Tip: add your quote cover letter and contract wording in Settings → Company Details'
+                  : 'Generate quote, cover letter, and contract pack'
+              }
+              className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition"
+            >
+              {generatingPack ? '⏳ Generating pack...' : '📦 Generate Quote Pack'}
+            </button>
+          ) : (
+            <button
+              disabled
+              title="Quote pack generation is available on the multi-project plan"
+              className="bg-gray-200 text-gray-400 px-5 py-2 rounded font-semibold cursor-not-allowed"
+            >
+              📦 Generate Quote Pack
+            </button>
+          )}
         </div>
       </div>
 
@@ -1446,6 +1608,53 @@ export default function QuoteBuilder({ project }) {
         ))}
       </div>
 
+      {/* ── SCOPE OF WORKS ── */}
+      <div className="bg-white border border-gray-200 rounded-lg p-5 mt-4">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-semibold text-gray-800">Scope of Works</h3>
+          <button
+            onClick={handleResetJobSpecification}
+            className="text-xs text-gray-500 hover:text-gray-700 underline transition"
+          >
+            Reset to company default
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 mb-3">
+          Plain-English description of the work — pre-filled from your company's
+          standard scope, edit to reflect this specific job.
+        </p>
+        <textarea
+          value={jobSpecification}
+          onChange={e => setJobSpecification(e.target.value)}
+          rows={8}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed resize-y"
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Estimated installation time</label>
+            <input
+              type="text"
+              value={installationEstimate}
+              onChange={e => setInstallationEstimate(e.target.value)}
+              placeholder="e.g. 2–3 days"
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Sub-contracted works (if any)</label>
+            <input
+              type="text"
+              value={subcontractorDisclosure}
+              onChange={e => setSubcontractorDisclosure(e.target.value)}
+              placeholder="Leave blank if none"
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* ── QUOTE SUMMARY ── */}
       <QuoteSummary
         materials={materials}
@@ -1455,6 +1664,8 @@ export default function QuoteBuilder({ project }) {
         setDepositAmount={setDepositAmount}
         advanceAmount={advanceAmount}
         setAdvanceAmount={setAdvanceAmount}
+        advanceTrigger={advanceTrigger}
+        setAdvanceTrigger={setAdvanceTrigger}
         hourlyRate={hourlyRate}
         setHourlyRate={setHourlyRate}
         busGrant={project.busGrantStatus !== 'not_applicable' && project.busGrantStatus

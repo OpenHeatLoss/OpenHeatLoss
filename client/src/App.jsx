@@ -1858,7 +1858,7 @@ const deleteProject = async (id) => {
               <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSection={savePipeSection} onSave={saveDesignParams} />
             )}
             {activeTab === 'quote' && (
-              <QuoteBuilder project={currentProject} />
+              <QuoteBuilder project={currentProject} currentCompany={currentCompany} currentUser={currentUser} />
             )}
           </div>
         </div>

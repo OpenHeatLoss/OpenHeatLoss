@@ -1390,6 +1390,42 @@ Kind regards,
 {company_phone}
 {company_email}`;
 
+const QUOTE_COVER_LETTER_DEFAULT = `Dear {client_first_name},
+
+Thank you for the opportunity to quote for your heat pump installation at {property_address}.
+
+Please find enclosed your quotation, reference {quote_ref}. The total cost of the works is £{total_inc_vat} inc VAT{bus_grant_line}, leaving £{client_pays} for you to pay.
+
+Payment is arranged in three stages: a deposit of £{deposit_amount} on confirmation of order, a further advance of £{advance_amount} {advance_trigger}, and the balance on commissioning.
+
+This quotation is valid for {valid_days} days from the date above. Please take some time to review the enclosed documents, including the terms and conditions and your cancellation rights, before signing.
+
+If you have any questions, I'm happy to talk you through any part of this.
+
+Kind regards,
+
+{company_name}
+{company_phone}
+{company_email}`;
+
+const QUOTE_MERGE_TOKENS = [
+  { token: '{client_first_name}',  desc: "Client's first name" },
+  { token: '{client_surname}',     desc: "Client's surname" },
+  { token: '{client_full_name}',   desc: 'Full name including title' },
+  { token: '{property_address}',  desc: 'Installation address' },
+  { token: '{quote_ref}',          desc: 'Quote reference number' },
+  { token: '{total_inc_vat}',      desc: 'Total cost inc VAT, before any grant' },
+  { token: '{bus_grant_line}',     desc: 'Auto-generated grant clause (blank if no grant applies)' },
+  { token: '{client_pays}',        desc: 'Final amount due after any grant deduction' },
+  { token: '{deposit_amount}',     desc: 'Deposit amount' },
+  { token: '{advance_amount}',     desc: 'Further advance amount' },
+  { token: '{advance_trigger}',    desc: 'Event that triggers the further advance payment' },
+  { token: '{valid_days}',         desc: 'Number of days the quote remains valid' },
+  { token: '{company_name}',       desc: 'Your company name' },
+  { token: '{company_phone}',      desc: 'Your phone number' },
+  { token: '{company_email}',      desc: 'Your email address' },
+];
+
 const MERGE_TOKENS = [
   { token: '{client_first_name}',  desc: "Client's first name" },
   { token: '{client_surname}',     desc: "Client's surname" },
@@ -1408,11 +1444,19 @@ function CompanyDetails() {
     name: '', mcsNumber: '', reccNumber: '',
     address: '', postcode: '', email: '', phone: '', website: '',
     coverLetterTemplate: '',
+    quoteCoverLetterTemplate: QUOTE_COVER_LETTER_DEFAULT,
+    importantInformationTemplate: '',
+    defaultJobSpecificationTemplate: '',
+    contractTermsTemplate: '',
+    cancellationFormTemplate: '',
+    expressRequestTemplate: '',
+    warrantyTemplate: '',
   });
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
-  const [showTokens, setShowTokens] = useState(false);
+  const [showTokens,      setShowTokens]      = useState(false);
+  const [showQuoteTokens, setShowQuoteTokens] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -1428,7 +1472,14 @@ function CompanyDetails() {
           email:               data.email                 || '',
           phone:               data.phone                 || '',
           website:             data.website               || '',
-          coverLetterTemplate: data.cover_letter_template || '',
+          coverLetterTemplate:      data.cover_letter_template      || '',
+          quoteCoverLetterTemplate:       data.quote_cover_letter_template       || QUOTE_COVER_LETTER_DEFAULT,
+          importantInformationTemplate:   data.important_information_template   || '',
+          defaultJobSpecificationTemplate: data.default_job_specification_template || '',
+          contractTermsTemplate:          data.contract_terms_template          || '',
+          cancellationFormTemplate:       data.cancellation_form_template       || '',
+          expressRequestTemplate:         data.express_request_template         || '',
+          warrantyTemplate:               data.warranty_template                || '',
         });
       } catch (err) {
         console.error('Error loading company:', err);
@@ -1466,6 +1517,18 @@ function CompanyDetails() {
   const resetTemplate = () => {
     if (window.confirm('Reset to the default template? Your current text will be lost.')) {
       handleChange('coverLetterTemplate', COVER_LETTER_DEFAULT);
+    }
+  };
+
+  const insertQuoteToken = (token) => {
+    handleChange('quoteCoverLetterTemplate',
+      (form.quoteCoverLetterTemplate || QUOTE_COVER_LETTER_DEFAULT) + token
+    );
+  };
+
+  const resetQuoteTemplate = () => {
+    if (window.confirm('Reset to the default quote cover letter? Your current text will be lost.')) {
+      handleChange('quoteCoverLetterTemplate', QUOTE_COVER_LETTER_DEFAULT);
     }
   };
 
@@ -1566,6 +1629,133 @@ function CompanyDetails() {
           </button>
           <span className="text-xs text-gray-400">{templateValue.length} characters</span>
         </div>
+      </div>
+
+      {/* Quote cover letter template */}
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Quote cover letter template</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Sent with the quote/contract pack — separate from the heat-loss report
+          cover letter above, since it covers price and payment rather than
+          calculation results.
+        </p>
+
+        <div className="mb-3">
+          <button
+            onClick={() => setShowQuoteTokens(v => !v)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium transition"
+          >
+            {showQuoteTokens ? '▲ Hide merge tokens' : '▼ Show merge tokens'}
+          </button>
+          {showQuoteTokens && (
+            <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700 font-semibold mb-2">
+                Click a token to append it to the letter:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {QUOTE_MERGE_TOKENS.map(({ token, desc }) => (
+                  <button
+                    key={token}
+                    onClick={() => insertQuoteToken(token)}
+                    title={desc}
+                    className="text-xs font-mono bg-white border border-blue-300 text-blue-700
+                               px-2 py-1 rounded hover:bg-blue-100 transition"
+                  >
+                    {token}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-blue-500 mt-2">Hover a token to see what it inserts.</p>
+            </div>
+          )}
+        </div>
+
+        <textarea
+          value={form.quoteCoverLetterTemplate}
+          onChange={e => handleChange('quoteCoverLetterTemplate', e.target.value)}
+          rows={14}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     leading-relaxed resize-y"
+          spellCheck={true}
+        />
+        <div className="flex justify-between items-center mt-2">
+          <button
+            onClick={resetQuoteTemplate}
+            className="text-xs text-gray-500 hover:text-gray-700 underline transition"
+          >
+            Reset to default
+          </button>
+          <span className="text-xs text-gray-400">{form.quoteCoverLetterTemplate.length} characters</span>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Important information</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Standard information included early in the pack — data protection
+          notice, complaints procedure, insurance details, general scheme
+          background. Same for every job; edited rarely. Left blank by default —
+          see note on compliance documents below.
+        </p>
+        <textarea
+          value={form.importantInformationTemplate}
+          onChange={e => handleChange('importantInformationTemplate', e.target.value)}
+          rows={10}
+          placeholder="Paste your standard information here"
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed resize-y"
+        />
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Default scope of works</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Your standard job description — system flush, commissioning, weather
+          compensation setup, monitoring, etc. Pre-fills each new quote's Scope
+          of Works section, which is then edited per job in the Materials &
+          Quote tab.
+        </p>
+        <textarea
+          value={form.defaultJobSpecificationTemplate}
+          onChange={e => handleChange('defaultJobSpecificationTemplate', e.target.value)}
+          rows={8}
+          placeholder="e.g. Installation includes full system flush, commissioning to manufacturer specification, weather compensation setup and adjustment, and remote monitoring handover."
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed resize-y"
+        />
+      </div>
+
+      {/* Compliance documents — blank by default, no seeded content */}
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-1">Contract & compliance documents</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Paste your business's own approved wording for each document below.
+          These are left blank deliberately — trade body model wording (e.g. RECC)
+          is typically copyrighted, and legal wording is your responsibility to
+          source and approve, not something this tool provides. Any document left
+          blank shows a clear placeholder in the generated pack rather than being
+          silently omitted.
+        </p>
+
+        {[
+          { key: 'contractTermsTemplate',    label: 'Contract terms & conditions' },
+          { key: 'cancellationFormTemplate', label: 'Cancellation form' },
+          { key: 'expressRequestTemplate',   label: 'Express request form (work to start early)' },
+          { key: 'warrantyTemplate',         label: 'Installer warranty' },
+        ].map(({ key, label }) => (
+          <div key={key} className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
+            <textarea
+              value={form[key]}
+              onChange={e => handleChange(key, e.target.value)}
+              rows={8}
+              placeholder="Paste your approved wording here"
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono
+                         focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed resize-y"
+            />
+          </div>
+        ))}
       </div>
 
       {/* Save */}

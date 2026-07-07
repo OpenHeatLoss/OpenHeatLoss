@@ -292,5 +292,111 @@ module.exports = function pdfRoutes(requireAuth, companies) {
     }
   });
 
+  // ── Quote & Contract Pack (combined PDF) ─────────────────────────────────
+  //
+  // POST /api/generate-pdf/quote-pack
+  // Requires authentication — fetches company data server-side (templates).
+  // All quote/materials/totals data is assembled client-side by QuoteBuilder.jsx,
+  // which already holds the live, computed figures (including BUS grant
+  // netting) — the route does not re-derive any of this.
+  //
+  // Body shape:
+  // {
+  //   quoteData: {
+  //     reference, preparedBy, surveyBasis, validDays,
+  //     categoryRows: [{ key, label, materialsTotal, quotePrice }],
+  //     materials: [{ parent_category, description, quantity, unit_cost,
+  //                   markup_pct, total_cost, marked_up_total }],
+  //     vatRate, vatAmount, totalExVat, totalIncVat,
+  //     busGrant, clientPays,
+  //     depositAmount, advanceAmount, advanceTrigger, hourlyRate,
+  //     balanceOnCompletion,
+  //   },
+  //   clientData: { title, firstName, surname, propertyAddress, quoteRef },
+  //   mcsPerformanceData: { ... } | null,
+  // }
+  router.post('/generate-pdf/quote-pack', requireAuth, async (req, res) => {
+    const tempFiles = [];
+    try {
+      const companyId = req.user.companyId;
+      const company = await companies.getById(companyId);
+      if (!company) return res.status(404).json({ error: 'Company not found' });
+
+      const { quoteData, clientData = {}, mcsPerformanceData } = req.body;
+      if (!quoteData) return res.status(400).json({ error: 'quoteData is required' });
+
+      const includeMcsPerf = mcsPerformanceData && Object.keys(mcsPerformanceData).length > 0;
+      const isReccMember = !!(company.recc_number && company.recc_number.trim());
+
+      // ── Quote cover letter ────────────────────────────────────────────────
+      const coverLetterData = {
+        company: {
+          name: company.name, phone: company.phone, email: company.email,
+          address: company.address, mcsNumber: company.mcs_number,
+          quoteCoverLetterTemplate: company.quote_cover_letter_template || null,
+        },
+        client: clientData,
+        quote: quoteData,
+      };
+
+      // ── Assemble in parallel where independent ───────────────────────────
+      const [coverPdf, importantInfoPdf, expressRequestPdf, quotePdf] = await Promise.all([
+        runPythonScript('generate_quote_cover_letter_pdf.py', coverLetterData, 'quote_cover'),
+        runPythonScript('generate_important_information_pdf.py', {
+          template: company.important_information_template || null,
+          client: clientData,
+        }, 'important_info'),
+        runPythonScript('generate_express_request_pdf.py', {
+          template: company.express_request_template || null,
+          client: clientData,
+        }, 'express_request'),
+        runPythonScript('generate_quote_pdf.py', { quote: quoteData, client: clientData, company: { name: company.name } }, 'quote'),
+      ]);
+      tempFiles.push(coverPdf, importantInfoPdf, expressRequestPdf, quotePdf);
+
+      let mcsPerformancePdf = null;
+      if (includeMcsPerf) {
+        mcsPerformancePdf = await runPythonScript('generate_mcs_performance_pdf.py', mcsPerformanceData, 'mcs_perf');
+        tempFiles.push(mcsPerformancePdf);
+      }
+
+      const [contractPdf, cancellationPdf, warrantyPdf] = await Promise.all([
+        runPythonScript('generate_contract_pdf.py', {
+          template: company.contract_terms_template || null, client: clientData,
+        }, 'contract'),
+        runPythonScript('generate_cancellation_form_pdf.py', {
+          template: company.cancellation_form_template || null, client: clientData,
+        }, 'cancellation'),
+        runPythonScript('generate_warranty_pdf.py', {
+          template: company.warranty_template || null, client: clientData,
+        }, 'warranty'),
+      ]);
+      tempFiles.push(contractPdf, cancellationPdf, warrantyPdf);
+
+      // ── Merge in document order ───────────────────────────────────────────
+      // Cover letter → important information → express request → quote →
+      // MCS performance estimate (if present) → contract → cancellation →
+      // warranty. RECC leaflet/membership content, if ever added, would go
+      // last and only if isReccMember.
+      const mergedPdf = await mergePdfs(
+        [coverPdf, importantInfoPdf, quotePdf, expressRequestPdf, mcsPerformancePdf, contractPdf, cancellationPdf, warrantyPdf],
+        'quote_pack'
+      );
+      tempFiles.push(mergedPdf);
+
+      const clientName = [clientData.firstName, clientData.surname].filter(Boolean).join('_') || 'Customer';
+      const filename = `${clientName}_Quote_Pack.pdf`;
+      await sendPdf(res, mergedPdf, filename);
+
+    } catch (err) {
+      console.error('Error generating quote pack:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to generate quote pack' });
+    } finally {
+      for (const f of tempFiles) {
+        if (f) await fs.unlink(f).catch(() => {});
+      }
+    }
+  });
+
   return router;
 };

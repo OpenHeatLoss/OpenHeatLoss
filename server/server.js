@@ -1646,15 +1646,25 @@ app.post('/api/projects/:id/quotes', requireAuthOrAnon, async (req, res) => {
 
     const reference = `${year}-${String(count + 1).padStart(3, '0')}`;
 
+    // Pre-fill job_specification from the company's current default template.
+    // Uses the CURRENT default at creation time (not a frozen snapshot) — the
+    // engineer can always reset to the live default via the QuoteBuilder button.
+    const companyId = req.user?.companyId ?? null;
+    let jobSpecificationSeed = null;
+    if (companyId) {
+      const company = await companies.getById(companyId);
+      jobSpecificationSeed = company?.default_job_specification_template || null;
+    }
+
     const insertRes = await pool.query(
       `INSERT INTO quotes
          (project_id, reference, version, status, prepared_by,
           valid_days, survey_basis, total_ex_vat, vat_amount,
           total_inc_vat, bus_grant, client_pays, deposit_amount,
-          hourly_rate, issued_at)
-       VALUES ($1, $2, 1, 'draft', $3, 30, 'full', 0, 0, 0, 7500, 0, 0, 0, NOW())
+          hourly_rate, job_specification, issued_at)
+       VALUES ($1, $2, 1, 'draft', $3, 30, 'full', 0, 0, 0, 7500, 0, 0, 0, $4, NOW())
        RETURNING *`,
-      [req.params.id, reference, req.body.preparedBy || '']
+      [req.params.id, reference, req.body.preparedBy || '', jobSpecificationSeed]
     );
     const newQuote = insertRes.rows[0];
 
@@ -1678,13 +1688,16 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
          status = $1, survey_basis = $2, prepared_by = $3,
          valid_days = $4, total_ex_vat = $5, vat_amount = $6,
          total_inc_vat = $7, bus_grant = $8, client_pays = $9,
-         deposit_amount = $10, advance_amount = $11, hourly_rate = $12,
-         notes = $13,
-         markup_pct = $14,
-         category_overrides = $15,
-         rate_card_id = $16,
+         deposit_amount = $10, advance_amount = $11, advance_trigger = $12,
+         hourly_rate = $13,
+         job_specification = $14, installation_estimate = $15,
+         subcontractor_disclosure = $16,
+         notes = $17,
+         markup_pct = $18,
+         category_overrides = $19,
+         rate_card_id = $20,
          updated_at = NOW()
-       WHERE id = $17`,
+       WHERE id = $21`,
       [
         d.status || 'draft',
         d.surveyBasis || 'full',
@@ -1697,7 +1710,11 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
         d.clientPays || 0,
         d.depositAmount || 0,
         d.advanceAmount || 0,
+        d.advanceTrigger || 'on receipt of goods on site',
         d.hourlyRate || 0,
+        d.jobSpecification ?? null,
+        d.installationEstimate ?? null,
+        d.subcontractorDisclosure ?? null,
         d.checklist ? JSON.stringify(d.checklist) : null,
         d.markupPct || 0,
         d.categoryOverrides ? JSON.stringify(d.categoryOverrides) : null,
@@ -1709,6 +1726,20 @@ app.put('/api/quotes/:id', requireAuthOrAnon, async (req, res) => {
   } catch (error) {
     console.error('Error updating quote:', error);
     res.status(500).json({ error: 'Failed to update quote' });
+  }
+});
+
+// GET /api/company/job-specification-default
+// Used by the "reset to company default" button in QuoteBuilder.jsx.
+// Always returns the CURRENT company default, not the value frozen at
+// quote-creation time.
+app.get('/api/company/job-specification-default', requireAuth, async (req, res) => {
+  try {
+    const company = await companies.getById(req.user.companyId);
+    res.json({ template: company?.default_job_specification_template || '' });
+  } catch (error) {
+    console.error('Error fetching job specification default:', error);
+    res.status(500).json({ error: 'Failed to fetch default' });
   }
 });
 

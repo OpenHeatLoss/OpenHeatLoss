@@ -130,7 +130,10 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
         customerTitle: project.customerTitle || '',
         customerFirstName: project.customerFirstName || '',
         customerSurname: project.customerSurname || '',
-        customerAddress: project.customerAddress || '',
+        customerAddress: [
+          project.customerAddressLine1, project.customerAddressLine2,
+          project.customerTown, project.customerCounty, project.customerPostcode,
+        ].filter(Boolean).join(', '),
         customerPostcode: project.customerPostcode || '',
         customerTelephone: project.customerTelephone || '',
         customerEmail: project.customerEmail || '',

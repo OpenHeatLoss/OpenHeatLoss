@@ -2175,6 +2175,72 @@ const MIGRATIONS = [
       console.log('  Migration 020 complete: company_category_markup_defaults table + materials_list_items.markup_pct');
     },
   },
+  {
+    version: '021',
+    description: 'Quote/contract pack: company document templates + quotes.advance_trigger',
+    run: async () => {
+      // Company document templates — all blank by default. No seeded content:
+      // contract/cancellation/express-request/warranty wording is typically
+      // copyrighted trade-body material (e.g. RECC) that OpenHeatLoss must not
+      // ship as a default. Users paste their own approved wording. See
+      // BACKLOG.md design decision "Quote/contract document generation" for
+      // the reasoning — the tool provides the mechanism, never the content.
+      await addColumnIfMissing('companies', 'quote_cover_letter_template', 'TEXT');
+      await addColumnIfMissing('companies', 'contract_terms_template',     'TEXT');
+      await addColumnIfMissing('companies', 'cancellation_form_template',  'TEXT');
+      await addColumnIfMissing('companies', 'express_request_template',   'TEXT');
+      await addColumnIfMissing('companies', 'warranty_template',          'TEXT');
+
+      // Further advance payment trigger — plain operational phrase (not legal
+      // wording), seeded with Simon's actual current policy since a blank
+      // field here would produce a dangling sentence in the cover letter
+      // ("...a further advance payment of £X, ."). Freely editable per quote.
+      await addColumnIfMissing('quotes', 'advance_trigger',
+        `TEXT NOT NULL DEFAULT 'on receipt of goods on site'`);
+
+      console.log('  Migration 021 complete: company document templates + quotes.advance_trigger');
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Migration 022 — Scope of works, installation facts, important information
+  //
+  // Adds:
+  //   companies.important_information_template        — static company template,
+  //     blank by default (same reasoning as other compliance documents: Settings-
+  //     authored, tool provides mechanism only). Positioned in the pack right
+  //     after the cover letter to orient the customer to the rest of the documents.
+  //
+  //   companies.default_job_specification_template    — seed source for
+  //     quotes.job_specification below. Company's standard scope-of-works
+  //     boilerplate (system flush, commissioning, weather comp, monitoring etc.),
+  //     pre-fills new quotes but is not itself shown to customers directly.
+  //
+  //   quotes.job_specification    — per-quote job specification. Pre-filled from
+  //     companies.default_job_specification_template at quote creation time
+  //     (server-side), then freely editable per job. A "reset to company default"
+  //     action in the UI re-fetches the CURRENT company default live, not a frozen
+  //     copy from creation time — deliberate, since boilerplate may improve over a
+  //     job's multiple revisions.
+  //
+  //   quotes.installation_estimate      — per-job time/duration estimate.
+  //     No sensible default to seed, typed fresh each quote.
+  //
+  //   quotes.subcontractor_disclosure   — per-job subcontractor disclosure.
+  //     No sensible default to seed, typed fresh each quote.
+  // ---------------------------------------------------------------------------
+  {
+    version: '022',
+    description: 'Scope of works, installation facts, and important information template',
+    run: async () => {
+      await addColumnIfMissing('companies', 'important_information_template',      'TEXT');
+      await addColumnIfMissing('companies', 'default_job_specification_template',  'TEXT');
+      await addColumnIfMissing('quotes',    'job_specification',                   'TEXT');
+      await addColumnIfMissing('quotes',    'installation_estimate',               'TEXT');
+      await addColumnIfMissing('quotes',    'subcontractor_disclosure',            'TEXT');
+
+      console.log('  Migration 022 complete: scope of works + important information');
+    },
+  },
 ];
 
 async function runMigrations() {

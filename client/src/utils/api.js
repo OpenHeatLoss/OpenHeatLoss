@@ -458,6 +458,9 @@ export const api = {
   getMarkupDefaults: () =>
     fetch(`${API_BASE}/company/markup-defaults`).then(r => r.json()),
 
+  getJobSpecificationDefault: () =>
+    fetch(`${API_BASE}/company/job-specification-default`).then(r => r.json()),
+
   setMarkupDefault: (categoryKey, defaultMarkupPct) =>
     fetch(`${API_BASE}/company/markup-defaults/${categoryKey}`, {
       method: 'PUT',
@@ -597,6 +600,13 @@ export const api = {
   // and calls response.blob() to get the PDF binary.
   generateCustomerPack: (data) =>
     fetch('/api/generate-pdf/customer-pack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  generateQuotePack: (data) =>
+    fetch('/api/generate-pdf/quote-pack', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

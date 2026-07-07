@@ -411,11 +411,26 @@ const companies = {
     SET name = $1, mcs_number = $2, recc_number = $3,
         address = $4, postcode = $5, email = $6, phone = $7, website = $8,
         cover_letter_template = $9,
+        quote_cover_letter_template = $10,
+        contract_terms_template = $11,
+        cancellation_form_template = $12,
+        express_request_template = $13,
+        warranty_template = $14,
+        important_information_template = $15,
+        default_job_specification_template = $16,
         updated_at = NOW()
-    WHERE id = $10`,
+    WHERE id = $17`,
     [data.name, data.mcsNumber, data.reccNumber,
      data.address, data.postcode, data.email, data.phone, data.website,
-     data.coverLetterTemplate ?? null, id]
+     data.coverLetterTemplate ?? null,
+     data.quoteCoverLetterTemplate ?? null,
+     data.contractTermsTemplate ?? null,
+     data.cancellationFormTemplate ?? null,
+     data.expressRequestTemplate ?? null,
+     data.warrantyTemplate ?? null,
+     data.importantInformationTemplate ?? null,
+     data.defaultJobSpecificationTemplate ?? null,
+     id]
   ),
 };
 

@@ -8,6 +8,7 @@ Supports merge tokens in the letter body:
   {company_name} {company_phone} {company_email} {date} {quote_ref}
 """
 
+from pdf_helpers import resolve_tokens
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -87,15 +88,6 @@ Kind regards,
 {company_email}
 """
 
-
-def resolve_tokens(text, tokens):
-    """Replace all {token} placeholders in text with values from the tokens dict."""
-    for key, value in tokens.items():
-        text = text.replace('{' + key + '}', str(value) if value else '')
-    # Clean up any unreplaced tokens
-    import re
-    text = re.sub(r'\{[a-z_]+\}', '', text)
-    return text
 
 
 def create_cover_letter_pdf(data, output_filename):
