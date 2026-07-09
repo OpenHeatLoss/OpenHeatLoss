@@ -137,20 +137,46 @@ change than it first appears:
 Next step: Simon to think through the actual use case (what sub-categories
 he'd actually use day to day) before this gets scoped properly.
 
-**Quote/contract document generation — needs scoping session**
-Not yet designed. Simon wants to move away from the RECC document structure
-(considered unwieldy for customers) toward a more digestible customer-facing
-format, while still covering what's legally/compliance-necessary. Per-item
-markup work has now landed, so this is no longer blocked. Simon to re-share
-current RECC reference documents when scoping this properly.
+~~**Quote/contract document generation**~~ — DONE (2026-07). Full quote &
+contract PDF pack shipped: quote cover letter, important information,
+express request form, itemised quote (Scope of Works, category summary,
+totals, payment schedule), MCS performance estimate, contract terms,
+cancellation form, warranty. See Design decisions and Session log for
+full detail, including the RECC-guidance reasoning that shaped which
+content is mandatory vs. redesignable, and the field-mapping fixes found
+through real-world testing.
 
-**Quote/contract document generation — needs scoping session**
-Not yet designed. Simon wants to move away from the RECC document structure
-(considered unwieldy for customers) toward a more digestible customer-facing
-format, while still covering what's legally/compliance-necessary. Depends on
-the per-item markup work above landing first, since the PDF needs a settled
-pricing model to render. Simon to re-share current RECC reference documents
-when scoping this properly.
+**PDF template text formatting — needs a session**
+Raised after real-world use (2026-07): the free-text template fields
+(contract terms, scope of works, important information, etc.) currently
+render as flat prose only — split into paragraphs on blank lines, no
+markup interpretation. Headings, bold/italic emphasis, and bullet lists
+typed into the Settings textareas don't render as such; they print as
+literal characters. Not urgent — the pack is fully functional as plain
+prose — but noted as a real gap toward a more professional-looking
+document.
+
+Not yet scoped. Options to weigh in that session, roughly by cost:
+- Markdown-lite convention (`**bold**`, `- ` bullets, maybe `#` headings)
+  translated to ReportLab's Paragraph markup at render time — keeps the
+  plain <textarea>, moderate implementation cost
+- A small fixed convention set (blank-line paragraphs as now, `- ` for
+  bullets, one heading style) — cheaper, addresses the specific pain
+  points already raised (headings, bullets) without full Markdown
+  parsing
+- Rich text editor in Settings (contentEditable or a small WYSIWYG
+  library), storing structured content instead of plain text — most
+  capable, biggest UI/dependency lift
+
+Likely starting point: the small fixed-convention option, since it
+directly targets what's actually been run into rather than committing
+to a bigger rich-text project before knowing if the simpler version
+is enough. Affects every template field across all the new PDF
+generators (generate_contract_pdf.py, generate_quote_pdf.py's Scope of
+Works section, generate_important_information_pdf.py, etc.) plus
+pdf_helpers.py if a shared formatting-resolution function makes sense
+there (mirrors how resolve_tokens() was centralised rather than
+duplicated per generator).
 
 **RECC checklist — remove RECC-specific framing**
 The pre-send checklist in QuoteBuilder.jsx (CHECKLIST_SECTIONS, ReccChecklist
@@ -656,6 +682,154 @@ Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-07 — Quote & contract pack generation shipped
+
+**Feature shipped:** full quote/contract PDF pack, one-click generated
+from QuoteBuilder.jsx. Built from Simon's actual RECC reference documents
+(model quote, contract, warranty, express request form, cancellation
+form) plus RECC's own consumer-proposal and performance-information
+guidance — used to distinguish what's genuinely mandatory (MCS
+Performance Estimate template; the substance of deposit caps,
+cancellation rights, itemisation — sourced from Consumer Contracts
+Regulations and MCS, not just RECC's Code) from what was simply RECC's
+chosen presentation (the dense multi-page format itself, freely
+redesignable). Decided early on: since RECC membership status is
+uncertain going forward, the tool validates against underlying legal/
+scheme rules rather than RECC-branded requirements specifically, so it
+stays correct regardless of Simon's future RECC status.
+
+**Schema (migrations 021, 022):**
+- companies: quote_cover_letter_template, contract_terms_template,
+  cancellation_form_template, express_request_template,
+  warranty_template, important_information_template,
+  default_job_specification_template
+- quotes: advance_trigger, job_specification, installation_estimate,
+  subcontractor_disclosure
+
+**Content philosophy, deliberately split by field:**
+- Contract terms, cancellation form, express request, warranty: blank
+  by default, no seeded content. Trade-body model wording (RECC's
+  documents are explicitly copyright-marked) must not be shipped as a
+  tool default, and drafting/validating legal wording is outside what
+  the tool should do — Simon (and future subscribers) paste their own
+  approved wording. A visible placeholder renders in the pack if a
+  field is left blank, rather than the section silently vanishing.
+- Quote cover letter, important information, default scope of works:
+  these ARE seeded with an editable default (same pattern as the
+  existing heat-loss cover letter) — they're the tool's own prose or
+  Simon's own operational policy, not third-party legal content, so
+  there's no copyright concern and a blank field would produce a worse
+  starting experience than a sensible, fully-editable draft.
+
+**job_specification pre-fill mechanism:** mirrors the per-item markup
+pattern from the previous session exactly — company sets a default in
+Settings (default_job_specification_template), new quotes are pre-filled
+from it server-side at creation time, then the quote's own copy is
+freely edited per job. A "reset to company default" action re-fetches
+the CURRENT company default live (not a value frozen at quote-creation
+time) — deliberate, since a job's boilerplate may improve across
+several quote revisions before it's accepted.
+
+**New PDF generators (server/):** pdf_helpers.py (shared resolve_tokens,
+extracted from generate_cover_letter_pdf.py to remove duplication),
+generate_quote_cover_letter_pdf.py, generate_quote_pdf.py,
+generate_important_information_pdf.py, generate_express_request_pdf.py,
+generate_contract_pdf.py, generate_cancellation_form_pdf.py,
+generate_warranty_pdf.py. Four "thin" compliance documents (contract,
+cancellation, express request, warranty) were deliberately kept as
+separate files rather than one shared generator, once it became clear
+the express request form needed materially different treatment (see
+below) — the moment one diverges for a real reason, a shared generator
+stops paying for itself.
+
+**Express request form — distinct treatment by design:** amber header
+band + explicit "action required" callout, positioned deliberately in
+the pack (see ordering below) — because it's operationally different
+from the other compliance documents: it's what lets work start before
+the 14-day cancellation period ends, directly affecting real logistics
+(kit sitting unused, install dates slipping). Needed to stand out from
+day one, not as a future refinement — Simon's own example (bathroom
+pump replacement job) made the cost of missing it concrete.
+
+**Quote content, iterated against real use:**
+- Removed the full itemised materials list from the customer-facing
+  quote after first real test — category rollups only. Matches the
+  existing "customer sees category totals, not the internal breakdown"
+  principle already stated in the Materials list UI; the line-by-line
+  view is Simon's internal document, not something a customer needs.
+- Payment Schedule redesigned as an explicit numbered sequence (deposit
+  → further advance, triggered by an editable per-quote event — default
+  "on receipt of goods on site" — → balance minus BUS grant) rather
+  than a flat table, after Simon flagged that the sequence and trigger
+  needed to be unambiguous to the customer.
+- Scope of Works added as a new quote section — job_specification
+  (company-seeded, per-job edited prose) plus installation_estimate and
+  subcontractor_disclosure (per-job facts, no sensible default, typed
+  fresh each quote, only rendered if present).
+- Document order iterated twice from real review: Scope of Works moved
+  from mid-financials to before the cost breakdown entirely (a customer
+  needs to know what's being done before what it costs — quotes
+  conventionally read description-then-price, not the other way round);
+  Express Request Form moved from before the quote to after it (signing
+  to allow early work should follow seeing the full price, not precede
+  it — asks for a decision before the information needed to make it
+  existed, in the original ordering).
+- Final pack order: quote cover letter → important information → quote
+  (Scope of Works → category summary → totals → payment schedule) →
+  express request form → MCS performance estimate (if present) →
+  contract → cancellation form → warranty.
+
+**Bugs found and fixed via real-world testing (all in this session):**
+- Default quote cover letter's BUS grant wording was ambiguous — stated
+  the pre-grant total in a way that read as the amount due, when the
+  actual amount due (after grant) could be materially different
+  (Simon's test case: grant fully covered the total, so £0 was owed,
+  but the letter implied the pre-grant figure was payable). Rewritten
+  to state cost, grant, and final amount due as three distinct figures
+  using the already-present but previously-unused {client_pays} token.
+- Address cell in generate_quote_pdf.py's details table was a raw
+  string, not a Paragraph — ReportLab doesn't wrap raw strings to
+  column width, causing long addresses to overrun into the adjacent
+  "Valid for" cell. Fixed by wrapping in a Paragraph with a dedicated
+  style, matching the existing convention already used correctly in
+  generate_heat_loss_pdf.py's address fields.
+- MCS Performance Estimate section in the quote pack showed "N/A" for
+  designer, telephone, and email, despite data existing — root cause
+  was the mcsPerformanceData object in QuoteBuilder.jsx's
+  handleGenerateQuotePack being built from invented/assumed field names
+  rather than the actual shape MCS031PerformanceEstimator.jsx's own
+  handleExportPDF uses. Took three correction passes to land on the
+  confirmed field names (project.location, project.designer,
+  project.customerTelephone, project.customerEmail, project.mcsSystem
+  Provides/mcsEmitterType with their label-translation ternaries copied
+  verbatim rather than reworded) — a direct consequence of writing that
+  section originally without having seen either source file, which the
+  project's own working-style principles exist to prevent. Documented
+  here explicitly so a future similar cross-component data mapping
+  isn't attempted from assumption again.
+- Customer address was blank in the MCS Performance Estimate section on
+  BOTH the quote pack and the standalone MCS 031 export — traced to
+  project.customerAddress not existing as a flat field at all (address
+  is stored as separate line fields); this was a PRE-EXISTING bug in
+  MCS031PerformanceEstimator.jsx's own handleExportPDF, not something
+  introduced by the quote pack work, surfaced only because comparison
+  testing between the two PDFs made it visible. Fixed in both places —
+  QuoteBuilder.jsx now reuses its already-computed propertyAddress;
+  MCS031PerformanceEstimator.jsx now joins the address line fields the
+  same way.
+- Scope of Works section was initially misplaced (landed between the
+  category summary and totals due to an ambiguous "insert before
+  Totals" instruction) — corrected first to after Totals/before Payment
+  Schedule, then relocated again to before the category summary
+  entirely per the ordering decision above. Both moves were pure
+  relocations of the same block, no logic changes.
+
+**Process note:** several of the fixes above (MCS field names, in
+particular) came from repeated guessing rather than reading source
+first — worth the reminder that this project's own stated principle
+(always see relevant source files before writing code that depends on
+their shape) is there specifically to prevent this class of rework.
 
 ### 2026-07 — Per-item markup implementation shipped; categories discussion parked
 
