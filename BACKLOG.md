@@ -320,6 +320,34 @@ Company name, MCS number, RECC number, address, postcode, email, phone, website
 fields implemented. Cover letter template with merge token support added.
 Logo upload deferred — needs logo_url column and storage solution (future).
 
+**Independent status page for outage communication**
+Raised 2026-07 after a Railway hardware-failure outage (their infrastructure,
+not OHL code/DB — confirmed via Railway's automated incident email; no
+action was needed, service resumed on its own). Highlighted a real gap:
+Simon currently has no way to tell users "we know, we're on it" during an
+outage, which matters once there are paying users relying on the tool.
+
+Requirement: must be hosted independently of Railway, otherwise it shares
+the same failure mode it's meant to cover for.
+
+Options considered, by effort:
+- Dedicated status-page tool (Instatus, Statuspage, Better Stack) — separate
+  URL (e.g. status.openheatloss.com), manual "investigating" post takes
+  under a minute, free tier likely sufficient for solo use. Recommended
+  starting point.
+- Static status.html on existing Krystal cPanel hosting (already used for
+  the marketing site, so genuinely independent of Railway) — zero cost,
+  but manual FTP/file-manager update is clunkier mid-outage than a
+  dashboard button.
+- Automated uptime monitoring (UptimeRobot, Better Stack) pinging the app
+  and updating the status page itself, plus alerting Simon by email/SMS
+  before a customer notices — parked until downtime has a direct cost
+  (revenue/trust), not needed for a solo pre-revenue tool.
+
+Sequencing: start with the dedicated tool option (cheap, fast, solves the
+actual need) once this reaches the top of Priority 2; automated monitoring
+is a later refinement, not a prerequisite.
+
 **User management settings tab** (currently a placeholder)
 Ability for a company admin to invite additional users (send email link, user
 sets password, gets linked to company_id), view active users, and
