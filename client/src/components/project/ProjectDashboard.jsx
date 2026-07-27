@@ -13,7 +13,7 @@ const STATUSES = {
   quote_accepted:      { label: 'Quote accepted',  colour: 'amber'  },
   installation_booked: { label: 'Install booked',  colour: 'green'  },
   design_review:       { label: 'Design review',   colour: 'purple' },
-  install_active:      { label: 'Install active',  colour: 'purple' },
+  installed:           { label: 'Installed',       colour: 'purple' },
   commissioned:        { label: 'Commissioned',    colour: 'green'  },
   closed:              { label: 'Closed',          colour: 'grey'   },
   lost:                { label: 'Lost',            colour: 'red'    },
