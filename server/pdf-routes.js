@@ -329,10 +329,21 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       const isReccMember = !!(company.recc_number && company.recc_number.trim());
 
       // ── Quote cover letter ────────────────────────────────────────────────
+      // Company registration/VAT numbers added 2026-09 — a finance lender
+      // rejected a quote pack for carrying MCS but not company reg / VAT.
+      // Both are optional fields (sole traders / non-VAT-registered
+      // businesses leave them blank) — the generators omit the line rather
+      // than printing it empty.
+      const companyIdentity = {
+        name: company.name, phone: company.phone, email: company.email,
+        address: company.address, mcsNumber: company.mcs_number,
+        companyRegistrationNumber: company.company_registration_number,
+        vatRegistrationNumber: company.vat_registration_number,
+      };
+
       const coverLetterData = {
         company: {
-          name: company.name, phone: company.phone, email: company.email,
-          address: company.address, mcsNumber: company.mcs_number,
+          ...companyIdentity,
           quoteCoverLetterTemplate: company.quote_cover_letter_template || null,
         },
         client: clientData,
@@ -350,7 +361,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
           template: company.express_request_template || null,
           client: clientData,
         }, 'express_request'),
-        runPythonScript('generate_quote_pdf.py', { quote: quoteData, client: clientData, company: { name: company.name } }, 'quote'),
+        runPythonScript('generate_quote_pdf.py', { quote: quoteData, client: clientData, company: companyIdentity }, 'quote'),
       ]);
       tempFiles.push(coverPdf, importantInfoPdf, expressRequestPdf, quotePdf);
 
@@ -363,6 +374,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       const [contractPdf, cancellationPdf, warrantyPdf] = await Promise.all([
         runPythonScript('generate_contract_pdf.py', {
           template: company.contract_terms_template || null, client: clientData,
+          company: companyIdentity,
         }, 'contract'),
         runPythonScript('generate_cancellation_form_pdf.py', {
           template: company.cancellation_form_template || null, client: clientData,

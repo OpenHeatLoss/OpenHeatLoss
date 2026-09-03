@@ -161,3 +161,9 @@ SECURITY.md
 SMOKE_TEST.md
 SMOKE_TEST.md
 SECURITY.md
+server/generate_contract_pdf(a).py
+server/generate_quote_cover_letter_pdf(a).py
+.gitignore
+server/pdf_helpers(a).py
+server/pdf-routes(a).js
+server/generate_quote_pdf(a).py

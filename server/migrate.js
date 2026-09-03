@@ -2241,6 +2241,33 @@ const MIGRATIONS = [
       console.log('  Migration 022 complete: scope of works + important information');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Migration 024 — company registration number and VAT registration number
+  //
+  // Raised 2026-09: a customer's finance lender rejected a quote pack because
+  // it carried the MCS number but not the company registration number or VAT
+  // registration number. Both are added to the companies table.
+  //
+  // Both nullable — deliberately not required. Sole traders / unincorporated
+  // businesses have no company registration number, and not every business
+  // on the platform will be VAT-registered. PDF generators treat either as
+  // "omit the line" rather than printing a blank field.
+  //
+  // Note: version 023 is intentionally skipped here — reserved for the
+  // deferred B25 (SAP air permeability) fix (see BACKLOG.md), so that when
+  // B25 lands it doesn't collide with this migration's version number.
+  // ---------------------------------------------------------------------------
+  {
+    version: '024',
+    description: 'Company registration number and VAT registration number',
+    run: async () => {
+      await addColumnIfMissing('companies', 'company_registration_number', 'TEXT');
+      await addColumnIfMissing('companies', 'vat_registration_number',     'TEXT');
+
+      console.log('  Migration 024 complete: company registration + VAT registration numbers');
+    },
+  },
 ];
 
 async function runMigrations() {

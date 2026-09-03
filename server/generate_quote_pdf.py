@@ -17,6 +17,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 import json
 import sys
 from datetime import datetime
+from pdf_helpers import build_company_identity_line, FooterPageCanvas
 
 BLUE_DARK  = colors.HexColor('#1e3a8a')
 BLUE_MID   = colors.HexColor('#1e40af')
@@ -25,36 +26,6 @@ GRAY_LIGHT = colors.HexColor('#f3f4f6')
 GRAY_DARK  = colors.HexColor('#374151')
 GREEN      = colors.HexColor('#15803d')
 GREEN_LIGHT = colors.HexColor('#dcfce7')
-
-
-class PageNumCanvas(rl_canvas.Canvas):
-    def __init__(self, *args, footer_note='', **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-        self._footer_note = footer_note
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        total = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer(self._pageNumber, total)
-            rl_canvas.Canvas.showPage(self)
-        rl_canvas.Canvas.save(self)
-
-    def _draw_footer(self, page_num, total_pages):
-        self.saveState()
-        self.setFont('Helvetica', 7.5)
-        self.setFillColor(colors.HexColor('#6b7280'))
-        self.drawString(1.8 * cm, 1.1 * cm, self._footer_note)
-        self.drawRightString(A4[0] - 1.8 * cm, 1.1 * cm, f"Page {page_num} of {total_pages}")
-        self.setStrokeColor(colors.HexColor('#d1d5db'))
-        self.setLineWidth(0.5)
-        self.line(1.8 * cm, 1.4 * cm, A4[0] - 1.8 * cm, 1.4 * cm)
-        self.restoreState()
 
 
 def make_style(header_bg=None):
@@ -236,7 +207,10 @@ def create_quote_pdf(data, output_filename):
     ))
 
     footer_note = "Quote does not constitute a contract. See enclosed terms of business."
-    doc.build(story, canvasmaker=lambda *a, **kw: PageNumCanvas(*a, footer_note=footer_note, **kw))
+    footer_company = build_company_identity_line(company)
+    doc.build(story, canvasmaker=lambda *a, **kw: FooterPageCanvas(
+        *a, footer_note=footer_note, footer_company=footer_company, **kw
+    ))
     return output_filename
 
 

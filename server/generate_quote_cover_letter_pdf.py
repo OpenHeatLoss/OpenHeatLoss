@@ -16,49 +16,18 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
-from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
 import json
 import sys
 from datetime import datetime
-from pdf_helpers import resolve_tokens
+from pdf_helpers import resolve_tokens, build_company_identity_line, FooterPageCanvas
 
 BLUE_DARK  = colors.HexColor('#1e3a8a')
 BLUE_MID   = colors.HexColor('#1e40af')
 BLUE_LIGHT = colors.HexColor('#dbeafe')
 GRAY_MID   = colors.HexColor('#e5e7eb')
 GRAY_DARK  = colors.HexColor('#374151')
-
-
-class PageNumCanvas(rl_canvas.Canvas):
-    def __init__(self, *args, footer_left='', **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-        self._footer_left = footer_left
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        total = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer(self._pageNumber, total)
-            rl_canvas.Canvas.showPage(self)
-        rl_canvas.Canvas.save(self)
-
-    def _draw_footer(self, page_num, total_pages):
-        self.saveState()
-        self.setFont('Helvetica', 7.5)
-        self.setFillColor(colors.HexColor('#6b7280'))
-        self.drawString(1.8 * cm, 1.1 * cm, self._footer_left)
-        self.drawRightString(A4[0] - 1.8 * cm, 1.1 * cm, f"Page {page_num} of {total_pages}")
-        self.setStrokeColor(colors.HexColor('#d1d5db'))
-        self.setLineWidth(0.5)
-        self.line(1.8 * cm, 1.4 * cm, A4[0] - 1.8 * cm, 1.4 * cm)
-        self.restoreState()
 
 
 DEFAULT_TEMPLATE = """\
@@ -124,12 +93,14 @@ def create_quote_cover_letter_pdf(data, output_filename):
         rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2*cm, bottomMargin=2.5*cm,
     )
 
-    footer_left = company.get('name', '')
-    if company.get('mcsNumber'):
-        footer_left += f"  |  MCS {company.get('mcsNumber')}"
+    # Footer identity line — company registration and VAT registration
+    # numbers added 2026-09 (see pdf-routes.js quote-pack route comment).
+    # Both omitted rather than printed blank when not set (sole traders have
+    # no company registration number; not every business is VAT-registered).
+    footer_company = build_company_identity_line(company)
 
     def make_canvas(*args, **kwargs):
-        return PageNumCanvas(*args, footer_left=footer_left, **kwargs)
+        return FooterPageCanvas(*args, footer_note='', footer_company=footer_company, **kwargs)
 
     styles = getSampleStyleSheet()
     brand_style = ParagraphStyle('Brand', parent=styles['Normal'],
@@ -151,7 +122,12 @@ def create_quote_cover_letter_pdf(data, output_filename):
 
     company_lines = [l for l in [
         f"<b>{company.get('name','')}</b>" if company.get('name') else None,
-        company.get('address'), company.get('phone'), company.get('email'),
+        company.get('address'),
+        company.get('phone'), company.get('email'),
+        f"Company Registration No. {company.get('companyRegistrationNumber')}"
+            if company.get('companyRegistrationNumber') else None,
+        f"VAT Registration No. {company.get('vatRegistrationNumber')}"
+            if company.get('vatRegistrationNumber') else None,
     ] if l]
     header_table = Table(
         [[Paragraph('<br/>'.join(company_lines), address_style),

@@ -1442,6 +1442,7 @@ const MERGE_TOKENS = [
 function CompanyDetails() {
   const [form, setForm] = useState({
     name: '', mcsNumber: '', reccNumber: '',
+    companyRegistrationNumber: '', vatRegistrationNumber: '',
     address: '', postcode: '', email: '', phone: '', website: '',
     coverLetterTemplate: '',
     quoteCoverLetterTemplate: QUOTE_COVER_LETTER_DEFAULT,
@@ -1467,6 +1468,8 @@ function CompanyDetails() {
           name:                data.name                  || '',
           mcsNumber:           data.mcs_number            || '',
           reccNumber:          data.recc_number           || '',
+          companyRegistrationNumber: data.company_registration_number || '',
+          vatRegistrationNumber:     data.vat_registration_number     || '',
           address:             data.address               || '',
           postcode:            data.postcode              || '',
           email:               data.email                 || '',
@@ -1552,12 +1555,14 @@ function CompanyDetails() {
             { label: 'Company name', field: 'name',       span: 2 },
             { label: 'MCS number',   field: 'mcsNumber'         },
             { label: 'RECC number',  field: 'reccNumber'        },
+            { label: 'Company registration number', field: 'companyRegistrationNumber', hint: 'Leave blank if you\u2019re a sole trader' },
+            { label: 'VAT registration number',      field: 'vatRegistrationNumber',     hint: 'Leave blank if not VAT-registered' },
             { label: 'Address',      field: 'address',    span: 2 },
             { label: 'Postcode',     field: 'postcode'          },
             { label: 'Email',        field: 'email'             },
             { label: 'Phone',        field: 'phone'             },
             { label: 'Website',      field: 'website'           },
-          ].map(({ label, field, span }) => (
+          ].map(({ label, field, span, hint }) => (
             <div key={field} className={span === 2 ? 'col-span-2' : ''}>
               <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
               <input
@@ -1567,6 +1572,7 @@ function CompanyDetails() {
                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm
                            focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
             </div>
           ))}
         </div>
