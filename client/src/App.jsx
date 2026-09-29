@@ -31,7 +31,16 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState(null);   // { id, email, name, companyId, plan, isAdmin }
+  // currentUser: { id, email, name, companyId, plan, isAdmin }
+  // The ref is updated synchronously alongside the state. loadProject is called from the boot
+  // effect and from login/register handlers — closures created BEFORE setCurrentUser's re-render —
+  // so reading the `currentUser` state there always saw null (stale closure). The ref never goes stale.
+  const [currentUser, setCurrentUserState] = useState(null);
+  const currentUserRef = useRef(null);
+  const setCurrentUser = (user) => {
+    currentUserRef.current = user;
+    setCurrentUserState(user);
+  };
   const [currentCompany, setCurrentCompany] = useState(null); // { id, name, mcs_number, ... }
   const [showAuthModal, setShowAuthModal] = useState(null);
   const [authError, setAuthError] = useState('');
@@ -507,7 +516,8 @@ function App() {
     // Load pipe sections, pipe materials and fittings separately from their
     // new normalised tables. These are parallel fetches — independent of getProject.
     // Only load for registered users (anonymous users don't have company context for libraries).
-    if (currentUser) {
+    // Reads the ref, NOT the currentUser state — see the note where currentUserRef is declared.
+    if (currentUserRef.current) {
       try {
         const [sectionsData, materialsData, fittingsData] = await Promise.all([
           api.getPipeSections(id),
