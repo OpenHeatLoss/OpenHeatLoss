@@ -187,6 +187,9 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
   };
 
   const calculateAndSave = () => {
+    if (!selectedMaterial) {
+      alert('Pipe materials have not loaded — please reload the page and try again'); return;
+    }
     if (!editedSection.lengthM || editedSection.lengthM <= 0) {
       alert('Please enter a pipe length'); return;
     }
@@ -199,7 +202,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
 
     onSave({
       ...editedSection,
-      pipe_material_id:            editedSection.pipeMaterialId,
+      pipe_material_id:            editedSection.pipeMaterialId ?? selectedMaterial.id,
       nominal_size:                editedSection.nominalSize,
       length_m:                    editedSection.lengthM,
       flow_rate:                   effectiveFlowRate,
@@ -228,7 +231,9 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
       if (v <= mat.max_velocity) return { size: size.nominalSize, velocity: v, isAcceptable: true };
     }
     const last = mat.sizes?.[mat.sizes.length - 1];
-    return last ? { size: last.nominalSize, isAcceptable: false } : null;
+    return last
+      ? { size: last.nominalSize, isAcceptable: false, warning: 'Velocity exceeds maximum for every available size — consider parallel pipes or a different material' }
+      : null;
   };
   const suggestion = suggestSize();
 
@@ -502,7 +507,7 @@ export default function PipeSectionEditor({ section, project, rooms, pipeMateria
         </div>
 
         {/* Pipe Size Suggestion */}
-        {effectiveFlowRate > 0 && (
+        {effectiveFlowRate > 0 && suggestion && (
           <div className={`rounded p-3 text-sm ${
             suggestion.isAcceptable ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
           }`}>

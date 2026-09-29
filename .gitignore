@@ -167,3 +167,8 @@ server/generate_quote_cover_letter_pdf(a).py
 server/pdf_helpers(a).py
 server/pdf-routes(a).js
 server/generate_quote_pdf(a).py
+.hidrivenextsync.log
+.sync_4b440a2043cf.db
+.gitignore
+.sync_4b440a2043cf.db-shm
+.sync_4b440a2043cf.db-wal
