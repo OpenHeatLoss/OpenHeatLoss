@@ -7,7 +7,57 @@ Last updated: June 2026 (security hardening, Strict Mode boot fix, element type 
 ## Bug tracker
 
 ### Active
-None. All known bugs resolved.
+- B25 — Air permeability estimation pathway invalid (CIBSE DHDG 2026-01 error).
+  OPEN — diagnosed 2026-08, fix deferred by choice, not blocked.
+  CIBSE corrigendum DHDG-2026-1-COR-001 (issue date July 2026; received by
+  Simon 14 Aug 2026 with the new DHDG release email) withdraws the SAP 10.2
+  air permeability estimation pathway in its entirety. Tables 2-15 and 2-17
+  were both derived from BS EN 12831-1:2017 Table B.8 as exact multiplicative
+  inverses, so applying them in sequence cancels.
+
+  Confirmed present in OHL: estimateQ50SAP (en12831Calculations.js:95) applies
+  SAP_TO_50PA_FACTOR; calculateRoomLeakageRate (:182) then applies
+  PA50_TO_TYPICAL_FACTOR with the same shielding and height band. Product is
+  1.000 for every combination (0.999 intensive/1_2, 1.001 none/1_2).
+
+  Net effect: the envelope leakage term has been collapsing to
+  exposedEnvelope x totalACH — the raw SAP ACH multiplied by envelope area,
+  with the EN 12831 exposure/height correction never applied. Dimensionally
+  m2.ACH, which is not a physical quantity. Background ventilation additions
+  (Table 2-16) enter AFTER the q50 step and are multiplied by Table 2-17 only,
+  so they were always correct — the two halves of the room leakage rate have
+  been on different footings.
+
+  Direction of error: OVER-estimation in every case. No system is undersized.
+  Envelope leakage term roughly halves on leaky pre-1919 stock; ~8-16% on
+  typical and tight properties. Effect on total load is smaller (ventilation
+  is a portion of the total) — order 3-10% typical, up to ~15% worst case.
+  Enough to occasionally shift a heat pump selection by one model size.
+  Risk is oversizing, cycling and cost, not comfort or compliance.
+
+  Why it was not caught: 0.50 ACH x 20 = 10.0 m3/(h.m2) sits plausibly next
+  to the true GB mean of 8.6. Magnitude sanity checks all passed. The check
+  that would have caught it is dimensional, not magnitude-based. The
+  cancellation was in fact already documented in the UI help text
+  (VentilationSettings.jsx:278, :299) as a property of the method rather than
+  recognised as an error — a reasonable reading of a published guide, but
+  worth noting as a signal class: "this reference data behaves oddly but
+  consistently" can be about the reference, not one's understanding of it.
+
+  BUG CLASS: plausible output accepted as validation. Mitigation going
+  forward — for any new reference-data pathway, check units end to end, not
+  just that the answer looks sensible.
+
+  Scope on production as at 2026-08: 141 projects total —
+  135 air_permeability_method = 'estimated' (affected),
+  6 = 'measured' (unaffected; that pathway never touched Table 2-15).
+  60 registered users.
+
+  Deferred deliberately: fix rewrites 135 rows of live data and Simon is away.
+  Deferral is safe — any project created in the meantime will also be
+  'estimated' and will be caught by the same migration. Delay adds to the
+  pile; it does not create a separate mess. One live pre-1919 project is
+  materially affected but is not proceeding right now.
 
 ### Closed (this session)
 - B22 — Unauthenticated access to project data via GET /api/projects/:id —
@@ -89,6 +139,208 @@ None. All known bugs resolved.
 ## Feature backlog
 
 ### Priority 1 — Next sessions
+
+**CIBSE DHDG 2026 corrigendum — air permeability rework (B25)**
+Diagnosed and designed 2026-08. Not started. Estimated 10-14 hours across
+3-4 sessions. Do not start unless there is time to see commit 2 through and
+remain available afterwards — it rewrites 135 rows of live production data.
+
+WHAT THE CORRIGENDUM DOES
+Deletes the SAP 10.2 estimation pathway rather than correcting it. Tables
+2-11 to 2-15 removed in their entirety, both worked examples removed,
+Worksheet A1 cells 200-205 removed. Replaced by a single direct lookup of a
+default air permeability at 50 Pa from a NEW Table 2-11 (DESNZ / Roberts et
+al. 2025, 5,125 GB dwellings), entered with no conversion and no adjustment.
+Table 2-17 (50 Pa to typical) is UNTOUCHED and stays exactly as implemented.
+
+THE PROPERTY THAT MAKES THIS TRACTABLE
+Because the two tables are exact multiplicative inverses, freezing the
+intermediate q50 reproduces the old answers exactly through the unchanged
+Table 2-17 path:
+
+  old:    envelope x totalACH x convFactor x pa50Factor
+  frozen: envelope x (stored q50)          x pa50Factor
+          where stored q50 = totalACH x convFactor
+
+So NO legacy calculation branch is needed. estimateQ50SAP and the five SAP
+tables are deleted outright, and legacy projects become "a project with a
+stored q50 number" — mechanically identical to the measured pathway. This is
+a structural fix, not a dual code path. Freeze at full float precision, not
+rounded to 1dp; residual drift is 0.1% on intensive/1_2 and none/1_2 only.
+
+Known consequence, accepted: after migration a legacy project BECOMES
+sensitive to shielding and storey changes (previously they cancelled to
+nothing). Decision: accept rather than lock the fields — the banner already
+tells the user the project is on a superseded basis.
+
+AGREED DESIGN — air_permeability_method gains values rather than a parallel
+flag column:
+
+  measured       q50 stored, from ATTMA L1 test        current, unaffected
+  design_target  q50 stored; AD L notional 5.0 or      NEW — corrigendum
+                 as-built                              Procedure step 1
+  default_table  q50 derived from Table 2-11           NEW — the corrected
+                 selection                             pathway
+  legacy_sap     q50 stored, frozen at migration       NEW — superseded
+
+resolveQ50 reads the stored number for three of four methods; only
+default_table performs a lookup. Three methods, not two, is the faithful
+reading of Procedure step 1, which distinguishes measured from confirmed
+design target from default.
+
+NEW FIELDS (all four layers required for each — migration, database.js,
+loadProject, save handler):
+
+  q50_built_form         TEXT  flat|terrace|semi_detached|detached|bungalow
+  q50_age_band           TEXT  pre1919|1919_1944|1945_1964|1965_1980|
+                               1981_1990|post1990
+  q50_wall_construction  TEXT  cavity_uninsulated|cavity_insulated|
+                               solid_uninsulated|solid_insulated|other
+  q50_selection_basis    TEXT  built_form|age_band|wall_construction|
+                               all_dwellings
+  q50_statistic          TEXT  mean|median|q1|q3   (default 'mean')
+
+DO NOT reuse dwelling_type or sap_age_band. They already exist as legacy SAP
+fields with different enums ('semi_detached', 'H'). Reusing them saves a
+migration and silently changes the meaning of existing data. Old sap_* columns
+left in place, unused — same precedent as quotes.markup_pct.
+
+MIGRATION 023 SHAPE
+Follows the 021/022 addColumnIfMissing pattern, plus a data step. The data
+step must run in JS with a FROZEN INLINE COPY of estimateQ50SAP — not a SQL
+reimplementation. Two reasons: guarantees identical arithmetic to what the app
+actually ran, and means deleting the app-side function in commit 3 cannot
+retroactively affect the migration.
+
+  for each design_params row where air_permeability_method = 'estimated':
+      q50 = frozenEstimateQ50SAP(row)      // full float precision
+      air_permeability_method = 'legacy_sap'
+
+Guards beyond the schema_migrations check: skip rows already 'legacy_sap';
+ABORT the whole migration if any computed q50 falls outside a sane band
+(1-60 m3/(h.m2)) rather than writing a nonsense value. This is the first
+migration that rewrites existing values rather than adding columns, so
+pg_dump the production DB first (command in Priority 3).
+
+TWO LIVE LANDMINES — must change in the same commit as the migration:
+  - database.js:824 and App.jsx:300 both fall back to || 'estimated'. After
+    migration that is a value with no calculation behind it. If any save path
+    sends undefined, a frozen project silently reverts to a dead method.
+  - database.js:825 and App.jsx:301 both fall back to q50 ?? 12.0. Always a
+    placeholder; 8.6 (evidenced GB mean) is now the defensible value.
+
+DATABASE.JS HAZARD
+designParams.update is a 64-parameter positional UPDATE with
+WHERE project_id = $65. Append the five new columns at the END, immediately
+before the WHERE: new columns become $65-$69, WHERE becomes $70. Exactly one
+existing parameter number changes. Any other insertion point renumbers dozens,
+and an off-by-one in a positional list of this length does not throw — it
+writes values into the wrong columns.
+
+COMMIT SEQUENCE — commit 2 is a verification gate
+
+  1  App.jsx:617-684 -> buildDesignParamsPayload           ~20 min   no effect
+  2  Migration 023 + database.js + loadProject +
+     createProject + resolveQ50 accepts legacy_sap +
+     interim VentilationSettings display guard            3-4 hr    NO EFFECT
+  3  New Table 2-11 data; rewrite resolveQ50; delete
+     SAP tables + estimateQ50SAP                          1.5 hr    no effect
+  4  VentilationSettings rebuild + corrigendum banner
+     + opt-in recalculation flow                          3-5 hr    opt-in only
+  5  Summary banner + VentilationEditor help text         1 hr      no effect
+
+AFTER COMMIT 2, ALL 141 PROJECTS MUST PRODUCE IDENTICAL HEAT LOSS FIGURES.
+If any number moves, the freeze is wrong — stop and investigate. This check
+covers all 141 projects rather than one reference project, and is only
+available because the cancellation is exact. It is the single most valuable
+verification point in this piece of work.
+
+Wrinkle inside commit 2: VentilationSettings.jsx:72 calls estimateQ50SAP
+whenever !isMeasured. A legacy_sap project would display a recomputed
+estimate while the calculation uses the frozen value — UI and maths
+disagreeing. Commit 2 needs a minimal display guard treating legacy_sap as a
+stored value, even though the full UI rebuild is commit 4.
+
+FLAGGING — agreed approach
+No blocking. Flag and offer, never silently recalculate. Banner appears in
+VentilationSettings and, compactly, in Summary when method = 'legacy_sap':
+
+  Calculation basis: superseded
+  This project's air permeability was estimated using the method published
+  in CIBSE DHDG 2026-01. CIBSE has since issued a corrigendum
+  (DHDG-2026-1-COR-001, July 2026) correcting an error in that method's
+  conversion factors. The original value has been preserved so previously
+  issued documents remain reproducible. You can review and update to the
+  corrected method below.
+
+Named document, named reference, factual. No OHL culpability implied and none
+claimed where it is not due — this is a CIBSE erratum, and every tool that
+implemented DHDG 2026 has it.
+
+"Update to corrected method" flow must show consequences BEFORE committing:
+the three Table 2-11 candidates, the engineer's primary selection, old vs new
+q50, AND the resulting change in generator and emitter load. Then flip to
+default_table. Same shape as the existing pipe-section "open and confirm"
+pattern.
+
+UI — the judgement step is the differentiator
+Table 2-11 gives three candidate values that routinely disagree (worked
+example: built form 9.2, age band 8.1, wall construction 8.2). The guide
+explicitly requires the designer to choose the most representative value or
+take a conservative approach. Show all three candidates side by side with the
+spread (Q1/median/Q3) visible and require a deliberate pick. Automate the
+lookup, keep the engineer responsible for the judgement — consistent with the
+existing unheated-space delta-T decision.
+
+New project default: 'default_table' with characteristics unset, falling back
+to All dwellings 8.6, with an amber nudge to select — same pattern as the
+existing Te,ref default nudge in ProjectInfo.
+
+CONTENT NOTES FOR THE UI
+  - Flats are explicitly OUT OF SCOPE of the DHDG despite appearing as a row
+    in Table 2-11. Note this if a flat is selectable.
+  - New build should use the AD L notional target of 5 m3/(h.m2), or the
+    as-built value where known — this is the design_target method.
+  - Corrigendum warns against testing or designing before planned
+    airtightness works (rendering, insulation, window replacement) are
+    complete. Worth surfacing as help text.
+
+FILES IN SCOPE (grep confirmed 2026-08 — SAP constants and estimateQ50SAP
+appear ONLY in these two, so commit 3 deletions are clean):
+  client/src/utils/en12831VentilationData.js   delete 5 tables +
+                                               getStoreyInfiltration; add
+                                               new Table 2-11
+  client/src/utils/en12831Calculations.js      delete estimateQ50SAP;
+                                               rewrite resolveQ50
+  client/src/components/project/VentilationSettings.jsx   rebuild; delete
+                                               cancellation help text at
+                                               :278 and :299
+  client/src/components/rooms/VentilationEditor.jsx       help text only,
+                                               lines 190-197 and 206
+  client/src/App.jsx                           loadProject :300-307,
+                                               createProject :555-562,
+                                               save handler :617-684
+  server/database.js                           designParams.update
+  server/migrate.js                            migration 023
+
+generate_heat_loss_pdf.py needs NO changes — confirmed it does not render q50
+or the SAP breakdown, only per-room ventilationLoss. Recording the calculation
+basis in the report belongs to the Calculation basis export item, not here.
+
+OPEN ITEM TO CHECK FIRST
+Is the 15-room SMOKE_TEST.md reference project on 'measured' or 'estimated'?
+If measured, none of the anchor figures move and there is no re-baseline to
+do (saves ~1.5 hr). If estimated, re-baseline deliberately and record old
+figure, new figure and reason — otherwise the smoke test stops being a
+regression check and becomes a rubber stamp. Affected anchors: generator
+5.20 kW, emitter 7.05 kW, index circuit 20.97 kPa / 0.335 l/s.
+
+POSITIONING OPPORTUNITY
+Every MCS tool that implemented DHDG 2026 has this bug; the corrigendum has
+been public since July 2026. A visible changelog entry, named corrigendum
+reference, per-project flagging and engineer-controlled recalculation is a
+better story than a silent patch, and demonstrates the open/auditable
+positioning directly. Worth a YouTube "bugs and resolutions" entry.
 
 ~~**Per-item markup implementation**~~ — DONE (2026-07). See Session log and
 Design decisions. Migration 020 applied; company_category_markup_defaults
@@ -536,6 +788,42 @@ pattern.
 ---
 
 ## Design decisions (rationale recorded)
+
+**Superseded calculation methods — freeze the intermediate, never dual-path**
+Established 2026-08 handling the CIBSE DHDG 2026 corrigendum (B25). First
+time OHL has had to version a calculation method; it will not be the last
+(full EN 12831-1 mode is planned, and standards get revised).
+
+Principle: when a published method is superseded, do NOT keep the old
+calculation code alive behind a conditional. Find the intermediate value at
+which the old and new methods diverge, freeze it per project, and let the
+downstream calculation continue unchanged. The old code is then deleted
+entirely.
+
+In this case the divergence point is q50, and because the erroneous tables
+were exact multiplicative inverses the frozen value reproduces historic
+results exactly. A superseded project becomes indistinguishable in code from
+a project with a measured value — no branch, no legacy module, no second
+code path to maintain or accidentally regress.
+
+Where a future supersession does NOT have such a clean divergence point, the
+same principle still applies in weaker form: freeze the furthest-downstream
+value that can be frozen, and prefer storing a number over retaining an
+algorithm.
+
+Companion principle on user impact: flag and offer, never silently
+recalculate. A design may already be issued to a customer or submitted to
+MCS. Preserve the original, state plainly and with a citable reference why it
+is superseded, show the consequences of updating BEFORE the user commits, and
+let the engineer decide. Do not block export. This extends the existing
+pipe-section staleness pattern from "inputs changed" to "the method itself
+changed".
+
+Note this is deliberately DIFFERENT from the per-item markup precedent
+("existing quotes are never touched or recalculated"). That was a commercial
+figure where the old value remained correct. This is a calculation that is
+now known to be wrong, so the tool must actively surface it rather than leave
+it silently in place — but must still not change it without consent.
 
 **Per-item markup, not per-category or blanket — quote pricing model redesign (planned)**
 The original quote pricing model (migration 011) used a single blanket

@@ -145,7 +145,10 @@ const passwordResetTokens = {
 // PIPE MATERIALS LIBRARY
 // ---------------------------------------------------------------------------
 const pipeMaterialsLib = {
-  // Get all materials for a company (global seed + company-specific).
+  // Get all materials owned by a company: its own copy of the global seed rows
+  // (created by ensureGlobalForCompany) plus any company-specific rows.
+  // Deliberately does NOT include company 1's rows for other companies — doing so
+  // showed every material twice and let sections be saved against company 1's rows.
   // Returns materials with their sizes joined as a JSON array.
   getForCompany: (companyId) =>
     allQuery(`
@@ -167,7 +170,6 @@ const pipeMaterialsLib = {
       FROM pipe_materials pm
       LEFT JOIN pipe_material_sizes pms ON pms.pipe_material_id = pm.id
       WHERE pm.company_id = $1
-         OR pm.company_id = 1
       GROUP BY pm.id
       ORDER BY pm.scope DESC, pm.display_order, pm.name
     `, [companyId]),
@@ -247,7 +249,7 @@ const fittingsLib = {
   getForCompany: (companyId) =>
     allQuery(
       `SELECT * FROM fittings
-       WHERE company_id = $1 OR company_id = 1
+       WHERE company_id = $1
        ORDER BY scope DESC, display_order, name`,
       [companyId]
     ),
