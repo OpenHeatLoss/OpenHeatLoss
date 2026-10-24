@@ -64,11 +64,20 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
     await onClearMVHR();
   };
 
-  const isMeasured = project.airPermeabilityMethod === 'measured';
+  const method     = project.airPermeabilityMethod;
+  const isMeasured = method === 'measured';
+  const isEstimated = method === 'estimated';
+  // B25 interim guard (full rebuild in commit 4): legacy_sap and design_target
+  // carry a stored q50 that resolveQ50 uses directly — display that, never a
+  // recomputed SAP estimate, so the UI and the calculation agree.
+  const isLegacySap    = method === 'legacy_sap';
+  const isStoredOther  = method === 'legacy_sap' || method === 'design_target';
 
   // Live q50 recalculates from current project fields on every render
   const effectiveQ50 = isMeasured
     ? (project.q50 ?? 12.0)
+    : isStoredOther
+    ? project.q50
     : estimateQ50SAP({
         structural:       project.sapStructural       ?? 'masonry',
         floor:            project.sapFloor            ?? 'other',
@@ -79,13 +88,15 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
       }).q50;
 
   // When switching to measured, seed q50 with the current estimated value
-  const handleMethodToggle = (method) => {
-    if (method === 'measured') {
+  // B25: the SAP estimate is superseded — no project can move ONTO 'estimated'.
+  // (The server also ignores an incoming 'estimated'.)
+  const handleMethodToggle = (target) => {
+    if (target === 'measured') {
       onUpdateBatch({
         airPermeabilityMethod: 'measured',
         q50: parseFloat(effectiveQ50.toFixed(1)),
       });
-    } else {
+    } else if (target === 'estimated' && isEstimated) {
       onUpdate('airPermeabilityMethod', 'estimated');
     }
   };
@@ -148,15 +159,20 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
         {/* Method toggle */}
         <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-4 text-sm">
           {[
-            { value: 'estimated', label: 'SAP Estimate',      sub: 'No test available' },
-            { value: 'measured',  label: 'Measured / Tested', sub: 'Blower door or pulse test' },
-          ].map(({ value, label, sub }) => (
+            { value: 'estimated', label: 'SAP Estimate',
+              sub: isEstimated ? 'No test available' : 'Superseded (DHDG-2026-1-COR-001)',
+              disabled: !isEstimated },
+            { value: 'measured',  label: 'Measured / Tested', sub: 'Blower door or pulse test', disabled: false },
+          ].map(({ value, label, sub, disabled }) => (
             <button
               key={value}
               onClick={() => handleMethodToggle(value)}
+              disabled={disabled}
               className={`flex-1 py-2 px-3 text-left transition ${
                 project.airPermeabilityMethod === value
                   ? 'bg-blue-600 text-white'
+                  : disabled
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
               }`}
             >
@@ -191,6 +207,15 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
             <p className="text-xs text-gray-500">
               If vents or fans were sealed during the test, background ventilation
               additions are still made at room level.
+            </p>
+          </div>
+        ) : isStoredOther ? (
+          /* B25: stored q50 (legacy_sap / design_target) — read-only */
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs text-gray-600">
+              {isLegacySap
+                ? 'Frozen estimate from the superseded SAP 10.2 method (CIBSE DHDG 2026-01, corrected by DHDG-2026-1-COR-001) — preserved so previously issued figures remain reproducible.'
+                : 'Design target air permeability — used directly in the calculation.'}
             </p>
           </div>
         ) : (
@@ -265,7 +290,10 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
           <div>
             <span className="text-sm font-semibold text-gray-700">Effective q₅₀</span>
             <span className="text-xs text-gray-500 ml-2">
-              {isMeasured ? 'from test — used directly in calculation' : 'SAP estimate — intermediate value, see note below'}
+              {isMeasured ? 'from test — used directly in calculation'
+                : isLegacySap ? 'frozen superseded estimate — used directly in calculation'
+                : isStoredOther ? 'design target — used directly in calculation'
+                : 'SAP estimate — intermediate value, see note below'}
             </span>
           </div>
           <div className="text-right">
@@ -273,7 +301,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
             <span className="text-sm text-gray-500 ml-1">m³/(h·m²)</span>
           </div>
         </div>
-        {!isMeasured && (
+        {isEstimated && (
           <p className="text-xs text-gray-500 mt-1">
             Note: when using the SAP estimate, shielding affects q₅₀ and the 50 Pa→typical conversion in opposite directions — they largely cancel for 1–2 storey buildings. The q₅₀ figure above will vary with shielding choice but room ventilation heat loss will be very similar. If you switch to a measured q₅₀ from a blower door test, shielding then only affects the 50 Pa→typical conversion and has its expected effect.
           </p>
@@ -296,7 +324,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Building shielding"
-            hint="Affects both the ACH→q₅₀ conversion (Table 2-15) and the q₅₀→typical leakage conversion (Table 2-17). The two effects largely cancel for 1–2 storey buildings, so the displayed q₅₀ will vary with shielding but room heat loss will be similar. Shielding has more impact on taller buildings."
+            hint="Affects the conversion from air permeability at 50 Pa to typical leakage (Table 2-17). Changing shielding or the number of storeys changes room ventilation heat loss."
           >
             <select
               value={project.buildingShielding ?? 'normal'}
@@ -311,7 +339,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Number of storeys"
-            hint="Used for height band in Table 2-15 / 2-17 and SAP storey addition"
+            hint="Used for the height band in Table 2-17."
           >
             <input
               type="number"

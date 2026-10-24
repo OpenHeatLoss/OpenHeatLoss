@@ -306,8 +306,16 @@ function App() {
 
       // EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields (migration 010)
       ventilationMethod:      dp.ventilation_method        || 'en12831_cibse2026',
-      airPermeabilityMethod:  dp.air_permeability_method   || 'estimated',
-      q50:                    dp.q50                       ?? 12.0,
+      // B25: no fallbacks — both columns are NOT NULL, and a default here
+      // would silently relabel a project (e.g. legacy_sap → estimated).
+      airPermeabilityMethod:  dp.air_permeability_method,
+      q50:                    dp.q50,
+      // B25 — Table 2-11 selection (migration 023)
+      q50BuiltForm:           dp.q50_built_form            ?? null,
+      q50AgeBand:             dp.q50_age_band              ?? null,
+      q50WallConstruction:    dp.q50_wall_construction     ?? null,
+      q50SelectionBasis:      dp.q50_selection_basis       ?? null,
+      q50Statistic:           dp.q50_statistic             ?? 'mean',
       sapStructural:          dp.sap_structural             || 'masonry',
       sapFloor:               dp.sap_floor                  || 'other',
       sapWindowDraughtPct:    dp.sap_window_draught_pct    ?? 100,
@@ -564,6 +572,11 @@ function App() {
         ventilationMethod:     'en12831_cibse2026',
         airPermeabilityMethod: 'estimated',
         q50:                   12.0,
+        q50BuiltForm:          null,
+        q50AgeBand:            null,
+        q50WallConstruction:   null,
+        q50SelectionBasis:     null,
+        q50Statistic:          'mean',
         sapStructural:         'masonry',
         sapFloor:              'other',
         sapWindowDraughtPct:   100,

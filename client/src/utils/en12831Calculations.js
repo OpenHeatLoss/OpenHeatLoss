@@ -104,8 +104,9 @@ export const estimateQ50SAP = ({
  * Resolve the effective q50 for a project, regardless of method.
  *
  * Reads camelCase fields as set by App.jsx loadProject():
- *   project.airPermeabilityMethod  'measured' | 'estimated'
- *   project.q50                    measured value (m³/h·m²)
+ *   project.airPermeabilityMethod  'measured' | 'legacy_sap' | 'design_target' | 'estimated'
+ *   project.q50                    stored value (m³/h·m²) — measured, design target,
+ *                                  or the frozen SAP estimate (B25, migration 023)
  *   project.sapStructural          'masonry' | 'timber_steel'
  *   project.sapFloor               'unsealed_suspended' | 'sealed_suspended' | 'other'
  *   project.sapWindowDraughtPct    0 | 25 | 50 | 75 | 100
@@ -116,10 +117,20 @@ export const estimateQ50SAP = ({
  * @param {Object} project - project object from React state
  * @returns {number} q50 in m³/(h·m²)
  */
+// Methods whose q50 is a stored number, used as-is (B25).
+const STORED_Q50_METHODS = ['measured', 'legacy_sap', 'design_target'];
+
 export const resolveQ50 = (project) => {
-  if (project.airPermeabilityMethod === 'measured') {
-    return project.q50 ?? 12.0;
+  const method = project.airPermeabilityMethod;
+  if (STORED_Q50_METHODS.includes(method)) {
+    return project.q50;
   }
+  if (method !== 'estimated') {
+    // Do not throw — there is no error boundary yet, so a throw blanks the screen.
+    console.error(`resolveQ50: unknown airPermeabilityMethod "${method}" — using stored q50`);
+    return project.q50;
+  }
+  // 'estimated' — SAP 10.2 estimate, removed in commit 3 (B25)
   const { q50 } = estimateQ50SAP({
     structural:       project.sapStructural       ?? 'masonry',
     floor:            project.sapFloor            ?? 'other',
