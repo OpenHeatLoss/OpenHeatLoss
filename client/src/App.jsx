@@ -624,74 +624,9 @@ function App() {
     }
 
     // Save 3: all design/technical data
-    await api.updateDesignParams(currentProject.id, {
-      externalTemp:      currentProject.externalTemp,
-      annualAvgTemp:     currentProject.annualAvgTemp,
-      airDensity:        currentProject.airDensity,
-      specificHeat:      currentProject.specificHeat,
-      designFlowTemp:    currentProject.designFlowTemp,
-      designReturnTemp:  currentProject.designReturnTemp,
-      mcsPostcodePrefix: currentProject.mcsPostcodePrefix,
-      mcsDegreeDays:     currentProject.mcsDegreeDays,
-      mcsOutdoorLowTemp: currentProject.mcsOutdoorLowTemp,
-      mcsHeatPumpType:       currentProject.mcsHeatPumpType,
-      mcsEmitterType:        currentProject.mcsEmitterType,
-      mcsSystemProvides:     currentProject.mcsSystemProvides,
-      mcsCylinderVolume:     currentProject.mcsCylinderVolume,
-      mcsPasteurizationFreq: currentProject.mcsPasteurizationFreq,
-      mcsUFHType:            currentProject.mcsUFHType,
-      mcsBedrooms:           currentProject.mcsBedrooms,
-      mcsOccupants:          currentProject.mcsOccupants,
-      // Legacy ventilation fields — kept so old data survives
-      useSAPVentilation:        currentProject.useSAPVentilation,
-      buildingCategory:         currentProject.buildingCategory,
-      dwellingType:             currentProject.dwellingType,
-      numberOfStoreys:          currentProject.numberOfStoreys,
-      shelterFactor:            currentProject.shelterFactor,
-      numberOfBedrooms:         currentProject.numberOfBedrooms,
-      hasBlowerTest:            currentProject.hasBlowerTest,
-      sapAgeBand:               currentProject.sapAgeBand,
-      airPermeabilityQ50:       currentProject.airPermeabilityQ50,
-      numberOfChimneys:         currentProject.numberOfChimneys,
-      numberOfOpenFlues:        currentProject.numberOfOpenFlues,
-      numberOfIntermittentFans: currentProject.numberOfIntermittentFans,
-      numberOfPassiveVents:     currentProject.numberOfPassiveVents,
-      ventilationSystemType:    currentProject.ventilationSystemType,
-      mvhrEfficiency:           currentProject.mvhrEfficiency,
-      mvhrWholeHouseRate:       currentProject.mvhrWholeHouseRate ?? 0,
-      // EN 12831-1:2017 ventilation fields (migration 010)
-      ventilationMethod:      currentProject.ventilationMethod,
-      airPermeabilityMethod:  currentProject.airPermeabilityMethod,
-      q50:                    currentProject.q50,
-      sapStructural:          currentProject.sapStructural,
-      sapFloor:               currentProject.sapFloor,
-      sapWindowDraughtPct:    currentProject.sapWindowDraughtPct,
-      sapDraughtLobby:        currentProject.sapDraughtLobby,
-      buildingStoreys:        currentProject.buildingStoreys,
-      buildingShielding:      currentProject.buildingShielding,
-      referenceTemp:          currentProject.referenceTemp,
-      mcsHeatPumpSoundPower:  currentProject.mcsHeatPumpSoundPower,
-      mcsSoundAssessments:    currentProject.mcsSoundAssessments    || [],
-      mcsSoundSnapshot:       currentProject.mcsSoundSnapshot       || null,
-      mcsCalculationSnapshot: currentProject.mcsCalculationSnapshot || null,
-      pipeSections:           null,   // now managed via /api/pipe-sections — not stored in design_params
-      circuits:               currentProject.circuits               || null,
-      heatPumpManufacturer:   currentProject.heatPumpManufacturer,
-      heatPumpModel:          currentProject.heatPumpModel,
-      heatPumpRatedOutput:    currentProject.heatPumpRatedOutput,
-      heatPumpMinModulation:  currentProject.heatPumpMinModulation  ?? 0,
-      heatPumpFlowTemp:       currentProject.heatPumpFlowTemp,
-      heatPumpReturnTemp:     currentProject.heatPumpReturnTemp,
-      epcSpaceHeatingDemand:  currentProject.epcSpaceHeatingDemand,
-      epcHotWaterDemand:      currentProject.epcHotWaterDemand,
-      epcTotalFloorArea:      currentProject.epcTotalFloorArea,
-      heatPumpInternalVolume: currentProject.heatPumpInternalVolume ?? 0,
-      bufferVesselVolume:     currentProject.bufferVesselVolume     ?? 0,
-      en14511TestPoints:      currentProject.en14511TestPoints      || [],
-      defrostPct:             currentProject.defrostPct             ?? 5,
-      balancePoint:           currentProject.balancePoint           ?? 12.5,
-      scopEmitterType:        currentProject.scopEmitterType        || 'radiator',
-    });
+    // Single whitelist shared with every other design params save path —
+    // new fields are added once, in projectPayloads.js.
+    await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject));
 
     await loadProjects();
     alert('Project saved successfully!');
