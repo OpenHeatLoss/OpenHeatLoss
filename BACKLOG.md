@@ -316,6 +316,42 @@ DECISIONS TAKEN DURING COMMIT 3 (2026-10):
     deleted. The gate now requires such changes to be acknowledged with
     --project-set-change=+1339,-1325.
 
+DECISIONS TAKEN DURING COMMIT 4 (2026-10):
+  - NO audit trail for the legacy_sap -> default_table change. The method
+    value is the trail: legacy_sap means the frozen estimate is in use; any
+    other value means someone moved it, deliberately, via the comparison
+    (default_table) or a confirm prompt (measured / design_target).
+  - design_target is FREE ENTRY ONLY — no regional or preset values. Range
+    0.5-50 m3/(h.m2), the same limits as the measured input; an invalid entry
+    shows inline and never reaches the calculation (last valid value kept).
+  - Statistics offered: mean (default), median, Q1, Q3. min, max and SD are
+    deliberately NOT offered; they stay in Q50_TABLE_2_11 for reference.
+  - COALESCE handling (closes the commit 2 note): the UI only ever writes a
+    COMPLETE selection — basis together with its category, or all_dwellings —
+    via buildQ50SelectionUpdate, which also clears the other two category
+    fields in state. A new basis is held in local UI state until its category
+    is picked. So the saved basis always pairs with the category just written;
+    the cleared columns may come back from the DB with stale values, but
+    resolveQ50 reads only the category matching q50_selection_basis. No
+    server change needed. Proven by test (every selection over a row with
+    stale values in all three columns) and gate step 8 (real save + reload).
+  - q50 column is kept equal to the looked-up value on every default_table
+    change, so the stored q50 always matches the q50 the calculation uses.
+  - Live readout: "Change vs. when this project was opened". The baseline is
+    a UI-only snapshot (airPermeabilityAtOpen) taken in loadProject (every
+    create path ends in loadProject) and kept across same-project reloads.
+    It is never saved: buildDesignParamsPayload is a whitelist, and a test
+    fails on any new spread/Object.assign of a project object in client/src.
+    The change is the difference of two calculateBuildingVentilationEN12831
+    calls — no new formulas (fabric does not depend on q50). Hidden when
+    there is no snapshot, no rooms, or not the EN 12831 method.
+  - Legacy update flow saves immediately on confirm (saveDesignParams, then
+    state) — like the MCS tabs, this also saves any other unsaved edits in
+    the project. Cancel touches nothing.
+  - Placeholders marked TODO(commit 5): legacy banner wording, the confirm
+    prompt when leaving legacy_sap for measured / design target, and help
+    text on choosing the most representative Table 2-11 value.
+
 Wrinkle inside commit 2: VentilationSettings.jsx:72 calls estimateQ50SAP
 whenever !isMeasured. A legacy_sap project would display a recomputed
 estimate while the calculation uses the frozen value — UI and maths
@@ -764,6 +800,17 @@ createForProject, which sets both explicitly. If another way to create a
 project is added (import, public API), it could inherit a method and q50
 that disagree. Fix then, or before: ALTER q50 SET DEFAULT 8.6 in a migration,
 or route every create through createForProject.
+
+**Single design_params save path with a saved snapshot**
+The app has eight separate places that save design_params (App.jsx: main
+Save, saveDesignParams for the MCS tabs, the postcode auto-apply in
+loadProject, applyMCSFromPostcode, handleSaveInstallAddress; Summary.jsx:
+three direct calls), each sending the current in-memory state, with no
+shared saved-state tracking. (Counted as "seven" in the commit 4
+discussion; grep api.updateDesignParams gives eight.) A single save path that records what was last saved is
+worth doing before the SaaS multi-user work: it is also what an "unsaved
+changes" warning and any audit trail would need. (B25 commit 4's readout
+compares against "when this project was opened" for this reason.)
 
 **DB snapshots before migrations**
 Railway TCP proxy URL used for pg_dump from local machine. Beekeeper Studio

@@ -9,8 +9,8 @@
 // Field names are camelCase throughout, matching App.jsx loadProject() mapping.
 
 import { useState, useEffect } from 'react';
-import { resolveQ50 } from '../../utils/en12831Calculations';
 import { BUILDING_SHIELDING_OPTIONS } from '../../utils/en12831VentilationData';
+import AirPermeabilitySettings from './AirPermeabilitySettings';
 
 const inputClass  = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
@@ -23,7 +23,7 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
-export default function VentilationSettings({ project, onUpdate, onUpdateBatch, onApplyMVHR, onClearMVHR }) {
+export default function VentilationSettings({ project, onUpdate, onUpdateBatch, onSaveDesignParams, onApplyMVHR, onClearMVHR }) {
   const [showMethodInfo, setShowMethodInfo] = useState(false);
 
   // Local state for the whole-house MVHR inputs so they don't round-trip
@@ -57,36 +57,6 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   const handleClear = async () => {
     if (!window.confirm('Remove whole-house MVHR from all rooms? This resets continuous ventilation to "None" for every room.')) return;
     await onClearMVHR();
-  };
-
-  const method     = project.airPermeabilityMethod;
-  const isMeasured = method === 'measured';
-  const isEstimated = method === 'estimated';
-  // B25 interim guard (full rebuild in commit 4): legacy_sap and design_target
-  // carry a stored q50 that resolveQ50 uses directly — display that, never a
-  // recomputed SAP estimate, so the UI and the calculation agree.
-  const isLegacySap    = method === 'legacy_sap';
-  const isStoredOther  = method === 'legacy_sap' || method === 'design_target';
-  const isDefaultTable = method === 'default_table';
-
-  // Live q50 recalculates from current project fields on every render.
-  // B25 commit 3: the SAP estimate is gone; default_table resolves from Table 2-11
-  // (interim display — the selection UI is commit 4).
-  const resolved     = resolveQ50(project);
-  const effectiveQ50 = isMeasured ? (project.q50 ?? 12.0) : resolved.q50;
-
-  // When switching to measured, seed q50 with the current estimated value
-  // B25: the SAP estimate is superseded — no project can move ONTO 'estimated'.
-  // (The server also ignores an incoming 'estimated'.)
-  const handleMethodToggle = (target) => {
-    if (target === 'measured') {
-      onUpdateBatch({
-        airPermeabilityMethod: 'measured',
-        q50: parseFloat(effectiveQ50.toFixed(1)),
-      });
-    } else if (target === 'estimated' && isEstimated) {
-      onUpdate('airPermeabilityMethod', 'estimated');
-    }
   };
 
   return (
@@ -137,115 +107,14 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
       )}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Air permeability method                                             */}
+      {/* Air permeability (B25 commit 4 — see AirPermeabilitySettings.jsx)    */}
       {/* ------------------------------------------------------------------ */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 border-b border-gray-200 pb-1 mb-3">
-          Air Permeability
-        </h3>
-
-        {/* Method toggle */}
-        <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-4 text-sm">
-          {[
-            { value: 'estimated', label: 'SAP Estimate',
-              sub: isEstimated ? 'No test available' : 'Superseded (DHDG-2026-1-COR-001)',
-              disabled: !isEstimated },
-            { value: 'measured',  label: 'Measured / Tested', sub: 'Blower door or pulse test', disabled: false },
-          ].map(({ value, label, sub, disabled }) => (
-            <button
-              key={value}
-              onClick={() => handleMethodToggle(value)}
-              disabled={disabled}
-              className={`flex-1 py-2 px-3 text-left transition ${
-                project.airPermeabilityMethod === value
-                  ? 'bg-blue-600 text-white'
-                  : disabled
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <span className="font-semibold block">{label}</span>
-              <span className={`text-xs ${project.airPermeabilityMethod === value ? 'text-blue-100' : 'text-gray-500'}`}>
-                {sub}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {isMeasured ? (
-          /* Measured q50 */
-          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-            <Field
-              label="Air permeability q₅₀"
-              hint="From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result."
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.5"
-                  max="50"
-                  value={project.q50 ?? 12}
-                  onChange={e => onUpdate('q50', parseFloat(e.target.value) || 12)}
-                  className={inputClass + ' flex-1'}
-                />
-                <span className="text-sm text-gray-600 whitespace-nowrap">m³/(h·m²)</span>
-              </div>
-            </Field>
-            <p className="text-xs text-gray-500">
-              If vents or fans were sealed during the test, background ventilation
-              additions are still made at room level.
-            </p>
-          </div>
-        ) : isStoredOther ? (
-          /* B25: stored q50 (legacy_sap / design_target) — read-only */
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs text-gray-600">
-              {isLegacySap
-                ? 'Frozen estimate from the superseded SAP 10.2 method (CIBSE DHDG 2026-01, corrected by DHDG-2026-1-COR-001) — preserved so previously issued figures remain reproducible.'
-                : 'Design target air permeability — used directly in the calculation.'}
-            </p>
-          </div>
-        ) : (
-          /* B25 interim: Table 2-11 default — read-only until the commit 4 selection UI */
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs text-gray-600">
-              {isDefaultTable && resolved.defaulted
-                ? 'Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001). No dwelling characteristic selected, so the all-dwellings mean is used.'
-                : 'Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001).'}
-            </p>
-          </div>
-        )}
-
-        {/* Effective q50 — always visible */}
-        <div className="mt-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
-          <div>
-            <span className="text-sm font-semibold text-gray-700">Effective q₅₀</span>
-            <span className="text-xs text-gray-500 ml-2">
-              {isMeasured ? 'from test — used directly in calculation'
-                : isLegacySap ? 'frozen superseded estimate — used directly in calculation'
-                : isStoredOther ? 'design target — used directly in calculation'
-                : isDefaultTable && resolved.defaulted ? 'Table 2-11 all-dwellings mean (no selection yet)'
-                : isDefaultTable ? 'Table 2-11 default — used directly in calculation'
-                : 'stored value — used directly in calculation'}
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-xl font-bold text-blue-600">{effectiveQ50.toFixed(1)}</span>
-            <span className="text-sm text-gray-500 ml-1">m³/(h·m²)</span>
-          </div>
-        </div>
-        {isEstimated && (
-          <p className="text-xs text-gray-500 mt-1">
-            Note: when using the SAP estimate, shielding affects q₅₀ and the 50 Pa→typical conversion in opposite directions — they largely cancel for 1–2 storey buildings. The q₅₀ figure above will vary with shielding choice but room ventilation heat loss will be very similar. If you switch to a measured q₅₀ from a blower door test, shielding then only affects the 50 Pa→typical conversion and has its expected effect.
-          </p>
-        )}
-        {isMeasured && effectiveQ50 > 15 && (
-          <p className="text-xs text-amber-600 mt-1">
-            ⚠ Measured q₅₀ above 15 — unusually high for a modern building. Double-check the test report units (should be m³/(h·m²) at 50 Pa, not ACH).
-          </p>
-        )}
-      </div>
+      <AirPermeabilitySettings
+        project={project}
+        onUpdate={onUpdate}
+        onUpdateBatch={onUpdateBatch}
+        onSaveDesignParams={onSaveDesignParams}
+      />
 
       {/* ------------------------------------------------------------------ */}
       {/* Building characteristics                                            */}

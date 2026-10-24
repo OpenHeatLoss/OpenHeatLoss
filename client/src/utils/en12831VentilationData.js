@@ -42,8 +42,55 @@ export const Q50_TABLE_2_11 = {
     other: r(7.9,3.4,1.0,5.8,7.7,9.6,44.0) },
 };
 
-// Statistics a designer may select. sd, min and max are reference only.
+// Statistics a designer may select. sd, min and max are deliberately not
+// offered (B25 decision) — they stay in the table for reference only.
 export const Q50_STATISTICS = ['mean', 'median', 'q1', 'q3'];
+
+// Which project field holds the Table 2-11 category for each selection basis.
+// 'all_dwellings' has no category.
+export const Q50_CATEGORY_FIELD = {
+  built_form:        'q50BuiltForm',
+  age_band:          'q50AgeBand',
+  wall_construction: 'q50WallConstruction',
+};
+
+/**
+ * UI labels for the Table 2-11 selection
+ */
+export const Q50_BASIS_OPTIONS = {
+  built_form:        { label: 'Built form' },
+  age_band:          { label: 'Age band' },
+  wall_construction: { label: 'Wall construction' },
+  all_dwellings:     { label: 'All dwellings' },
+};
+
+export const Q50_CATEGORY_LABELS = {
+  built_form: {
+    flat: 'Flat', terrace: 'Terrace', semi_detached: 'Semi-detached',
+    detached: 'Detached', bungalow: 'Bungalow',
+  },
+  age_band: {
+    pre1919: 'Pre-1919', '1919_1944': '1919–1944', '1945_1964': '1945–1964',
+    '1965_1980': '1965–1980', '1981_1990': '1981–1990', post1990: 'Post-1990',
+  },
+  wall_construction: {
+    cavity_uninsulated: 'Cavity, uninsulated', cavity_insulated: 'Cavity, insulated',
+    solid_uninsulated: 'Solid, uninsulated', solid_insulated: 'Solid, insulated',
+    other: 'Other',
+  },
+};
+
+export const Q50_STATISTIC_OPTIONS = {
+  mean:   { label: 'Mean' },
+  median: { label: 'Median' },
+  q1:     { label: 'Lower quartile (Q1)' },
+  q3:     { label: 'Upper quartile (Q3)' },
+};
+
+// Range accepted for a typed q50 (measured / design target), m³/(h·m²).
+// Same limits as the existing measured-value input (min 0.5, max 50).
+export const Q50_INPUT_MIN = 0.5;
+export const Q50_INPUT_MAX = 50;
 
 /**
  * Look up a default q50 from Table 2-11.

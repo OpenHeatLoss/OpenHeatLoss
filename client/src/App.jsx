@@ -18,6 +18,7 @@ import SettingsPage from './components/settings/SettingsPage';
 import AdminPage from './components/admin/AdminPage';
 import { getMCSDataFromPostcode } from './utils/mcsData';
 import { buildRoomPayload, buildDesignParamsPayload } from './utils/projectPayloads';
+import { airPermeabilitySnapshot } from './utils/q50Selection';
 import { AuthModal, ResetPasswordModal } from './components/auth/AuthModal';
 
 function App() {
@@ -518,7 +519,16 @@ function App() {
         })).catch(err => console.error('MCS auto-apply failed:', err));
       }
     }
-    setCurrentProject(project);
+    // B25: UI-only snapshot of the air permeability fields as opened, for the
+    // "Change vs. when this project was opened" readout. Never saved
+    // (buildDesignParamsPayload is a whitelist). A reload of the SAME project
+    // (preserveTab, e.g. after a room edit) keeps the original snapshot.
+    setCurrentProject(prev => ({
+      ...project,
+      airPermeabilityAtOpen: (preserveTab && prev?.id === project.id && prev.airPermeabilityAtOpen)
+        ? prev.airPermeabilityAtOpen
+        : airPermeabilitySnapshot(project),
+    }));
     if (!preserveTab) setActiveTab('project');
 
     // Load pipe sections, pipe materials and fittings separately from their
@@ -1735,6 +1745,7 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdate={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                onSaveDesignParams={saveDesignParams}
                 onApplyMVHR={applyWholeHouseMVHR}
                 onClearMVHR={clearWholeHouseMVHR}
                 onSaveContact={handleSaveContact}

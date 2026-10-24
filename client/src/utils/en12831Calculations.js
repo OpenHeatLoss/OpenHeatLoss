@@ -40,6 +40,7 @@ import {
   BACKGROUND_VENT_ADDITIONS_M3H,
   MIN_ROOM_ACH,
   Q50_TABLE_2_11,
+  Q50_CATEGORY_FIELD,
   lookupDefaultQ50,
   getHeightBand,
   getRoomMinACHCategory,
@@ -73,13 +74,6 @@ import {
 // Methods whose q50 is a stored number, used as-is.
 const STORED_Q50_METHODS = ['measured', 'legacy_sap', 'design_target'];
 
-// Which project field holds the Table 2-11 category for each selection basis.
-const CATEGORY_FIELD = {
-  built_form:        'q50BuiltForm',
-  age_band:          'q50AgeBand',
-  wall_construction: 'q50WallConstruction',
-};
-
 export const resolveQ50 = (project) => {
   const method = project.airPermeabilityMethod;
   if (STORED_Q50_METHODS.includes(method)) {
@@ -97,8 +91,10 @@ export const resolveQ50 = (project) => {
   if (basis === null) return fallback;
   // Known basis with no category chosen yet → defaulted. An unknown basis falls
   // through to the lookup, which returns null and is reported below.
-  const category = Object.hasOwn(CATEGORY_FIELD, basis) ? (project[CATEGORY_FIELD[basis]] ?? null) : null;
-  if (Object.hasOwn(CATEGORY_FIELD, basis) && category === null) return fallback;
+  // Only the category matching the basis is read — a stale value left in
+  // another category column (the server cannot clear them) is inert.
+  const category = Object.hasOwn(Q50_CATEGORY_FIELD, basis) ? (project[Q50_CATEGORY_FIELD[basis]] ?? null) : null;
+  if (Object.hasOwn(Q50_CATEGORY_FIELD, basis) && category === null) return fallback;
 
   const statistic = project.q50Statistic ?? 'mean';
   const q50 = lookupDefaultQ50({ basis, category, statistic });

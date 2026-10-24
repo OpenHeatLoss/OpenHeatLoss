@@ -22,6 +22,10 @@
 //   6. node server/migrate.js a second time: design_params must be identical.
 //   7. Old-client save: designParams.update with method 'estimated', q50 12
 //      and no q50_* fields must raise no error and change nothing.
+//   8. Round trip on a TEMPORARY project (created and deleted by the gate):
+//      createForProject defaults, then Table 2-11 selections and method
+//      switches saved via buildDesignParamsPayload → designParams.update and
+//      reloaded via the loadProject mapping; stale categories never used.
 //
 // Project set changes. If projects were created or deleted in the scratch DB
 // after the before files were taken (e.g. by using the app against it), the
@@ -460,6 +464,94 @@ try { await designParams.createForProject(target); } catch (e) { createErr = e; 
 const r4 = await getRow(target);
 check('createForProject SQL runs on the migrated schema; existing row untouched (every column)',
   createErr === null && toJson(r4) === toJson(r3), createErr?.message ?? '');
+
+// ---------------------------------------------------------------------------
+// 8. Round trip (B25 commit 4) — temporary project, deleted afterwards
+// ---------------------------------------------------------------------------
+// The rebuilt UI saves through buildDesignParamsPayload → designParams.update
+// and reloads through loadProject. Exercise that path on a throwaway project
+// so no real project's method changes: method + the five q50_* fields must
+// round-trip, and a basis change must never let a stale category be used.
+console.log('\n== 8. Round trip (temporary project) ==');
+const { buildDesignParamsPayload } = await import('../client/src/utils/projectPayloads.js');
+const { resolveQ50 } = await import('../client/src/utils/en12831Calculations.js');
+const { buildQ50SelectionUpdate } = await import('../client/src/utils/q50Selection.js');
+const { Q50_TABLE_2_11, Q50_CATEGORY_FIELD } = await import('../client/src/utils/en12831VentilationData.js');
+const BUNGALOW_Q1 = Q50_TABLE_2_11.built_form.bungalow.q1;
+const { projects } = require('../server/database.js');
+
+// loadProject's mapping for the air permeability fields (App.jsx).
+const loadMapped = (row) => ({
+  ...payloadFromRow(row),
+  airPermeabilityMethod: row.air_permeability_method,
+  q50:                   row.q50,
+  q50BuiltForm:          row.q50_built_form        ?? null,
+  q50AgeBand:            row.q50_age_band          ?? null,
+  q50WallConstruction:   row.q50_wall_construction ?? null,
+  q50SelectionBasis:     row.q50_selection_basis   ?? null,
+  q50Statistic:          row.q50_statistic         ?? 'mean',
+});
+const SEL_FIELDS = ['airPermeabilityMethod', 'q50', 'q50SelectionBasis', 'q50Statistic'];
+
+const { id: tempId } = await projects.create({ name: 'B25 GATE TEMP — safe to delete' });
+console.log(`  temporary project ${tempId}`);
+try {
+  await designParams.createForProject(tempId);
+  const fresh = await getRow(tempId);
+  check(`new row: default_table, q50 8.6, statistic 'mean', no selection`,
+    fresh.air_permeability_method === 'default_table' && fresh.q50 === 8.6 && fresh.q50_statistic === 'mean' &&
+    [fresh.q50_selection_basis, fresh.q50_built_form, fresh.q50_age_band, fresh.q50_wall_construction].every(v => v === null));
+  check('new row resolves to the all-dwellings mean, flagged defaulted',
+    toJson(resolveQ50(loadMapped(fresh))) === toJson({ q50: 8.6, defaulted: true }));
+
+  // Save the way the UI does (saveDesignParams: payload from current state +
+  // the change), then reload and map the way loadProject does.
+  let state = loadMapped(fresh);
+  const saveAndReload = async (change) => {
+    await designParams.update(tempId, buildDesignParamsPayload(state, change));
+    state = loadMapped(await getRow(tempId));
+    return state;
+  };
+
+  const steps = [
+    ['built form: detached, mean',    buildQ50SelectionUpdate({ basis: 'built_form', category: 'detached', statistic: 'mean' })],
+    ['basis change → age band: pre-1919, Q3 (leaves stale built form)',
+                                      buildQ50SelectionUpdate({ basis: 'age_band', category: 'pre1919', statistic: 'q3' })],
+    ['basis change → all dwellings, median',
+                                      buildQ50SelectionUpdate({ basis: 'all_dwellings', statistic: 'median' })],
+    ['basis change → built form: bungalow, Q1 (old stale value replaced)',
+                                      buildQ50SelectionUpdate({ basis: 'built_form', category: 'bungalow', statistic: 'q1' })],
+  ];
+  for (const [label, change] of steps) {
+    const reloaded = await saveAndReload(change);
+    const catField = Q50_CATEGORY_FIELD[change.q50SelectionBasis];   // undefined for all dwellings
+    const fieldsOk = SEL_FIELDS.every(f => Object.is(reloaded[f], change[f]))
+      && (!catField || reloaded[catField] === change[catField]);
+    const resolvedOk = toJson(resolveQ50(reloaded)) === toJson({ q50: change.q50, defaulted: false });
+    check(`round trip: ${label} → reload resolves ${change.q50}`, fieldsOk && resolvedOk,
+      `reloaded ${toJson(Object.fromEntries([...SEL_FIELDS, 'q50BuiltForm', 'q50AgeBand', 'q50WallConstruction'].map(f => [f, reloaded[f]])))}`);
+  }
+  // The COALESCE limitation is real (stale value kept) but inert.
+  check('stale age band from step 2 is still in the database but not used',
+    state.q50AgeBand === 'pre1919' && state.q50SelectionBasis === 'built_form' && resolveQ50(state).q50 === BUNGALOW_Q1);
+
+  // Method switches, as AirPermeabilitySettings.handleMethod sends them.
+  let r = await saveAndReload({ airPermeabilityMethod: 'measured', q50: 5.2 });
+  check('switch to measured 5.2 round-trips; selection kept but inert',
+    r.airPermeabilityMethod === 'measured' && r.q50 === 5.2 && resolveQ50(r).q50 === 5.2 && r.q50SelectionBasis === 'built_form');
+  r = await saveAndReload({ airPermeabilityMethod: 'default_table',
+                            q50: resolveQ50({ ...state, airPermeabilityMethod: 'default_table' }).q50 });
+  check('switch back to default_table restores the stored selection (built form: bungalow, Q1)',
+    r.airPermeabilityMethod === 'default_table' && toJson(resolveQ50(r)) === toJson({ q50: BUNGALOW_Q1, defaulted: false }) && r.q50 === BUNGALOW_Q1);
+  r = await saveAndReload({ airPermeabilityMethod: 'design_target', q50: 3 });
+  check('switch to design_target 3.0 round-trips', r.airPermeabilityMethod === 'design_target' && r.q50 === 3 && resolveQ50(r).q50 === 3);
+} finally {
+  const c = await connectScratch();
+  await c.query('DELETE FROM projects WHERE id = $1', [tempId]);   // design_params cascades
+  const left = (await c.query('SELECT (SELECT COUNT(*)::int FROM projects WHERE id = $1) + (SELECT COUNT(*)::int FROM design_params WHERE project_id = $1) AS n', [tempId])).rows[0].n;
+  await c.end();
+  check(`temporary project ${tempId} and its design_params deleted`, left === 0);
+}
 
 // ---------------------------------------------------------------------------
 const failed = results.filter(r => !r.pass);
