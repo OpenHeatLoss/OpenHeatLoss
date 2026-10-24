@@ -1,7 +1,7 @@
 // client/src/utils/q50Selection.js
 //
-// Pure logic for the B25 air permeability UI (VentilationSettings.jsx):
-// building a Table 2-11 selection, the legacy_sap → default_table comparison,
+// Pure logic for the B25 air permeability UI (AirPermeabilitySettings.jsx,
+// Q50CandidatePicker.jsx): building a Table 2-11 selection, the candidate picker,
 // the opened-project snapshot, and the live change in building totals.
 //
 // No formulas live here. The change in totals is the difference between two
@@ -13,6 +13,7 @@ import {
   Q50_TABLE_2_11,
   Q50_STATISTICS,
   Q50_CATEGORY_FIELD,
+  Q50_CATEGORY_LABELS,
   Q50_INPUT_MIN,
   Q50_INPUT_MAX,
   lookupDefaultQ50,
@@ -83,33 +84,132 @@ export const q50Candidate = (basis, category) => {
 };
 
 // ---------------------------------------------------------------------------
-// legacy_sap → default_table comparison
+// Candidate picker (Q50CandidatePicker.jsx) — used for default_table projects
+// ('select' mode) and for the legacy_sap update ('update-legacy' mode)
 // ---------------------------------------------------------------------------
 
-// The three candidates offered, in display order.
-export const LEGACY_CANDIDATE_BASES = ['built_form', 'age_band', 'wall_construction'];
+// The candidates offered, in display order. 'all_dwellings' has no category.
+export const Q50_PICKER_BASES = ['built_form', 'age_band', 'wall_construction', 'all_dwellings'];
 
 /**
- * Starting state of the comparison: nothing preselected — no category in any
- * column, no candidate picked, no statistic. The engineer must make every
- * choice deliberately.
+ * Picker state with nothing chosen: no category in any column, no candidate
+ * picked, no statistic.
  */
-export const initialLegacyComparison = () => ({
+export const initialQ50Picker = () => ({
   categories: { built_form: null, age_band: null, wall_construction: null },
   pickedBasis: null,
   statistic: null,
 });
 
 /**
- * The selection update the comparison would save, or null until the engineer
- * has picked a candidate (with its category chosen) AND a statistic.
+ * The selection a default_table project is using, or null when it has none
+ * (still on the all-dwellings fallback) or is on another method. Derived from
+ * resolveQ50, so it is exactly the selection the calculation reads.
+ *
+ * @returns {{ basis, category, statistic }|null}
  */
-export const legacyComparisonUpdate = (state) => {
-  if (!state?.pickedBasis || !LEGACY_CANDIDATE_BASES.includes(state.pickedBasis)) return null;
-  if (!state.statistic || !Q50_STATISTICS.includes(state.statistic)) return null;
-  const category = state.categories?.[state.pickedBasis] ?? null;
-  if (category === null) return null;
+export const savedQ50Selection = (project) => {
+  if (project?.airPermeabilityMethod !== 'default_table' || resolveQ50(project).defaulted) return null;
+  const basis = project.q50SelectionBasis;
+  if (!Q50_PICKER_BASES.includes(basis)) return null;
+  const statistic = project.q50Statistic ?? 'mean';   // resolveQ50's default
+  if (!Q50_STATISTICS.includes(statistic)) return null;
+  const category = basis === 'all_dwellings' ? null : project[Q50_CATEGORY_FIELD[basis]];
+  return { basis, category, statistic };
+};
+
+/**
+ * What the picker shows: the local state, with the project's own selection
+ * (if any) laid over it. The selected column and statistic therefore always
+ * reflect the project; the other columns are local comparison only.
+ */
+export const q50PickerView = (local, project) => {
+  const saved = savedQ50Selection(project);
+  if (!saved) return local;
+  return {
+    categories: saved.basis === 'all_dwellings'
+      ? local.categories
+      : { ...local.categories, [saved.basis]: saved.category },
+    pickedBasis: saved.basis,
+    statistic: saved.statistic,
+  };
+};
+
+/** True when the column can be picked: a category is chosen, or All dwellings. */
+export const q50PickerColumnReady = (state, basis) =>
+  basis === 'all_dwellings' || (Object.hasOwn(Q50_CATEGORY_FIELD, basis ?? '') && state.categories?.[basis] != null);
+
+/**
+ * Apply one user action to the picker state. Pure; returns a new state.
+ * Invalid actions (unknown basis/category, min/max/SD, picking a column with
+ * no category) return the state unchanged.
+ *
+ * @param {Object} state
+ * @param {Object} change  { category: [basis, category|null] } | { pick: basis } | { statistic }
+ */
+export const q50PickerChange = (state, change) => {
+  if (change.category) {
+    const [basis, raw] = change.category;
+    const category = raw || null;
+    if (!Object.hasOwn(Q50_CATEGORY_FIELD, basis ?? '')) return state;
+    if (category !== null && !Object.hasOwn(Q50_TABLE_2_11[basis], category)) return state;
+    return {
+      ...state,
+      categories: { ...state.categories, [basis]: category },
+      // Clearing the picked column's category un-picks it.
+      pickedBasis: state.pickedBasis === basis && category === null ? null : state.pickedBasis,
+    };
+  }
+  if (change.pick !== undefined) {
+    if (!Q50_PICKER_BASES.includes(change.pick) || !q50PickerColumnReady(state, change.pick)) return state;
+    return { ...state, pickedBasis: change.pick };
+  }
+  if (change.statistic !== undefined) {
+    if (!Q50_STATISTICS.includes(change.statistic)) return state;
+    return { ...state, statistic: change.statistic };
+  }
+  return state;
+};
+
+/**
+ * The selection update the picker would apply, or null until a candidate
+ * (with its category) AND a statistic are picked.
+ */
+export const q50PickerUpdate = (state) => {
+  if (!state || !Q50_PICKER_BASES.includes(state.pickedBasis)) return null;
+  if (!q50PickerColumnReady(state, state.pickedBasis)) return null;
+  const category = state.pickedBasis === 'all_dwellings' ? null : state.categories[state.pickedBasis];
   return buildQ50SelectionUpdate({ basis: state.pickedBasis, category, statistic: state.statistic });
+};
+
+/**
+ * 'select' mode: apply one action and say what the project should receive.
+ * The update is null unless the selection the project uses actually changes —
+ * a category chosen in a comparison column, or re-picking the selection
+ * already in use, changes nothing.
+ *
+ * @returns {{ state, update: Object|null }}
+ */
+export const q50PickerApply = (view, change, project) => {
+  const state  = q50PickerChange(view, change);
+  const update = q50PickerUpdate(state);
+  const saved  = savedQ50Selection(project);
+  const unchanged = update !== null && saved !== null
+    && update.q50SelectionBasis === saved.basis
+    && update.q50Statistic === saved.statistic
+    && (saved.basis === 'all_dwellings' || update[Q50_CATEGORY_FIELD[saved.basis]] === saved.category);
+  return { state, update: unchanged ? null : update };
+};
+
+/**
+ * Dropdown option label with the value for the chosen statistic, or the mean
+ * when no statistic is chosen yet: "Detached — 8.7".
+ */
+export const q50CategoryOptionLabel = (basis, category, statistic) => {
+  const candidate = q50Candidate(basis, category);
+  if (!candidate) return null;
+  const stat = Q50_STATISTICS.includes(statistic) ? statistic : 'mean';
+  return `${Q50_CATEGORY_LABELS[basis]?.[category] ?? category} — ${candidate[stat].toFixed(1)}`;
 };
 
 // ---------------------------------------------------------------------------

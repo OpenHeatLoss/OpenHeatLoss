@@ -329,8 +329,11 @@ DECISIONS TAKEN DURING COMMIT 4 (2026-10):
   - COALESCE handling (closes the commit 2 note): the UI only ever writes a
     COMPLETE selection — basis together with its category, or all_dwellings —
     via buildQ50SelectionUpdate, which also clears the other two category
-    fields in state. A new basis is held in local UI state until its category
-    is picked. So the saved basis always pairs with the category just written;
+    fields in state. Categories chosen on the other candidate cards stay in
+    local UI state for comparison and are never written (commit 4a replaced
+    the basis/category/statistic wizard with the shared candidate picker,
+    Q50CandidatePicker.jsx, used for default_table and for the legacy update).
+    So the saved basis always pairs with the category just written;
     the cleared columns may come back from the DB with stale values, but
     resolveQ50 reads only the category matching q50_selection_basis. No
     server change needed. Proven by test (every selection over a row with

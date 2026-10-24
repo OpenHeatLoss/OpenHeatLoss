@@ -1,6 +1,6 @@
 // client/test/q50Selection.test.mjs
 //
-// B25 commit 4: pure logic behind the rebuilt air permeability UI.
+// B25 commits 4 and 4a: pure logic behind the rebuilt air permeability UI.
 // Run with `npm test` in client/.
 
 import { test } from 'node:test';
@@ -17,9 +17,14 @@ import {
   AIR_PERMEABILITY_FIELDS,
   buildQ50SelectionUpdate,
   q50Candidate,
-  LEGACY_CANDIDATE_BASES,
-  initialLegacyComparison,
-  legacyComparisonUpdate,
+  Q50_PICKER_BASES,
+  initialQ50Picker,
+  savedQ50Selection,
+  q50PickerView,
+  q50PickerChange,
+  q50PickerApply,
+  q50PickerUpdate,
+  q50CategoryOptionLabel,
   airPermeabilitySnapshot,
   ventilationTotalsChange,
   formatSignedKW,
@@ -130,39 +135,159 @@ test('q50Candidate: values for the guide example characteristics, statistics onl
   assert.equal(q50Candidate('tenure', 'flat'), null);
 });
 
-test('legacy comparison: nothing is preselected', () => {
-  const s = initialLegacyComparison();
+// ---------------------------------------------------------------------------
+// Candidate picker (both modes)
+// ---------------------------------------------------------------------------
+
+// Apply a sequence of actions the way the component does.
+const act = (state, ...changes) => changes.reduce(q50PickerChange, state);
+const freshProject = {
+  id: 9, airPermeabilityMethod: 'default_table', q50: 8.6, q50Statistic: 'mean',
+  q50SelectionBasis: null, q50BuiltForm: null, q50AgeBand: null, q50WallConstruction: null,
+};
+
+test('picker: four candidates including All dwellings, nothing preselected', () => {
+  assert.deepEqual(Q50_PICKER_BASES, ['built_form', 'age_band', 'wall_construction', 'all_dwellings']);
+  const s = initialQ50Picker();
   assert.deepEqual(s, {
     categories: { built_form: null, age_band: null, wall_construction: null },
     pickedBasis: null, statistic: null,
   });
-  assert.deepEqual(Object.keys(s.categories), LEGACY_CANDIDATE_BASES);
-  assert.equal(legacyComparisonUpdate(s), null);
+  assert.equal(q50PickerUpdate(s), null);
   // A fresh object each time — no shared mutable default.
-  assert.notEqual(initialLegacyComparison(), initialLegacyComparison());
-  assert.notEqual(initialLegacyComparison().categories, initialLegacyComparison().categories);
+  assert.notEqual(initialQ50Picker(), initialQ50Picker());
+  assert.notEqual(initialQ50Picker().categories, initialQ50Picker().categories);
 });
 
-test('legacy comparison: needs a deliberate candidate AND statistic', () => {
-  const cats = { built_form: 'semi_detached', age_band: '1945_1964', wall_construction: 'cavity_uninsulated' };
-  // All three categories chosen, but no pick and no statistic.
-  assert.equal(legacyComparisonUpdate({ categories: cats, pickedBasis: null, statistic: null }), null);
-  // Statistic but no pick.
-  assert.equal(legacyComparisonUpdate({ categories: cats, pickedBasis: null, statistic: 'mean' }), null);
-  // Pick but no statistic.
-  assert.equal(legacyComparisonUpdate({ categories: cats, pickedBasis: 'age_band', statistic: null }), null);
-  // Picked a candidate whose category is not chosen.
-  assert.equal(legacyComparisonUpdate({ categories: { ...cats, age_band: null }, pickedBasis: 'age_band', statistic: 'mean' }), null);
-  // 'all_dwellings' is not one of the three candidates; min/max/sd not allowed.
-  assert.equal(legacyComparisonUpdate({ categories: cats, pickedBasis: 'all_dwellings', statistic: 'mean' }), null);
-  assert.equal(legacyComparisonUpdate({ categories: cats, pickedBasis: 'age_band', statistic: 'max' }), null);
+test('picker: a project with no saved selection shows nothing selected', () => {
+  // New project on the all-dwellings fallback, basis chosen without category,
+  // and other methods (legacy_sap, measured) — even with stale q50_* values.
+  for (const p of [
+    freshProject,
+    { ...freshProject, q50SelectionBasis: 'age_band' },
+    { ...freshProject, airPermeabilityMethod: 'legacy_sap', q50: 16.6, q50SelectionBasis: 'built_form', q50BuiltForm: 'detached' },
+    { ...freshProject, airPermeabilityMethod: 'measured',   q50: 5.2,  q50SelectionBasis: 'built_form', q50BuiltForm: 'detached' },
+  ]) {
+    assert.equal(savedQ50Selection(p), null, JSON.stringify(p));
+    assert.deepEqual(q50PickerView(initialQ50Picker(), p), initialQ50Picker());
+  }
+});
+
+test('picker: a saved selection shows that candidate and statistic; other cards start empty', () => {
+  const saved = { ...freshProject, ...buildQ50SelectionUpdate({ basis: 'age_band', category: '1945_1964', statistic: 'q3' }),
+                  q50BuiltForm: 'detached' };   // stale, must not show
+  assert.deepEqual(savedQ50Selection(saved), { basis: 'age_band', category: '1945_1964', statistic: 'q3' });
+  assert.deepEqual(q50PickerView(initialQ50Picker(), saved), {
+    categories: { built_form: null, age_band: '1945_1964', wall_construction: null },
+    pickedBasis: 'age_band', statistic: 'q3',
+  });
+  const all = { ...freshProject, ...buildQ50SelectionUpdate({ basis: 'all_dwellings', statistic: 'median' }) };
+  assert.deepEqual(q50PickerView(initialQ50Picker(), all), { ...initialQ50Picker(), pickedBasis: 'all_dwellings', statistic: 'median' });
+  // A missing statistic is shown as the one resolveQ50 uses ('mean').
+  assert.equal(savedQ50Selection({ ...saved, q50Statistic: null }).statistic, 'mean');
+});
+
+test('picker select mode: comparing other cards changes nothing until "Use this candidate"', () => {
+  const saved = { ...freshProject, ...buildQ50SelectionUpdate({ basis: 'built_form', category: 'semi_detached', statistic: 'mean' }) };
+  let view = q50PickerView(initialQ50Picker(), saved);
+  // Choose categories on the other cards: no update.
+  let r = q50PickerApply(view, { category: ['age_band', 'pre1919'] }, saved);
+  assert.equal(r.update, null);
+  r = q50PickerApply(q50PickerView(r.state, saved), { category: ['wall_construction', 'solid_uninsulated'] }, saved);
+  assert.equal(r.update, null);
+  // Re-picking the card already in use, or the statistic already in use: no update.
+  view = q50PickerView(r.state, saved);
+  assert.equal(q50PickerApply(view, { pick: 'built_form' }, saved).update, null);
+  assert.equal(q50PickerApply(view, { statistic: 'mean' }, saved).update, null);
+  // Picking a card with no category: ignored.
+  assert.equal(q50PickerApply(q50PickerView(initialQ50Picker(), saved), { pick: 'age_band' }, saved).update, null);
+  // "Use this candidate" on a different card: a complete update, other categories cleared.
+  r = q50PickerApply(view, { pick: 'age_band' }, saved);
+  assert.deepEqual(r.update, {
+    airPermeabilityMethod: 'default_table', q50: Q50_TABLE_2_11.age_band.pre1919.mean,
+    q50SelectionBasis: 'age_band',
+    q50BuiltForm: null, q50AgeBand: 'pre1919', q50WallConstruction: null,
+    q50Statistic: 'mean',
+  });
+  // The comparison cards keep what was chosen on them (built form stays shown).
+  assert.equal(r.state.categories.built_form, 'semi_detached');
+  // Statistic change on the picked card, and category change on the picked card, apply.
+  assert.equal(q50PickerApply(view, { statistic: 'q1' }, saved).update.q50, 7.1);
+  assert.equal(q50PickerApply(view, { category: ['built_form', 'detached'] }, saved).update.q50BuiltForm, 'detached');
+});
+
+test('picker select mode: no saved selection — applies only once candidate AND statistic are picked', () => {
+  let r = q50PickerApply(q50PickerView(initialQ50Picker(), freshProject), { category: ['wall_construction', 'cavity_insulated'] }, freshProject);
+  assert.equal(r.update, null);
+  r = q50PickerApply(r.state, { pick: 'wall_construction' }, freshProject);
+  assert.equal(r.update, null);                              // no statistic yet
+  r = q50PickerApply(r.state, { statistic: 'median' }, freshProject);
+  assert.equal(r.update.q50SelectionBasis, 'wall_construction');
+  assert.equal(r.update.q50WallConstruction, 'cavity_insulated');
+  assert.equal(r.update.q50, Q50_TABLE_2_11.wall_construction.cavity_insulated.median);
+  // Statistic first, then All dwellings (no category needed).
+  r = q50PickerApply(initialQ50Picker(), { statistic: 'q3' }, freshProject);
+  assert.equal(r.update, null);
+  r = q50PickerApply(r.state, { pick: 'all_dwellings' }, freshProject);
+  assert.deepEqual(r.update, buildQ50SelectionUpdate({ basis: 'all_dwellings', statistic: 'q3' }));
+  assert.equal(r.update.q50, 10.2);
+});
+
+test('picker update-legacy mode: needs a deliberate candidate AND statistic', () => {
+  const cats = act(initialQ50Picker(),
+    { category: ['built_form', 'semi_detached'] }, { category: ['age_band', '1945_1964'] },
+    { category: ['wall_construction', 'cavity_uninsulated'] });
+  assert.equal(q50PickerUpdate(cats), null);                                   // no pick, no statistic
+  assert.equal(q50PickerUpdate(act(cats, { statistic: 'mean' })), null);       // statistic, no pick
+  assert.equal(q50PickerUpdate(act(cats, { pick: 'age_band' })), null);        // pick, no statistic
+  // Clearing the picked card's category un-picks it.
+  assert.equal(act(cats, { pick: 'age_band' }, { category: ['age_band', ''] }).pickedBasis, null);
+  // min/max/sd and unknown categories are ignored.
+  for (const statistic of ['min', 'max', 'sd']) assert.equal(act(cats, { statistic }).statistic, null, statistic);
+  assert.equal(act(cats, { category: ['age_band', 'castle'] }).categories.age_band, '1945_1964');
+  assert.equal(act(cats, { category: ['tenure', 'flat'] }), cats);
   // Complete: only the picked candidate's category is saved.
-  assert.deepEqual(legacyComparisonUpdate({ categories: cats, pickedBasis: 'age_band', statistic: 'q3' }), {
+  assert.deepEqual(q50PickerUpdate(act(cats, { pick: 'age_band' }, { statistic: 'q3' })), {
     airPermeabilityMethod: 'default_table', q50: 9.9,
     q50SelectionBasis: 'age_band',
     q50BuiltForm: null, q50AgeBand: '1945_1964', q50WallConstruction: null,
     q50Statistic: 'q3',
   });
+  // All dwellings is a valid candidate here too.
+  assert.equal(q50PickerUpdate(act(cats, { pick: 'all_dwellings' }, { statistic: 'mean' })).q50, 8.6);
+});
+
+test('picker: every pick saved over stale columns reloads to what the screen showed', () => {
+  const staleStored = {
+    airPermeabilityMethod: 'default_table', q50: 8.6, q50Statistic: 'mean',
+    q50SelectionBasis: 'built_form',
+    q50BuiltForm: 'detached', q50AgeBand: 'pre1919', q50WallConstruction: 'solid_insulated',
+  };
+  for (const sel of allSelections()) {
+    const state = act(initialQ50Picker(),
+      ...(sel.category ? [{ category: [sel.basis, sel.category] }] : []),
+      { pick: sel.basis }, { statistic: sel.statistic });
+    const update = q50PickerUpdate(state);
+    assert.deepEqual(update, buildQ50SelectionUpdate(sel), JSON.stringify(sel));
+    const reloaded = serverMerge(staleStored, update);
+    assert.deepEqual(resolveQ50(reloaded), resolveQ50(update), JSON.stringify(sel));
+    // Reloaded, the picker shows exactly the pick.
+    const view = q50PickerView(initialQ50Picker(), reloaded);
+    assert.equal(view.pickedBasis, sel.basis);
+    assert.equal(view.statistic, sel.statistic);
+    if (sel.category) assert.equal(view.categories[sel.basis], sel.category);
+  }
+});
+
+test('q50CategoryOptionLabel: value for the chosen statistic, mean when none', () => {
+  assert.equal(q50CategoryOptionLabel('built_form', 'detached', null), `Detached — ${Q50_TABLE_2_11.built_form.detached.mean.toFixed(1)}`);
+  assert.equal(q50CategoryOptionLabel('built_form', 'semi_detached', 'mean'), 'Semi-detached — 9.2');
+  assert.equal(q50CategoryOptionLabel('built_form', 'semi_detached', 'q1'), 'Semi-detached — 7.1');
+  assert.equal(q50CategoryOptionLabel('built_form', 'semi_detached', 'median'), 'Semi-detached — 8.6');
+  assert.equal(q50CategoryOptionLabel('built_form', 'semi_detached', 'q3'), 'Semi-detached — 10.8');
+  assert.equal(q50CategoryOptionLabel('age_band', '1945_1964', 'q3'), '1945–1964 — 9.9');
+  assert.equal(q50CategoryOptionLabel('wall_construction', 'cavity_uninsulated', 'max'), 'Cavity, uninsulated — 8.2');   // not offered → mean
+  assert.equal(q50CategoryOptionLabel('built_form', 'castle', 'mean'), null);
 });
 
 // ---------------------------------------------------------------------------
