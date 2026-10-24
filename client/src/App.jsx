@@ -1865,7 +1865,14 @@ const deleteProject = async (id) => {
               />
             )}
             {activeTab === 'pipe-sizing' && (
-              <PipeSizing project={currentProject} onUpdate={updateProject} onSavePipeSection={savePipeSection} onSave={saveDesignParams} />
+              <PipeSizing
+                project={currentProject}
+                onUpdate={updateProject}
+                onSavePipeSection={savePipeSection}
+                onSave={saveDesignParams}
+                isAnonymous={isAnonymous}
+                onRegister={() => { setAuthError(''); setShowAuthModal('register'); }}
+              />
             )}
             {activeTab === 'quote' && (
               <QuoteBuilder project={currentProject} currentCompany={currentCompany} currentUser={currentUser} />

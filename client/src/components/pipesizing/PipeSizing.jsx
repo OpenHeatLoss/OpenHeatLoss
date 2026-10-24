@@ -5,7 +5,7 @@ import { calculateSystemVolume } from '../../utils/calculateSystemVolume';
 import { calculateFlowRate } from '../../utils/pipeMaterialData';
 import { calculateRoomTotal } from '../../utils/calculations';
 
-export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSave }) {
+export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSave, isAnonymous = false, onRegister }) {
   // Pipe sections now come from project.pipeSections (loaded from DB via loadProject).
   // No local useState for sections — project state is the single source of truth.
   const sections = project.pipeSections || [];
@@ -289,6 +289,13 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
           <div>
             <h3 className="font-semibold text-blue-900 mb-2">Material Selection Guide</h3>
             <div className="space-y-1.5">
+              {pipeMaterials.length === 0 && (
+                <p className="text-sm text-blue-700">
+                  {isAnonymous
+                    ? 'Register free to see the pipe materials and size your pipework.'
+                    : 'Pipe materials have not loaded — please reload the page.'}
+                </p>
+              )}
               {pipeMaterials.map(mat => (
                 <div key={mat.id} className="flex items-baseline justify-between text-sm">
                   <span className="text-blue-800 font-medium">{mat.name}</span>
@@ -322,7 +329,24 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
         />
       ) : (
         <>
-          {/* Add Section Button and Export PDF Button */}
+          {/* Anonymous users have no company, so no pipe library: ask them to register.
+              Registering claims their current project, so nothing entered so far is lost. */}
+          {isAnonymous ? (
+            <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-6 text-center">
+              <p className="font-semibold text-blue-900 text-lg">Register free to use Pipe Sizing</p>
+              <p className="text-sm text-blue-800 mt-1">
+                Pipe sizing uses your company's pipe materials and fittings library, so it
+                is available once you have an account. Your project and everything you have
+                entered so far will be kept.
+              </p>
+              <button
+                onClick={onRegister}
+                className="mt-4 bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 font-semibold transition"
+              >
+                Register free
+              </button>
+            </div>
+          ) : (
           <div className="flex gap-4">
             <button
               onClick={handleAddSection}
@@ -355,6 +379,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
               </button>
             )}
           </div>
+          )}
 
           {/* Sections List */}
           {sections.length > 0 ? (
@@ -481,7 +506,7 @@ export default function PipeSizing({ project, onUpdate, onSavePipeSection, onSav
                 );
               })}
             </div>
-          ) : (
+          ) : isAnonymous ? null : (
             <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
               <p className="text-gray-500 text-lg">No pipe sections created yet</p>
               <p className="text-gray-400 text-sm mt-2">Click "Add Pipe Section" to get started</p>

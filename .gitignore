@@ -172,3 +172,4 @@ server/generate_quote_pdf(a).py
 .gitignore
 .sync_4b440a2043cf.db-shm
 .sync_4b440a2043cf.db-wal
+client/src/App(a).jsx
