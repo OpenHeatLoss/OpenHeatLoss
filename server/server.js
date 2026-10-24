@@ -166,7 +166,13 @@ app.use('/api', pdfRoutes(requireAuth, companies));
 // ------------------------------------------------------------
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@openheatloss.com';
-const APP_URL = process.env.APP_URL || 'https://openheatloss.com';
+// Replies to system emails (e.g. password reset) go here. There is no mailbox behind
+// EMAIL_FROM, so set EMAIL_REPLY_TO in Railway to an inbox that is actually read.
+// If unset, no Reply-To header is sent (replies bounce or vanish, as before).
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || null;
+// Must be the APP's address (where ?reset=TOKEN is handled), not the marketing site.
+// Same fallback as the CORS origin above, so a missing APP_URL can't produce a dead reset link.
+const APP_URL = process.env.APP_URL || 'https://app.openheatloss.com';
 
 async function sendEmail({ to, subject, html }) {
   if (!RESEND_API_KEY) {
@@ -180,7 +186,13 @@ async function sendEmail({ to, subject, html }) {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html }),
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to,
+        subject,
+        html,
+        ...(EMAIL_REPLY_TO ? { reply_to: EMAIL_REPLY_TO } : {}),
+      }),
     });
     if (!res.ok) {
       const err = await res.text();
