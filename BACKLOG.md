@@ -754,6 +754,17 @@ customer portal. Webhooks update users.plan in the DB. ~2 sessions to integrate.
 Postgres RLS policies as a belt-and-braces layer under the application-level
 company_id scoping. Worth adding before going beyond a handful of companies.
 
+**design_params q50 column default disagrees with the method default (B25)**
+New-project defaults now live in three places: createNewProject (client),
+designParams.createForProject (server) and the design_params column
+defaults. They agree except q50, whose column default is still 12.0 beside
+an air_permeability_method default of 'default_table' (8.6 is the Table 2-11
+all-dwellings mean). Harmless today: every create goes through
+createForProject, which sets both explicitly. If another way to create a
+project is added (import, public API), it could inherit a method and q50
+that disagree. Fix then, or before: ALTER q50 SET DEFAULT 8.6 in a migration,
+or route every create through createForProject.
+
 **DB snapshots before migrations**
 Railway TCP proxy URL used for pg_dump from local machine. Beekeeper Studio
 installed for GUI DB management. Always snapshot before any SQL touching live
@@ -762,6 +773,14 @@ data. Command:
     --no-owner --no-acl -f backup_$(date +%Y%m%d_%H%M%S).sql
 
 ### Priority 4 — Calculation / standards extensions
+
+**Re-check help text against any later DHDG corrigendum (B25)**
+Several screens now cite DHDG-2026-1-COR-001 and the renumbered Tables
+2-11 to 2-14 (VentilationSettings, VentilationEditor, migration and code
+comments; Summary banner from commit 5). If CIBSE issues a further
+corrigendum or a revised edition, re-check every such citation, table number
+and help text against it. grep "COR-001" and "Table 2-1" across client/src
+and server to find them.
 
 **Full BS EN 12831-1:2017 mode**
 Alternative to the CIBSE reduced method, selectable at project level. For new
