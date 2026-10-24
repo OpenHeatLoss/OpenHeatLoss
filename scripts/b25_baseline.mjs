@@ -33,8 +33,9 @@ registerHooks({
   },
 });
 
-const { resolveQ50, estimateQ50SAP, calculateRoomVentilationEN12831 } =
-  await import('../client/src/utils/en12831Calculations.js');
+// Namespace import: estimateQ50SAP is deleted in B25 commit 3, so treat it as optional.
+const en12831 = await import('../client/src/utils/en12831Calculations.js');
+const { resolveQ50, calculateRoomVentilationEN12831 } = en12831;
 const { calculateTransmissionLoss, calculateRoomTotal, calculateBuildingTotal } =
   await import('../client/src/utils/calculations.js');
 const { getMCSDataFromPostcode } = await import('../client/src/utils/mcsData.js');
@@ -56,8 +57,10 @@ const PROJECT_FIELDS = [
   ['airDensity',            'air_density',             dp => dp.air_density             ?? 1.2],
   ['specificHeat',          'specific_heat',           dp => dp.specific_heat           ?? 0.34],
   ['ventilationMethod',     'ventilation_method',      dp => dp.ventilation_method      || 'en12831_cibse2026'],
-  ['airPermeabilityMethod', 'air_permeability_method', dp => dp.air_permeability_method || 'estimated'],
-  ['q50',                   'q50',                     dp => dp.q50                     ?? 12.0],
+  // B25 commit 2 removed loadProject's `|| 'estimated'` / `?? 12.0` fallbacks.
+  // Both columns are NOT NULL (audit: 0 NULLs), so before/after are equivalent.
+  ['airPermeabilityMethod', 'air_permeability_method', dp => dp.air_permeability_method],
+  ['q50',                   'q50',                     dp => dp.q50],
   ['sapStructural',         'sap_structural',          dp => dp.sap_structural          || 'masonry'],
   ['sapFloor',              'sap_floor',               dp => dp.sap_floor               || 'other'],
   ['sapWindowDraughtPct',   'sap_window_draught_pct',  dp => dp.sap_window_draught_pct  ?? 100],
@@ -177,7 +180,8 @@ const results = projects.map(({ id }) => {
   }));
 
   const resolvedQ50 = resolveQ50(project);
-  const sapEstimate = project.airPermeabilityMethod === 'measured' ? null : estimateQ50SAP({
+  // Informational only (not compared by the gate): the live SAP breakdown for 'estimated' rows.
+  const sapEstimate = (project.airPermeabilityMethod !== 'estimated' || !en12831.estimateQ50SAP) ? null : en12831.estimateQ50SAP({
     structural:       project.sapStructural       ?? 'masonry',
     floor:            project.sapFloor            ?? 'other',
     windowDraughtPct: project.sapWindowDraughtPct ?? 100,

@@ -255,6 +255,22 @@ covers all 141 projects rather than one reference project, and is only
 available because the cancellation is exact. It is the single most valuable
 verification point in this piece of work.
 
+DECISIONS TAKEN DURING COMMIT 2 (2026-10):
+  - Commits 2 and 3 deploy TOGETHER. Commit 3 adds migration 025:
+    ALTER air_permeability_method SET DEFAULT 'default_table', then calls
+    freezeLegacySapQ50() again to catch any 'estimated' rows created since
+    023. The default change is deliberately NOT in 023.
+  - designParams.update ignores an incoming 'estimated' (keeps stored method
+    AND q50) — old browser tabs cannot revert a frozen project. Consequence:
+    no project can move onto 'estimated'; the SAP Estimate button is disabled
+    for any project not already on it ("Superseded (DHDG-2026-1-COR-001)").
+  - COMMIT 4 NOTE: the five q50_* columns use COALESCE($n, column), so the
+    UPDATE can never clear a Table 2-11 selection back to NULL. Accepted —
+    q50_selection_basis decides which characteristic applies, so a stale
+    value in another column is inert. If clearing is ever needed, commit 4
+    must add an explicit mechanism.
+  - Gate is EXACT equality (scripts/b25_gate.mjs), no tolerance.
+
 Wrinkle inside commit 2: VentilationSettings.jsx:72 calls estimateQ50SAP
 whenever !isMeasured. A legacy_sap project would display a recomputed
 estimate while the calculation uses the frozen value — UI and maths
