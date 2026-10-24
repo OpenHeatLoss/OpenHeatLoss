@@ -34,7 +34,20 @@
 //   node scripts/b25_gate.mjs --project-set-change=+1339,-1325
 // Every added project that is now legacy_sap (frozen by 025) must hold exactly
 // the q50 that the pre-B25 production code (main, LEGACY_REV) computes for it,
-// loaded from git — independent of the frozen copy inside migrate.js.
+// loaded from git — independent of the frozen copy inside migrate.js. Every
+// added project on default_table must store exactly its resolved q50.
+//
+// User-updated projects. A pre-existing project the user deliberately changed
+// in the app after the before files (e.g. a legacy_sap project moved to
+// Table 2-11 with "Update to corrected method") cannot match the before
+// files. Acknowledge it explicitly:
+//   node scripts/b25_gate.mjs ... --user-updated=229
+// Listed rows are left out of the "unchanged since before 023" comparisons
+// (resolved q50, room figures, migrated q50, updated_at, other columns,
+// selection columns NULL) and only those. Their sap_* columns are still
+// checked, a default_table row's stored q50 must equal its resolved q50, and
+// the pre-run → post-run check still covers them fully. The gate FAILS unless
+// the list is exactly the set of pre-existing rows that changed.
 //
 // Exit code 0 only if every check passes.
 
@@ -61,6 +74,9 @@ const LEGACY_REV = '8c453e1';
 
 const ackArg = process.argv.find(a => a.startsWith('--project-set-change='));
 const ACK_SET_CHANGE = ackArg ? ackArg.split('=')[1] : '';
+const userArg = process.argv.find(a => a.startsWith('--user-updated='));
+const USER_UPDATED = new Set((userArg ? userArg.split('=')[1] : '').split(',').filter(Boolean).map(Number));
+const isUserUpdated = (id) => USER_UPDATED.has(Number(id));
 
 // Same extensionless-import hook as b25_baseline.mjs, for the legacy client code.
 registerHooks({
@@ -184,13 +200,20 @@ check(`project set change since the before files acknowledged (actual "${setChan
 console.log(`        comparing the ${commonIds.length} projects present before and after`);
 
 // Object.is: exact, and distinguishes -0 / NaN rather than hiding them.
+// changedIds: every common project that differs anywhere — compared with
+// --user-updated at the end of step 5.
+const changedIds = new Set();
+const userNote = USER_UPDATED.size ? ` (user-updated ${[...USER_UPDATED].join(', ')} excluded)` : '';
 const q50Diffs = [];
 for (const id of commonIds) {
   const b = B.get(id), a = A.get(id);
-  if (!Object.is(a.resolvedQ50, b.resolvedQ50)) q50Diffs.push(`${id}: ${b.resolvedQ50} → ${a.resolvedQ50}`);
+  if (Object.is(a.resolvedQ50, b.resolvedQ50)) continue;
+  changedIds.add(id);
+  if (isUserUpdated(id)) console.log(`        user-updated ${id}: resolved q50 ${b.resolvedQ50} → ${a.resolvedQ50}`);
+  else q50Diffs.push(`${id}: ${b.resolvedQ50} → ${a.resolvedQ50}`);
 }
-check(`resolved q50 identical for all ${commonIds.length} common projects`, q50Diffs.length === 0,
-  q50Diffs.slice(0, 10).join('; '));
+check(`resolved q50 identical for all ${commonIds.length - [...USER_UPDATED].filter(id => A.has(id) && B.has(id)).length} common projects${userNote}`,
+  q50Diffs.length === 0, q50Diffs.slice(0, 10).join('; '));
 
 const withRoomsAll = before.projects.filter(p => p.roomCount > 0);
 const withRooms    = withRoomsAll.filter(p => A.has(p.projectId));
@@ -203,6 +226,13 @@ const roomDiffs = [];
 let roomsCompared = 0, valuesCompared = 0;
 for (const b of withRooms) {
   const a = A.get(b.projectId);
+  if (isUserUpdated(b.projectId)) {
+    if (toJson(a?.rooms) !== toJson(b.rooms) || toJson(a?.totals) !== toJson(b.totals)) {
+      changedIds.add(b.projectId);
+      console.log(`        user-updated ${b.projectId}: room figures changed (not compared)`);
+    }
+    continue;
+  }
   const aRooms = new Map((a?.rooms ?? []).map(r => [r.roomId, r]));
   if (a?.rooms.length !== b.rooms.length) roomDiffs.push(`project ${b.projectId}: room count ${b.rooms.length} → ${a?.rooms.length}`);
   for (const br of b.rooms) {
@@ -219,7 +249,7 @@ for (const b of withRooms) {
     if (!Object.is(a?.totals[k], b.totals[k])) roomDiffs.push(`project ${b.projectId} total ${k}: ${b.totals[k]} → ${a?.totals[k]}`);
   }
 }
-check(`room-level figures identical: ${roomsCompared} rooms × ${ROOM_FIELDS.length} fields + ${TOTAL_FIELDS.length} totals per project (${valuesCompared} values)`,
+check(`room-level figures identical: ${roomsCompared} rooms × ${ROOM_FIELDS.length} fields + ${TOTAL_FIELDS.length} totals per project (${valuesCompared} values)${userNote}`,
   roomDiffs.length === 0, roomDiffs.slice(0, 10).join('; '));
 console.log(`        room fields: ${ROOM_FIELDS.join(', ')}`);
 
@@ -236,9 +266,12 @@ check(`before files: ${beforeCounts.estimated} estimated, ${beforeCounts.measure
   beforeCounts.estimated === EXPECT.legacySap && beforeCounts.measured === EXPECT.measured && Object.keys(beforeCounts).length === 2);
 check(`no 'estimated' rows remain`, !counts.estimated, JSON.stringify(counts));
 const countIn = (ids, db, method) => ids.filter(id => db[id]?.air_permeability_method === method).length;
-const expLegacy   = countIn(commonIds, beforeDb, 'estimated') + countIn(added, afterDb, 'legacy_sap');
-const expMeasured = countIn(commonIds, beforeDb, 'measured')  + countIn(added, afterDb, 'measured');
-check(`legacy_sap rows = ${counts.legacy_sap ?? 0} (expect ${expLegacy}: before-estimated still present + added rows frozen)`,
+// A user-updated row counts by its current method.
+const notUser  = commonIds.filter(id => !isUserUpdated(id));
+const userRows = commonIds.filter(id => isUserUpdated(id));
+const expLegacy   = countIn(notUser, beforeDb, 'estimated') + countIn([...userRows, ...added], afterDb, 'legacy_sap');
+const expMeasured = countIn(notUser, beforeDb, 'measured')  + countIn([...userRows, ...added], afterDb, 'measured');
+check(`legacy_sap rows = ${counts.legacy_sap ?? 0} (expect ${expLegacy}: before-estimated still present + added rows frozen${USER_UPDATED.size ? ', user-updated rows by current method' : ''})`,
   counts.legacy_sap === expLegacy);
 check(`measured rows = ${counts.measured ?? 0} (expect ${expMeasured})`, counts.measured === expMeasured);
 check('design_params ids = before ids, adjusted only by the project set change',
@@ -252,6 +285,15 @@ const NEW_COLS = ['q50_built_form', 'q50_age_band', 'q50_wall_construction', 'q5
 for (const [id, b] of Object.entries(beforeDb)) {
   const a = afterDb[id];
   if (!a) continue;   // removed project — see the project set check
+  for (const c of SAP_COLS) if (!Object.is(a[c], b[c])) sapDiffs.push(`${id}.${c}: ${b[c]} → ${a[c]}`);
+  if (alreadyApplied && Number(id) === GATE_TEST_ROW) continue;   // see GATE_TEST_ROW
+  const rowChanged = toJson(a.updated_at) !== toJson(b.updated_at)
+    || (b.air_permeability_method === 'estimated'
+        ? (a.air_permeability_method !== 'legacy_sap' || !Object.is(a.q50, B.get(Number(id))?.resolvedQ50))
+        : (a.air_permeability_method !== b.air_permeability_method || !Object.is(a.q50, b.q50)))
+    || Object.keys(b).some(c => !['q50', 'air_permeability_method'].includes(c) && toJson(a[c]) !== toJson(b[c]));
+  if (rowChanged) changedIds.add(Number(id));
+  if (isUserUpdated(id)) continue;   // see --user-updated
   if (b.air_permeability_method === 'estimated') {
     if (a.air_permeability_method !== 'legacy_sap') migratedQ50Diffs.push(`${id}: method ${a.air_permeability_method}`);
     const expected = B.get(Number(id))?.resolvedQ50;
@@ -260,8 +302,6 @@ for (const [id, b] of Object.entries(beforeDb)) {
   if (b.air_permeability_method === 'measured') {
     if (a.air_permeability_method !== 'measured' || !Object.is(a.q50, b.q50)) measuredDiffs.push(`${id}`);
   }
-  for (const c of SAP_COLS) if (!Object.is(a[c], b[c])) sapDiffs.push(`${id}.${c}: ${b[c]} → ${a[c]}`);
-  if (alreadyApplied && Number(id) === GATE_TEST_ROW) continue;   // see GATE_TEST_ROW
   if (toJson(a.updated_at) !== toJson(b.updated_at)) updatedAtDiffs.push(id);
   // Every other pre-existing column must be untouched too.
   for (const c of Object.keys(b)) {
@@ -269,11 +309,11 @@ for (const [id, b] of Object.entries(beforeDb)) {
     if (toJson(a[c]) !== toJson(b[c])) otherColDiffs.push(`${id}.${c}`);
   }
 }
-check(`each migrated q50 === baseline resolved q50, method legacy_sap (${countIn(commonIds, beforeDb, 'estimated')} rows)`,
+check(`each migrated q50 === baseline resolved q50, method legacy_sap (${countIn(notUser, beforeDb, 'estimated')} rows${userNote})`,
   migratedQ50Diffs.length === 0, migratedQ50Diffs.slice(0, 10).join('; '));
 check('measured rows untouched (method and q50)', measuredDiffs.length === 0, measuredDiffs.join(', '));
 check('sap_* / storeys / shielding columns unchanged', sapDiffs.length === 0, sapDiffs.slice(0, 10).join('; '));
-const exemptNote = alreadyApplied ? ` (since before 023; gate test row ${GATE_TEST_ROW} exempt)` : '';
+const exemptNote = (alreadyApplied ? ` (since before 023; gate test row ${GATE_TEST_ROW} exempt)` : '') + userNote;
 check(`updated_at unchanged on every row${exemptNote}`, updatedAtDiffs.length === 0, updatedAtDiffs.slice(0, 10).join(', '));
 check(`no other pre-existing column changed${exemptNote}`, otherColDiffs.length === 0, otherColDiffs.slice(0, 10).join(', '));
 
@@ -322,8 +362,14 @@ for (const id of toVerify) {
     console.log(`        project ${id}: legacy_sap, ${detail}`);
     if (!Object.is(a.q50, expected)) verifyDiffs.push(`${id}: ${detail}`);
   }
+  if (a.air_permeability_method === 'default_table') {
+    // The client keeps the stored q50 equal to the Table 2-11 value it uses.
+    const resolved = A.get(id)?.resolvedQ50;
+    console.log(`        project ${id}: default_table, q50 ${a.q50}, basis ${a.q50_selection_basis}, resolves ${resolved}`);
+    if (!Object.is(a.q50, resolved)) verifyDiffs.push(`${id}: default_table stored q50 ${a.q50} vs resolved ${resolved}`);
+  }
 }
-check(`added / frozen-this-run rows hold exactly the pre-B25 q50 (${toVerify.join(', ') || 'none'})`,
+check(`added / frozen-this-run rows: legacy_sap holds exactly the pre-B25 q50; default_table stores its resolved q50 (${toVerify.join(', ') || 'none'})`,
   verifyDiffs.length === 0, verifyDiffs.join('; '));
 
 if (alreadyApplied) {
@@ -354,8 +400,31 @@ check(`q50_statistic NOT NULL DEFAULT 'mean'`,
   cols.q50_statistic?.is_nullable === 'NO' && /'mean'/.test(cols.q50_statistic?.column_default ?? ''));
 check('other four nullable, no default',
   NEW_COLS.slice(0, 4).every(c => cols[c]?.is_nullable === 'YES' && cols[c]?.column_default === null));
-check(`every row: four selection columns NULL, q50_statistic 'mean'`,
-  Object.values(afterDb).every(r => NEW_COLS.slice(0, 4).every(c => r[c] === null) && r.q50_statistic === 'mean'));
+// Projects added since the before files may legitimately carry a selection
+// made in the app; they are checked in the added / frozen-this-run check.
+check(`every pre-existing row: four selection columns NULL, q50_statistic 'mean'${userNote}`,
+  Object.values(afterDb).filter(r => !isUserUpdated(r.project_id) && !added.includes(r.project_id))
+    .every(r => NEW_COLS.slice(0, 4).every(c => r[c] === null) && r.q50_statistic === 'mean'));
+
+// User-updated rows: the acknowledgement must be exact, and each row must be
+// one the current client could have written.
+const actualUser = [...changedIds].sort((x, y) => x - y).join(',');
+const ackUser    = [...USER_UPDATED].sort((x, y) => x - y).join(',');
+check(`user-updated rows acknowledged (actual "${actualUser}", acknowledged "${ackUser}")`,
+  actualUser === ackUser,
+  actualUser !== ackUser ? `re-run with --user-updated=${actualUser} if these were changed in the app` : '');
+const userRowDiffs = [];
+for (const id of USER_UPDATED) {
+  const a = afterDb[id], r = A.get(id);
+  if (!a || !r) { userRowDiffs.push(`${id}: not present`); continue; }
+  const m = a.air_permeability_method;
+  if (!['default_table', 'measured', 'design_target', 'legacy_sap'].includes(m)) userRowDiffs.push(`${id}: method ${m}`);
+  if (m === 'default_table' && !Object.is(a.q50, r.resolvedQ50)) userRowDiffs.push(`${id}: stored q50 ${a.q50} vs resolved ${r.resolvedQ50}`);
+  console.log(`        user-updated ${id}: now ${m}, q50 ${a.q50}, basis ${a.q50_selection_basis}, statistic ${a.q50_statistic}`);
+}
+if (USER_UPDATED.size) {
+  check('user-updated rows: valid method; default_table stored q50 === resolved q50', userRowDiffs.length === 0, userRowDiffs.join('; '));
+}
 
 const { rows: [methodCol] } = await db.query(`
   SELECT column_default FROM information_schema.columns

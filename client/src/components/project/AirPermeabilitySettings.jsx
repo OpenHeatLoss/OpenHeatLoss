@@ -14,12 +14,25 @@
 // a complete selection, and resolveQ50 reads only the category matching
 // q50SelectionBasis, so a stale value in another category column is inert.
 //
+// Saving (stopgap — see BACKLOG "Single design_params save path"): outside
+// legacy_sap, each discrete choice is saved at once through
+// onSaveDesignParams (App's saveDesignParams, as the MCS tabs use): picker
+// choices, method switches, and typed numbers on blur when valid and
+// changed. Saves run one at a time in order; "Saved" or an error shows in the
+// heading row. legacy_sap keeps its Review → Confirm save.
+//
 // All pure logic lives in utils/q50Selection.js.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { resolveQ50 } from '../../utils/en12831Calculations';
 import { Q50_TABLE_2_11, Q50_INPUT_MIN, Q50_INPUT_MAX } from '../../utils/en12831VentilationData';
-import { validateQ50Input } from '../../utils/q50Selection';
+import {
+  validateQ50Input,
+  effectiveQ50 as effectiveQ50Of,
+  methodSwitchUpdate,
+  q50BlurSave,
+  createSerialSaver,
+} from '../../utils/q50Selection';
 import Q50CandidatePicker from './Q50CandidatePicker';
 
 const inputClass = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
@@ -38,12 +51,10 @@ const METHOD_OPTIONS = [
   { value: 'design_target', label: 'Design target',      sub: "Designer's or builder's figure" },
 ];
 
-const round1 = (x) => parseFloat(x.toFixed(1));
-
 // ---------------------------------------------------------------------------
 // default_table panel
 // ---------------------------------------------------------------------------
-const DefaultTablePanel = ({ project, resolved, onUpdateBatch }) => (
+const DefaultTablePanel = ({ project, resolved, onSelect }) => (
   <div className="bg-gray-50 rounded-lg p-4 space-y-4">
     <p className="text-xs text-gray-600">
       Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001),
@@ -59,26 +70,33 @@ const DefaultTablePanel = ({ project, resolved, onUpdateBatch }) => (
       </p>
     )}
 
-    <Q50CandidatePicker mode="select" project={project} onUpdateBatch={onUpdateBatch} />
+    <Q50CandidatePicker mode="select" project={project} onSelect={onSelect} />
   </div>
 );
 
 // ---------------------------------------------------------------------------
-// design_target panel
+// Typed q50 (measured, design target)
 // ---------------------------------------------------------------------------
-const DesignTargetPanel = ({ project, onUpdate }) => {
-  // Local text so an invalid entry is shown with its error but never reaches
-  // the project (the calculation keeps the last valid value).
-  const [text, setText] = useState(project.q50 == null ? '' : String(project.q50));
-  useEffect(() => { setText(project.q50 == null ? '' : String(project.q50)); }, [project.id]);
+// Local text so an invalid entry is shown with its error but never reaches
+// the project (the calculation keeps the last valid value). Valid keystrokes
+// update project state; the value is saved on blur only if valid and changed.
+const Q50NumberInput = ({ project, onUpdate, onSave, label, hint }) => {
+  const asText = (q50) => (q50 == null ? '' : String(q50));
+  const [text, setText] = useState(asText(project.q50));
+  const lastSaved = useRef(project.q50);
+  useEffect(() => { setText(asText(project.q50)); lastSaved.current = project.q50; }, [project.id]);
   const check = validateQ50Input(text);
 
+  const handleBlur = () => {
+    const fields = q50BlurSave(text, lastSaved.current);
+    if (!fields) return;
+    lastSaved.current = fields.q50;
+    onSave(fields);
+  };
+
   return (
-    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-      <Field
-        label="Design target q₅₀"
-        hint="The figure must come from the designer's or builder's own airtightness design or compliance evidence. No preset values are offered."
-      >
+    <>
+      <Field label={label} hint={hint}>
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -91,13 +109,51 @@ const DesignTargetPanel = ({ project, onUpdate }) => {
               const r = validateQ50Input(e.target.value);
               if (r.error === undefined) onUpdate('q50', r.value);
             }}
+            onBlur={handleBlur}
             className={inputClass + ' flex-1' + (check.error ? ' border-red-400' : '')}
           />
           <span className="text-sm text-gray-600 whitespace-nowrap">m³/(h·m²)</span>
         </div>
       </Field>
-      {check.error && <p className="text-xs text-red-600">{check.error} The last valid value is still in use.</p>}
-    </div>
+      {check.error && <p className="text-xs text-red-600">{check.error} The last valid value is still in use and nothing is saved.</p>}
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Save status — serialised saves (createSerialSaver), latest outcome shown
+// ---------------------------------------------------------------------------
+const useSerialSave = (onSaveDesignParams, projectId) => {
+  const [status, setStatus] = useState(null);   // null | { state: 'saving'|'saved'|'error', fields, message }
+  // One queue per project. The save function is captured with each request,
+  // so a queued save always goes to the project it was made for; its outcome
+  // is shown only while that project is still open.
+  const openId = useRef(projectId);
+  openId.current = projectId;
+  const saver = useRef(null);
+  if (saver.current?.projectId !== projectId) {
+    saver.current = {
+      projectId,
+      save: createSerialSaver((st) => { if (openId.current === projectId) setStatus(st); }),
+    };
+  }
+  useEffect(() => { setStatus(null); }, [projectId]);
+
+  const save = (fields) => {
+    if (onSaveDesignParams) saver.current.save(fields, onSaveDesignParams);
+  };
+  return { status, save };
+};
+
+const SaveStatus = ({ status, onRetry }) => {
+  if (!status) return null;
+  if (status.state === 'saving') return <span className="text-xs text-gray-600">Saving…</span>;
+  if (status.state === 'saved')  return <span className="text-xs font-semibold text-green-700">✓ Saved</span>;
+  return (
+    <span className="text-xs font-semibold text-red-700" role="alert">
+      ⚠ Not saved ({status.message}). Your choice is still shown; press Save Project or{' '}
+      <button onClick={onRetry} className="underline hover:text-red-900">retry</button>.
+    </span>
   );
 };
 
@@ -128,38 +184,62 @@ const LegacyBanner = ({ onStartUpdate, updating }) => (
 export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBatch, onSaveDesignParams }) {
   const [updatingLegacy, setUpdatingLegacy] = useState(false);
   useEffect(() => { setUpdatingLegacy(false); }, [project.id]);
+  const { status, save } = useSerialSave(onSaveDesignParams, project.id);
 
   const method       = project.airPermeabilityMethod;
   const isMeasured   = method === 'measured';
   const isLegacySap  = method === 'legacy_sap';
   const resolved     = resolveQ50(project);
-  const effectiveQ50 = isMeasured ? (project.q50 ?? 12.0) : resolved.q50;
+  const effectiveQ50 = effectiveQ50Of(project);
 
-  // Measured / design target are seeded with the current effective value
-  // (rounded to 1 dp, as before); default_table resolves its own value.
+  // A discrete choice outside legacy_sap: into project state, then saved.
+  const choose = (fields) => {
+    onUpdateBatch(fields);
+    save(fields);
+  };
+
   const handleMethod = (target) => {
     if (target === method) return;
     if (isLegacySap && target === 'default_table') {
       setUpdatingLegacy(true);      // comparison first — nothing changes yet
       return;
     }
-    if (isLegacySap && !window.confirm(
-      // TODO(commit 5): final wording.
-      'Switch this project away from its frozen superseded estimate? Once saved, the frozen estimate is no longer used.'
-    )) return;
-    if (target === 'default_table') {
-      const next = { ...project, airPermeabilityMethod: 'default_table' };
-      onUpdateBatch({ airPermeabilityMethod: 'default_table', q50: resolveQ50(next).q50 });
-    } else {
-      onUpdateBatch({ airPermeabilityMethod: target, q50: round1(effectiveQ50) });
+    const fields = methodSwitchUpdate(project, target);
+    if (!fields) return;
+    if (isLegacySap) {
+      // Leaving legacy_sap is not auto-saved: state only, normal Save path.
+      if (!window.confirm(
+        // TODO(commit 5): final wording.
+        'Switch this project away from its frozen superseded estimate? Once saved, the frozen estimate is no longer used.'
+      )) return;
+      onUpdateBatch(fields);
+      return;
     }
+    choose(fields);
   };
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 border-b border-gray-200 pb-1 mb-3">
-        Air Permeability
-      </h3>
+      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 pb-1 mb-3">
+        <h3 className="text-sm font-semibold text-gray-700">Air Permeability</h3>
+        <SaveStatus status={status} onRetry={() => status?.fields && save(status.fields)} />
+      </div>
+
+      {/* Method selector — directly under the heading in every state */}
+      <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-4 text-sm">
+        {METHOD_OPTIONS.map(({ value, label, sub }) => (
+          <button
+            key={value}
+            onClick={() => handleMethod(value)}
+            className={`flex-1 py-2 px-3 text-left transition ${
+              method === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <span className="font-semibold block">{label}</span>
+            <span className={`text-xs ${method === value ? 'text-blue-100' : 'text-gray-500'}`}>{sub}</span>
+          </button>
+        ))}
+      </div>
 
       {isLegacySap && (
         <div className="mb-4 space-y-3">
@@ -176,45 +256,19 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         </div>
       )}
 
-      {/* Method selector */}
-      <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-4 text-sm">
-        {METHOD_OPTIONS.map(({ value, label, sub }) => (
-          <button
-            key={value}
-            onClick={() => handleMethod(value)}
-            className={`flex-1 py-2 px-3 text-left transition ${
-              method === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <span className="font-semibold block">{label}</span>
-            <span className={`text-xs ${method === value ? 'text-blue-100' : 'text-gray-500'}`}>{sub}</span>
-          </button>
-        ))}
-      </div>
-
       {method === 'default_table' && (
-        <DefaultTablePanel project={project} resolved={resolved} onUpdateBatch={onUpdateBatch} />
+        <DefaultTablePanel project={project} resolved={resolved} onSelect={choose} />
       )}
 
       {isMeasured && (
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-          <Field
+          <Q50NumberInput
+            project={project}
+            onUpdate={onUpdate}
+            onSave={save}
             label="Air permeability q₅₀"
             hint="From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result."
-          >
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.1"
-                min="0.5"
-                max="50"
-                value={project.q50 ?? 12}
-                onChange={e => onUpdate('q50', parseFloat(e.target.value) || 12)}
-                className={inputClass + ' flex-1'}
-              />
-              <span className="text-sm text-gray-600 whitespace-nowrap">m³/(h·m²)</span>
-            </div>
-          </Field>
+          />
           <p className="text-xs text-gray-500">
             If vents or fans were sealed during the test, background ventilation
             additions are still made at room level.
@@ -222,7 +276,17 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         </div>
       )}
 
-      {method === 'design_target' && <DesignTargetPanel project={project} onUpdate={onUpdate} />}
+      {method === 'design_target' && (
+        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+          <Q50NumberInput
+            project={project}
+            onUpdate={onUpdate}
+            onSave={save}
+            label="Design target q₅₀"
+            hint="The figure must come from the designer's or builder's own airtightness design or compliance evidence. No preset values are offered."
+          />
+        </div>
+      )}
 
       {isLegacySap && (
         <div className="bg-gray-50 rounded-lg p-4">

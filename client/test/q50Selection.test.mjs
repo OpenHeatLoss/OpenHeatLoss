@@ -1,6 +1,6 @@
 // client/test/q50Selection.test.mjs
 //
-// B25 commits 4 and 4a: pure logic behind the rebuilt air permeability UI.
+// B25 commits 4, 4a and 4b: pure logic behind the rebuilt air permeability UI.
 // Run with `npm test` in client/.
 
 import { test } from 'node:test';
@@ -25,6 +25,11 @@ import {
   q50PickerApply,
   q50PickerUpdate,
   q50CategoryOptionLabel,
+  effectiveQ50,
+  methodSwitchUpdate,
+  q50BlurSave,
+  saveFailed,
+  createSerialSaver,
   airPermeabilitySnapshot,
   ventilationTotalsChange,
   formatSignedKW,
@@ -398,13 +403,136 @@ test('no client source spreads or Object.assigns a whole project object (the sna
     // loadProject: the new React state object (adds the snapshot itself).
     /^App\.jsx:\d+: \.\.\.project,$/,
     // Calculation-only copies for resolveQ50 / the building calculation.
-    /^components\/project\/AirPermeabilitySettings\.jsx:\d+: const next = \{ \.\.\.project, airPermeabilityMethod: 'default_table' \};$/,
+    /^utils\/q50Selection\.js:\d+: const next = \{ \.\.\.project, airPermeabilityMethod: 'default_table' \};$/,
     /^utils\/q50Selection\.js:\d+: const baselineProject  = \{ \.\.\.project, \.\.\.baselineFields \};$/,
     /^utils\/q50Selection\.js:\d+: const candidateProject = \{ \.\.\.project, \.\.\.candidateFields \};$/,
   ];
   assert.deepEqual(hits.filter(h => !ALLOWED.some(re => re.test(h))), []);
   // And each allowlisted spread still exists exactly once (the list stays honest).
   for (const re of ALLOWED) assert.equal(hits.filter(h => re.test(h)).length, 1, String(re));
+});
+
+// ---------------------------------------------------------------------------
+// Auto-save rules: what saves and what does not (outside legacy_sap)
+// ---------------------------------------------------------------------------
+
+test('auto-save, picker: only "Use this candidate", the statistic and the in-use category save', () => {
+  const saved = { ...freshProject, ...buildQ50SelectionUpdate({ basis: 'built_form', category: 'semi_detached', statistic: 'mean' }) };
+  const view = q50PickerView(initialQ50Picker(), saved);
+  const saves = (state, change, project = saved) => q50PickerApply(state, change, project).update !== null;
+  // Comparison only: categories on cards not in use never save.
+  for (const basis of ['age_band', 'wall_construction']) {
+    for (const category of [...Object.keys(Q50_TABLE_2_11[basis]), '']) {
+      assert.equal(saves(view, { category: [basis, category] }), false, `${basis} ${category}`);
+    }
+  }
+  // Re-choosing what is already in use: no save.
+  assert.equal(saves(view, { pick: 'built_form' }), false);
+  assert.equal(saves(view, { statistic: 'mean' }), false);
+  assert.equal(saves(view, { category: ['built_form', 'semi_detached'] }), false);
+  // Picking a card with no category, or an invalid statistic: no save.
+  assert.equal(saves(view, { pick: 'age_band' }), false);
+  assert.equal(saves(view, { statistic: 'max' }), false);
+  // Discrete choices: save.
+  const compared = q50PickerApply(view, { category: ['age_band', 'pre1919'] }, saved).state;
+  assert.equal(saves(q50PickerView(compared, saved), { pick: 'age_band' }), true);
+  assert.equal(saves(view, { pick: 'all_dwellings' }), true);
+  assert.equal(saves(view, { statistic: 'q3' }), true);
+  assert.equal(saves(view, { category: ['built_form', 'detached'] }), true);
+  // New project: nothing saves until both a candidate and a statistic are picked.
+  let s = q50PickerApply(initialQ50Picker(), { category: ['age_band', 'pre1919'] }, freshProject);
+  assert.equal(s.update, null);
+  s = q50PickerApply(s.state, { pick: 'age_band' }, freshProject);
+  assert.equal(s.update, null);
+  s = q50PickerApply(s.state, { statistic: 'median' }, freshProject);
+  assert.equal(s.update.q50, Q50_TABLE_2_11.age_band.pre1919.median);
+});
+
+test('auto-save, method switch: fields to save; default_table restores the stored selection', () => {
+  const sel = buildQ50SelectionUpdate({ basis: 'built_form', category: 'bungalow', statistic: 'q1' });
+  const onTable = { ...freshProject, ...sel };
+  assert.equal(methodSwitchUpdate(onTable, 'default_table'), null);   // no change, no save
+  const toMeasured = methodSwitchUpdate(onTable, 'measured');
+  assert.deepEqual(toMeasured, { airPermeabilityMethod: 'measured', q50: Q50_TABLE_2_11.built_form.bungalow.q1 });
+  const measured = { ...onTable, ...toMeasured, q50: 5.2 };
+  assert.deepEqual(methodSwitchUpdate(measured, 'design_target'), { airPermeabilityMethod: 'design_target', q50: 5.2 });
+  // Back to default_table: the stored (inert) selection is restored.
+  assert.deepEqual(methodSwitchUpdate(measured, 'default_table'), { airPermeabilityMethod: 'default_table', q50: Q50_TABLE_2_11.built_form.bungalow.q1 });
+  // No stored selection → all-dwellings mean.
+  assert.deepEqual(methodSwitchUpdate({ ...freshProject, airPermeabilityMethod: 'measured', q50: 3 }, 'default_table'),
+    { airPermeabilityMethod: 'default_table', q50: 8.6 });
+  // Seeded value is the effective value rounded to 1 dp.
+  assert.equal(methodSwitchUpdate({ ...freshProject, airPermeabilityMethod: 'legacy_sap', q50: 16.649999999999995 }, 'measured').q50, 16.6);
+  assert.equal(effectiveQ50({ airPermeabilityMethod: 'measured', q50: null }), 12);
+  // Never 'legacy_sap' or 'estimated' as a target.
+  assert.equal(methodSwitchUpdate(onTable, 'legacy_sap'), null);
+  assert.equal(methodSwitchUpdate(onTable, 'estimated'), null);
+});
+
+test('auto-save, typed numbers: save on blur only when valid and changed', () => {
+  assert.deepEqual(q50BlurSave('5.2', 3), { q50: 5.2 });
+  assert.deepEqual(q50BlurSave(' 7 ', null), { q50: 7 });
+  assert.equal(q50BlurSave('3', 3), null);          // unchanged
+  assert.equal(q50BlurSave('3.0', 3), null);        // unchanged
+  for (const bad of ['', 'abc', '0.4', '50.1', '-1']) assert.equal(q50BlurSave(bad, 3), null, bad);
+});
+
+test('saveFailed: an HTTP error resolves as { error } and counts as a failure', () => {
+  assert.equal(saveFailed({ error: 'Failed to update design params' }), true);
+  assert.equal(saveFailed({ error: 'Not authorised' }), true);
+  assert.equal(saveFailed(undefined), true);
+  assert.equal(saveFailed(null), true);
+  assert.equal(saveFailed({ project_id: 9, q50: 8.6 }), false);
+});
+
+test('createSerialSaver: one at a time, in order; only the latest outcome is shown', async () => {
+  const statuses = [];
+  const save = createSerialSaver(st => statuses.push(st.state + (st.message ? `: ${st.message}` : '')));
+  const order = [];
+  const resolvers = [];
+  // Each save waits until released; the first is released LAST.
+  const slow = (tag) => (fields) => { order.push(`start ${tag}`); return new Promise(r => resolvers.push(() => { order.push(`end ${tag}`); r({ project_id: 1, ...fields }); })); };
+  const p1 = save({ q50: 1 }, slow('a'));
+  const p2 = save({ q50: 2 }, slow('b'));
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(order, ['start a']);          // b has not started: a is still in flight
+  resolvers[0]();
+  await p1;
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(order, ['start a', 'end a', 'start b']);
+  resolvers[1]();
+  await p2;
+  assert.deepEqual(order, ['start a', 'end a', 'start b', 'end b']);
+  // 'saved' only once — for the latest save; a's success is not shown.
+  assert.deepEqual(statuses, ['saving', 'saving', 'saved']);
+});
+
+test('createSerialSaver: HTTP error ({ error }) and rejection show an error; the queue carries on', async () => {
+  const statuses = [];
+  const save = createSerialSaver(st => statuses.push(st));
+  await save({ q50: 4 }, async () => ({ error: 'Failed to update design params' }));
+  assert.equal(statuses.at(-1).state, 'error');
+  assert.equal(statuses.at(-1).message, 'Failed to update design params');
+  assert.deepEqual(statuses.at(-1).fields, { q50: 4 });          // kept for retry
+  await save({ q50: 5 }, async () => { throw new Error('Failed to fetch'); });
+  assert.equal(statuses.at(-1).state, 'error');
+  assert.equal(statuses.at(-1).message, 'Failed to fetch');
+  await save({ q50: 6 }, async (f) => ({ project_id: 1, ...f }));
+  assert.equal(statuses.at(-1).state, 'saved');
+  // A later success covers an earlier failure that was still queued.
+  const s2 = []; const save2 = createSerialSaver(st => s2.push(st.state));
+  save2({ q50: 1 }, async () => ({ error: 'x' }));
+  await save2({ q50: 2 }, async () => ({ project_id: 1 }));
+  assert.deepEqual(s2, ['saving', 'saving', 'saved']);
+});
+
+test('createSerialSaver: each save uses the save function it was requested with', async () => {
+  const calls = [];
+  const save = createSerialSaver(() => {});
+  const forProject = (id) => async (fields) => { calls.push([id, fields.q50]); return { project_id: id }; };
+  save({ q50: 1 }, forProject(229));
+  await save({ q50: 2 }, forProject(1348));
+  assert.deepEqual(calls, [[229, 1], [1348, 2]]);
 });
 
 // ---------------------------------------------------------------------------

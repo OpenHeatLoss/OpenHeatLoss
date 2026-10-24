@@ -814,6 +814,9 @@ discussion; grep api.updateDesignParams gives eight.) A single save path that re
 worth doing before the SaaS multi-user work: it is also what an "unsaved
 changes" warning and any audit trail would need. (B25 commit 4's readout
 compares against "when this project was opened" for this reason.)
+The narrow auto-save in the air permeability section (B25 commit 4b: each
+discrete choice and each typed q50 on blur saves via saveDesignParams) is a
+stopgap; this single save path with saved-state tracking is still the proper fix.
 
 **DB snapshots before migrations**
 Railway TCP proxy URL used for pg_dump from local machine. Beekeeper Studio

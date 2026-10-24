@@ -7,8 +7,10 @@
 // statistic radio group.
 //
 // mode 'select'         default_table projects. A complete pick (candidate +
-//                       statistic) goes straight into project state via
-//                       onUpdateBatch; the normal Save path saves it.
+//                       statistic) is passed to onSelect, which puts it in
+//                       project state and saves it at once (AirPermeability-
+//                       Settings). Categories on cards not in use are local
+//                       comparison only and never reach onSelect.
 // mode 'update-legacy'  legacy_sap projects. Nothing reaches the project until
 //                       Review → Confirm, which saves immediately.
 //
@@ -42,6 +44,7 @@ import {
   airPermeabilitySnapshot,
   ventilationTotalsChange,
   formatSignedKW,
+  saveFailed,
 } from '../../utils/q50Selection';
 
 const selectClass = 'w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent';
@@ -175,7 +178,7 @@ const selectionText = (update) =>
 // ---------------------------------------------------------------------------
 // mode 'select'
 // ---------------------------------------------------------------------------
-const SelectPicker = ({ project, onUpdateBatch }) => {
+const SelectPicker = ({ project, onSelect }) => {
   const [local, setLocal] = useState(initialQ50Picker);
   useEffect(() => { setLocal(initialQ50Picker()); }, [project.id]);
 
@@ -186,7 +189,7 @@ const SelectPicker = ({ project, onUpdateBatch }) => {
   const onChange = (change) => {
     const { state, update } = q50PickerApply(view, change, project);
     setLocal(state);
-    if (update) onUpdateBatch(update);
+    if (update) onSelect(update);
   };
 
   const hint = pendingHint(view);
@@ -217,7 +220,8 @@ const LegacyUpdatePicker = ({ project, onClose, onUpdateBatch, onSaveDesignParam
     setError(null);
     try {
       // Save first; only update the screen once the database has it.
-      await onSaveDesignParams(update);
+      const result = await onSaveDesignParams(update);
+      if (saveFailed(result)) throw new Error(result?.error ?? 'no response');
       onUpdateBatch(update);
       onClose();
     } catch {

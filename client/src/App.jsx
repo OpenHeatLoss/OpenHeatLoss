@@ -1339,9 +1339,12 @@ const deleteProject = async (id) => {
   // Called from MCS/pipe-sizing components on blur or action, so that
   // loadProject triggered by other tabs never resets unsaved values.
   // Pass a partial object — it is merged with currentProject before saving.
+  // Returns the API response so a caller can check it: an HTTP error
+  // resolves as { error } rather than rejecting (see saveFailed in
+  // utils/q50Selection.js). Existing callers ignore the return value.
   const saveDesignParams = async (fields) => {
     try {
-      await api.updateDesignParams(currentProject.id,
+      return await api.updateDesignParams(currentProject.id,
         buildDesignParamsPayload(currentProject, fields)
       );
     } catch (error) {

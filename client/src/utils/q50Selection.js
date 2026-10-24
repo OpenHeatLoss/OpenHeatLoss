@@ -213,6 +213,89 @@ export const q50CategoryOptionLabel = (basis, category, statistic) => {
 };
 
 // ---------------------------------------------------------------------------
+// Auto-save rules (stopgap until a single design_params save path exists —
+// see BACKLOG). Outside legacy_sap, each discrete choice saves at once:
+// "Use this candidate", the statistic, the category on the card in use
+// (q50PickerApply returns an update only for these), and a method switch.
+// Typed numbers save on blur, only when valid and changed. Categories on
+// cards not in use are comparison only and never save.
+// ---------------------------------------------------------------------------
+
+const round1 = (x) => parseFloat(x.toFixed(1));
+
+/** The q50 the calculation uses (measured shows its stored value, 12 if none). */
+export const effectiveQ50 = (project) =>
+  project.airPermeabilityMethod === 'measured' ? (project.q50 ?? 12.0) : resolveQ50(project).q50;
+
+/**
+ * Fields for switching a non-legacy project to another method, or null when
+ * there is nothing to switch. default_table resolves its own value (restoring
+ * a stored selection); measured / design target are seeded with the current
+ * effective value rounded to 1 dp.
+ */
+export const methodSwitchUpdate = (project, target) => {
+  if (!project || target === project.airPermeabilityMethod) return null;
+  if (target === 'default_table') {
+    const next = { ...project, airPermeabilityMethod: 'default_table' };
+    return { airPermeabilityMethod: 'default_table', q50: resolveQ50(next).q50 };
+  }
+  if (target === 'measured' || target === 'design_target') {
+    return { airPermeabilityMethod: target, q50: round1(effectiveQ50(project)) };
+  }
+  return null;
+};
+
+/**
+ * Fields to save when a typed q50 loses focus, or null: nothing is saved
+ * when the text is invalid or the value equals the last saved value.
+ */
+export const q50BlurSave = (text, lastSavedQ50) => {
+  const r = validateQ50Input(text);
+  if (r.error !== undefined || Object.is(r.value, lastSavedQ50)) return null;
+  return { q50: r.value };
+};
+
+/**
+ * True when a design_params save did not succeed. api.updateDesignParams
+ * resolves with the response JSON even on an HTTP error, which the server
+ * sends as { error }; a network failure rejects instead.
+ */
+export const saveFailed = (result) =>
+  result == null || typeof result !== 'object' || Object.hasOwn(result, 'error');
+
+/**
+ * Run saves one at a time, in the order requested, so an earlier save can
+ * never land after a later one. onStatus receives only the LATEST save's
+ * outcome: each save sends the whole current design params, so a later
+ * success covers an earlier failure.
+ *
+ * The save function is passed with each request and captured then, so a
+ * queued save always goes to the project it was made for.
+ *
+ * @param {Function} onStatus ({ state: 'saving'|'saved'|'error', fields?, message? }) => void
+ * @returns {Function} save(fields, saveFn) → Promise that settles when that save is done;
+ *                     saveFn is (fields) => Promise<API response>
+ */
+export const createSerialSaver = (onStatus) => {
+  let queue = Promise.resolve();
+  let seq = 0;
+  return (fields, saveFn) => {
+    const n = ++seq;
+    onStatus({ state: 'saving', fields });
+    queue = queue
+      .then(() => saveFn(fields))
+      .then((result) => {
+        if (saveFailed(result)) throw new Error(result?.error ?? 'No response from the server');
+        if (n === seq) onStatus({ state: 'saved' });
+      })
+      .catch((err) => {
+        if (n === seq) onStatus({ state: 'error', fields, message: err?.message || 'Save failed' });
+      });
+    return queue;
+  };
+};
+
+// ---------------------------------------------------------------------------
 // Opened-project snapshot and change in totals
 // ---------------------------------------------------------------------------
 
