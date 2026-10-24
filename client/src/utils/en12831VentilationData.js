@@ -4,90 +4,70 @@
 // as implemented by the CIBSE Domestic Heating Design Guide 2026 (section 2.5.4).
 //
 // Sources:
-//   - CIBSE Domestic Heating Design Guide 2026, Tables 2-11 to 2-18
-//   - SAP 10.2 specification (underlying source for Tables 2-11 to 2-15)
-//   - BS EN 12831-1:2017, Annex B (underlying source for Tables 2-17, 2-18)
+//   - CIBSE Domestic Heating Design Guide 2026, Tables 2-11 to 2-14, numbered as
+//     corrected by DHDG-2026-1-COR-001 (the corrigendum withdrew the SAP 10.2
+//     estimate tables, old 2-11 to 2-15, so old 2-16/2-17/2-18 are now 2-12/2-13/2-14)
+//   - DESNZ / Roberts et al. 2025 (underlying source for Table 2-11)
+//   - SAP 10.2 specification (underlying source for Table 2-12)
+//   - BS EN 12831-1:2017, Annex B (underlying source for Tables 2-13, 2-14)
 //   - MCS MGD007 Table B1: Met Office mean monthly and annual external air temperatures
 
 // ---------------------------------------------------------------------------
-// BUILDING AIR PERMEABILITY ESTIMATION (CIBSE DHDG 2026 section 2.5.4.1)
-// SAP 10.2 component method — produces ACH which is then converted to q50
+// BUILDING AIR PERMEABILITY — DEFAULT q50 (CIBSE DHDG 2026 section 2.5.4.1)
+// Direct lookup, entered with no conversion and no adjustment (B25).
 // ---------------------------------------------------------------------------
 
 /**
- * Table 2-11: Structural infiltration rate addition (ACH)
- * Source: SAP 10.2 specification
- */
-export const SAP_STRUCTURAL_INFILTRATION = {
-  masonry:      { label: 'Masonry',             ach: 0.35 },
-  timber_steel: { label: 'Steel or timber frame', ach: 0.25 },
-};
-
-/**
- * Table 2-12: Floor infiltration rate addition (ACH)
- * Source: SAP 10.2 specification
- */
-export const SAP_FLOOR_INFILTRATION = {
-  unsealed_suspended: { label: 'Unsealed suspended wooden floor', ach: 0.20 },
-  sealed_suspended:   { label: 'Sealed suspended wooden floor',   ach: 0.10 },
-  other:              { label: 'Other ground floor (solid, etc)', ach: 0.00 },
-};
-
-/**
- * Table 2-13: Door and window infiltration rate addition (ACH)
- * Source: SAP 10.2 specification
+ * Table 2-11: Default air permeability at 50 Pa, q50 in m³/(h·m²)
+ * Source: CIBSE DHDG 2026-01 as corrected by DHDG-2026-1-COR-001, Table 2-11.
  *
- * Key: percentage of external windows/doors that are draught-proofed (0/25/50/75/100)
- * Value: { withLobby, withoutLobby } — ACH addition depending on draught lobby presence
+ * Replaces the withdrawn SAP 10.2 component estimate (old Tables 2-11 to 2-15).
+ * Each row gives the distribution for that dwelling characteristic:
+ * mean, sd, min, q1, median, q3, max.
  */
-export const SAP_WINDOW_DOOR_INFILTRATION = {
-  0:   { withLobby: 0.25, withoutLobby: 0.30 },
-  25:  { withLobby: 0.20, withoutLobby: 0.25 },
-  50:  { withLobby: 0.15, withoutLobby: 0.20 },
-  75:  { withLobby: 0.10, withoutLobby: 0.15 },
-  100: { withLobby: 0.05, withoutLobby: 0.10 },
+const r = (mean, sd, min, q1, median, q3, max) => ({ mean, sd, min, q1, median, q3, max });
+export const Q50_TABLE_2_11 = {
+  all: r(8.6, 3.3, 0.6, 6.5, 8.1, 10.2, 46.2),
+  built_form: {
+    flat: r(7.3,3.5,0.6,5.0,6.8,9.2,23.7), terrace: r(9.1,3.0,1.6,7.0,8.6,10.6,36.5),
+    semi_detached: r(9.2,3.2,1.8,7.1,8.6,10.8,46.2), detached: r(8.7,3.2,1.7,6.7,8.2,10.2,29.6),
+    bungalow: r(7.6,3.4,1.6,5.4,7.0,9.3,44.0) },
+  age_band: {
+    pre1919: r(8.9,3.2,1.8,6.8,8.3,10.5,46.2), '1919_1944': r(8.7,2.8,2.0,6.9,8.3,10.2,27.8),
+    '1945_1964': r(8.1,3.6,0.8,5.7,7.7,9.9,36.5), '1965_1980': r(7.9,3.3,0.6,5.9,7.7,9.9,44.0),
+    '1981_1990': r(8.6,2.6,4.1,7.0,8.0,9.8,17.8), post1990: r(9.3,3.5,1.6,6.7,8.5,11.1,21.5) },
+  wall_construction: {
+    cavity_uninsulated: r(8.2,3.9,0.6,5.8,7.8,10.3,36.5), cavity_insulated: r(8.6,3.1,1.3,6.5,8.1,10.2,28.3),
+    solid_uninsulated: r(8.9,3.1,2.0,6.9,8.4,10.4,46.2), solid_insulated: r(8.2,3.4,1.8,5.9,7.5,9.6,27.8),
+    other: r(7.9,3.4,1.0,5.8,7.7,9.6,44.0) },
 };
 
-/**
- * Table 2-14: Additional infiltration rate addition (ACH) by number of storeys
- * Source: SAP 10.2 specification
- */
-export const SAP_STOREY_INFILTRATION = {
-  1:    0.00,
-  2:    0.05,
-  3:    0.07,
-  4:    0.08,  // 4–6 storeys
-};
+// Statistics a designer may select. sd, min and max are reference only.
+export const Q50_STATISTICS = ['mean', 'median', 'q1', 'q3'];
 
 /**
- * Get storey infiltration addition — handles 4+ storey case
- * @param {number} storeys
- * @returns {number} ACH addition
- */
-export const getStoreyInfiltration = (storeys) => {
-  if (storeys <= 1) return SAP_STOREY_INFILTRATION[1];
-  if (storeys === 2) return SAP_STOREY_INFILTRATION[2];
-  if (storeys === 3) return SAP_STOREY_INFILTRATION[3];
-  return SAP_STOREY_INFILTRATION[4]; // 4–6
-};
-
-/**
- * Table 2-15: SAP ACH to 50 Pa conversion factor
- * Source: BS EN 12831-1:2017 (via CIBSE DHDG 2026)
+ * Look up a default q50 from Table 2-11.
  *
- * Multiply total ACH from Tables 2-11 to 2-14 by this factor to get
- * q50 in m³/(h·m²).
+ * Unknown basis, category or statistic returns null — never a guessed value.
+ * The caller decides what to do with null.
  *
- * Structure: [shielding][heightBand] → factor
- * heightBand: '1_2' = 5m or less (1-2 storeys)
- *             '2_4' = 5m–10m (2-4 storeys)
- *             '4_8' = 10m–20m (4-8 storeys)
- *             '8+'  = >20m (8+ storeys)
+ * @param {Object} params
+ * @param {string} params.basis      'built_form' | 'age_band' | 'wall_construction' | 'all_dwellings'
+ * @param {string} params.category   row key within the basis (ignored for 'all_dwellings')
+ * @param {string} [params.statistic='mean']  'mean' | 'median' | 'q1' | 'q3'
+ * @returns {number|null} q50 in m³/(h·m²)
  */
-export const SAP_TO_50PA_FACTOR = {
-  intensive: { '1_2': 33.3, '2_4': 20.0, '4_8': 12.5, '8+': 9.1 },
-  normal:    { '1_2': 20.0, '2_4': 20.0, '4_8': 12.5, '8+': 9.1 },
-  none:      { '1_2': 14.3, '2_4': 14.3, '4_8': 12.5, '8+': 9.1 },
+export const lookupDefaultQ50 = ({ basis, category, statistic = 'mean' } = {}) => {
+  if (!Q50_STATISTICS.includes(statistic)) return null;
+  let row;
+  if (basis === 'all_dwellings') {
+    row = Q50_TABLE_2_11.all;
+  } else if (basis === 'built_form' || basis === 'age_band' || basis === 'wall_construction') {
+    // Object.hasOwn so inherited keys ('constructor', 'toString') are not rows.
+    const rows = Q50_TABLE_2_11[basis];
+    row = Object.hasOwn(rows, category) ? rows[category] : undefined;
+  }
+  return row ? row[statistic] : null;
 };
 
 // ---------------------------------------------------------------------------
@@ -95,7 +75,7 @@ export const SAP_TO_50PA_FACTOR = {
 // ---------------------------------------------------------------------------
 
 /**
- * Table 2-16: Background ventilation supply rate additions (m³/h at 50 Pa)
+ * Table 2-12: Background ventilation supply rate additions (m³/h at 50 Pa)
  * Source: SAP 10.2 specification, converted via BS EN 12831-1:2017 equation 30
  *
  * These are added to the base room leakage rate (exposedEnvelope × q50)
@@ -110,7 +90,7 @@ export const BACKGROUND_VENT_ADDITIONS_M3H = {
 };
 
 /**
- * Table 2-17: 50 Pa to typical pressure conversion factor
+ * Table 2-13: 50 Pa to typical pressure conversion factor
  * Source: BS EN 12831-1:2017 (via CIBSE DHDG 2026)
  *
  * Multiply the room leakage rate at 50 Pa by this factor to get the
@@ -125,7 +105,7 @@ export const PA50_TO_TYPICAL_FACTOR = {
 };
 
 /**
- * Table 2-18: Minimum air changes per hour for minimum room leakage rate check
+ * Table 2-14: Minimum air changes per hour for minimum room leakage rate check
  * Source: BS EN 12831-1:2017 Table B.7 (via CIBSE DHDG 2026)
  *
  * If the calculated room leakage rate falls below this minimum, ventilation
@@ -157,7 +137,7 @@ export const getRoomMinACHCategory = (roomType) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Determine height band string from number of storeys for table lookups
+ * Determine height band string from number of storeys for the Table 2-13 lookup
  * @param {number} storeys
  * @returns {'1_2' | '2_4' | '4_8' | '8+'}
  */

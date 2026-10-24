@@ -1,35 +1,76 @@
 // scripts/b25_gate.mjs
 //
-// B25 commit 2 verification gate. EXACT equality — no tolerance anywhere.
-// The freeze stores the q50 the app computes today, so any difference is a bug.
+// B25 verification gate (commits 2 + 3, migrations 023 + 025). EXACT
+// equality — no tolerance anywhere. The freeze stores the q50 the app computed
+// before B25, so any difference is a bug.
 //
 // Sequence (scratch DB ohl_b25_check only):
 //   1. If migration 023 is not yet applied: take the "before" baseline
-//      (scripts/b25_baseline.mjs → b25_before.json) and a design_params
-//      snapshot (b25_before_db.json). If it is already applied, both files
-//      must exist from the earlier run.
+//      (scripts/b25_baseline.mjs → b25_before.json, computed by the PRE-B25
+//      client code) and a design_params snapshot (b25_before_db.json). If it
+//      is already applied, both files must exist from the earlier run, and a
+//      "pre-run" snapshot of design_params is taken now.
 //   2. node server/migrate.js (child process, DATABASE_URL from environment).
-//   3. "After" baseline → b25_after.json.
+//   3. "After" baseline → b25_after.json, computed by the CURRENT client code.
 //   4. Compare: resolved q50 for every project; every room-level figure and
 //      every building total for every project with rooms.
 //   5. Database assertions: no 'estimated' left; 164 legacy_sap; 10 measured;
 //      each migrated q50 === before resolved q50; sap_* columns, measured
-//      rows and updated_at unchanged; new columns present with NULL / 'mean'.
+//      rows and updated_at unchanged; new columns present with NULL / 'mean';
+//      air_permeability_method DEFAULT 'default_table' (025). When 023 was
+//      already applied: this run's migration changed no row at all.
 //   6. node server/migrate.js a second time: design_params must be identical.
 //   7. Old-client save: designParams.update with method 'estimated', q50 12
 //      and no q50_* fields must raise no error and change nothing.
 //
+// Project set changes. If projects were created or deleted in the scratch DB
+// after the before files were taken (e.g. by using the app against it), the
+// before/after comparisons run on the projects present in both, and the gate
+// FAILS unless the exact difference is acknowledged on the command line:
+//   node scripts/b25_gate.mjs --project-set-change=+1339,-1325
+// Every added project that is now legacy_sap (frozen by 025) must hold exactly
+// the q50 that the pre-B25 production code (main, LEGACY_REV) computes for it,
+// loaded from git — independent of the frozen copy inside migrate.js.
+//
 // Exit code 0 only if every check passes.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire, registerHooks } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertScratchUrl, connectScratch } from './lib/scratchDbGuard.mjs';
 
 assertScratchUrl();
 
 const EXPECT = { projects: 174, legacySap: 164, measured: 10, withRooms: 99 };
+
+// Step 7 saves through designParams.update, which bumps updated_at (and may
+// normalise unrelated NULLs) on its test row. On a re-run that row has already
+// been written by an earlier gate run, so it is exempt from the two
+// "untouched since before 023" checks below — and only from those. Its method
+// and q50 are still checked, and the pre-run → post-run check covers it fully.
+const GATE_TEST_ROW = 238;
+
+// Pre-B25 production code (main before the B25 branch). Its resolveQ50 is the
+// reference for any 'estimated' row the gate did not see before 023.
+const LEGACY_REV = '8c453e1';
+
+const ackArg = process.argv.find(a => a.startsWith('--project-set-change='));
+const ACK_SET_CHANGE = ackArg ? ackArg.split('=')[1] : '';
+
+// Same extensionless-import hook as b25_baseline.mjs, for the legacy client code.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    try {
+      return nextResolve(specifier, context);
+    } catch (err) {
+      if (err.code === 'ERR_MODULE_NOT_FOUND' && specifier.startsWith('.') && !specifier.endsWith('.js')) {
+        return nextResolve(specifier + '.js', context);
+      }
+      throw err;
+    }
+  },
+});
 
 const root    = fileURLToPath(new URL('..', import.meta.url));
 const outPath = (name) => fileURLToPath(new URL(`./out/${name}`, import.meta.url));
@@ -92,6 +133,14 @@ if (!alreadyApplied) {
 const before   = readJson('b25_before.json');
 const beforeDb = readJson('b25_before_db.json');
 
+// Pre-run snapshot (this run, before migrate) — JSON round-tripped so it
+// compares like the stored files do.
+const c0 = await connectScratch();
+const preRunDb = JSON.parse(toJson(await snapshotDesignParams(c0)));
+await c0.end();
+const applied025Before = await migrationApplied('025');
+console.log(`  pre-run snapshot: ${Object.keys(preRunDb).length} rows; 025 already applied: ${applied025Before}`);
+
 // ---------------------------------------------------------------------------
 // 2. Migrate (first run)
 // ---------------------------------------------------------------------------
@@ -99,6 +148,9 @@ console.log('\n== 2. Migrate (first run) ==');
 const firstOut = run('migrate.js (first run)', ['server/migrate.js']);
 if (!alreadyApplied) {
   check('first run applied migration 023', /Applying migration 023/.test(firstOut));
+}
+if (!applied025Before) {
+  check('first run applied migration 025', /Applying migration 025/.test(firstOut));
 }
 
 // ---------------------------------------------------------------------------
@@ -115,22 +167,31 @@ console.log('\n== 4. Compare before / after (exact) ==');
 const byId = (list) => new Map(list.map(p => [p.projectId, p]));
 const B = byId(before.projects), A = byId(after.projects);
 
-check(`project count ${before.projects.length} → ${after.projects.length} (expect ${EXPECT.projects})`,
-  before.projects.length === EXPECT.projects && after.projects.length === EXPECT.projects);
-check('same project ids before and after',
-  before.projects.length === A.size && before.projects.every(p => A.has(p.projectId)));
+check(`before baseline has ${before.projects.length} projects (expect ${EXPECT.projects})`,
+  before.projects.length === EXPECT.projects);
+
+const added   = [...A.keys()].filter(id => !B.has(id)).sort((x, y) => x - y);
+const removed = [...B.keys()].filter(id => !A.has(id)).sort((x, y) => x - y);
+const setChange = [...added.map(id => `+${id}`), ...removed.map(id => `-${id}`)].join(',');
+const commonIds = [...B.keys()].filter(id => A.has(id));
+check(`project set change since the before files acknowledged (actual "${setChange}", acknowledged "${ACK_SET_CHANGE}")`,
+  setChange === ACK_SET_CHANGE,
+  setChange && setChange !== ACK_SET_CHANGE ? `re-run with --project-set-change=${setChange} if these were made outside the gate` : '');
+console.log(`        comparing the ${commonIds.length} projects present before and after`);
 
 // Object.is: exact, and distinguishes -0 / NaN rather than hiding them.
 const q50Diffs = [];
-for (const [id, b] of B) {
-  const a = A.get(id);
-  if (!a || !Object.is(a.resolvedQ50, b.resolvedQ50)) q50Diffs.push(`${id}: ${b.resolvedQ50} → ${a?.resolvedQ50}`);
+for (const id of commonIds) {
+  const b = B.get(id), a = A.get(id);
+  if (!Object.is(a.resolvedQ50, b.resolvedQ50)) q50Diffs.push(`${id}: ${b.resolvedQ50} → ${a.resolvedQ50}`);
 }
-check(`resolved q50 identical for all ${B.size} projects`, q50Diffs.length === 0,
+check(`resolved q50 identical for all ${commonIds.length} common projects`, q50Diffs.length === 0,
   q50Diffs.slice(0, 10).join('; '));
 
-const withRooms = before.projects.filter(p => p.roomCount > 0);
-check(`projects with rooms: ${withRooms.length} (expect ${EXPECT.withRooms})`, withRooms.length === EXPECT.withRooms);
+const withRoomsAll = before.projects.filter(p => p.roomCount > 0);
+const withRooms    = withRoomsAll.filter(p => A.has(p.projectId));
+check(`projects with rooms: ${withRoomsAll.length} before (expect ${EXPECT.withRooms}), ${withRooms.length} still present`,
+  withRoomsAll.length === EXPECT.withRooms && withRooms.length === withRoomsAll.length - removed.filter(id => B.get(id).roomCount > 0).length);
 
 const ROOM_FIELDS = Object.keys(withRooms[0]?.rooms[0] ?? {}).filter(k => k !== 'roomId');
 const TOTAL_FIELDS = Object.keys(withRooms[0]?.totals ?? {});
@@ -166,11 +227,19 @@ const db = await connectScratch();
 const afterDb = await snapshotDesignParams(db);
 
 const counts = Object.values(afterDb).reduce((m, r) => ((m[r.air_permeability_method] = (m[r.air_permeability_method] ?? 0) + 1), m), {});
+const beforeCounts = Object.values(beforeDb).reduce((m, r) => ((m[r.air_permeability_method] = (m[r.air_permeability_method] ?? 0) + 1), m), {});
+check(`before files: ${beforeCounts.estimated} estimated, ${beforeCounts.measured} measured (expect ${EXPECT.legacySap}, ${EXPECT.measured})`,
+  beforeCounts.estimated === EXPECT.legacySap && beforeCounts.measured === EXPECT.measured && Object.keys(beforeCounts).length === 2);
 check(`no 'estimated' rows remain`, !counts.estimated, JSON.stringify(counts));
-check(`legacy_sap rows = ${counts.legacy_sap ?? 0} (expect ${EXPECT.legacySap})`, counts.legacy_sap === EXPECT.legacySap);
-check(`measured rows = ${counts.measured ?? 0} (expect ${EXPECT.measured})`, counts.measured === EXPECT.measured);
-check('design_params row set unchanged',
-  toJson(Object.keys(afterDb)) === toJson(Object.keys(beforeDb)));
+const countIn = (ids, db, method) => ids.filter(id => db[id]?.air_permeability_method === method).length;
+const expLegacy   = countIn(commonIds, beforeDb, 'estimated') + countIn(added, afterDb, 'legacy_sap');
+const expMeasured = countIn(commonIds, beforeDb, 'measured')  + countIn(added, afterDb, 'measured');
+check(`legacy_sap rows = ${counts.legacy_sap ?? 0} (expect ${expLegacy}: before-estimated still present + added rows frozen)`,
+  counts.legacy_sap === expLegacy);
+check(`measured rows = ${counts.measured ?? 0} (expect ${expMeasured})`, counts.measured === expMeasured);
+check('design_params ids = before ids, adjusted only by the project set change',
+  toJson(Object.keys(afterDb).map(Number).sort((x, y) => x - y)) ===
+  toJson([...commonIds, ...added].sort((x, y) => x - y)));
 
 const SAP_COLS = ['sap_structural', 'sap_floor', 'sap_window_draught_pct', 'sap_draught_lobby',
                   'building_storeys', 'building_shielding'];
@@ -178,6 +247,7 @@ const migratedQ50Diffs = [], sapDiffs = [], measuredDiffs = [], updatedAtDiffs =
 const NEW_COLS = ['q50_built_form', 'q50_age_band', 'q50_wall_construction', 'q50_selection_basis', 'q50_statistic'];
 for (const [id, b] of Object.entries(beforeDb)) {
   const a = afterDb[id];
+  if (!a) continue;   // removed project — see the project set check
   if (b.air_permeability_method === 'estimated') {
     if (a.air_permeability_method !== 'legacy_sap') migratedQ50Diffs.push(`${id}: method ${a.air_permeability_method}`);
     const expected = B.get(Number(id))?.resolvedQ50;
@@ -187,6 +257,7 @@ for (const [id, b] of Object.entries(beforeDb)) {
     if (a.air_permeability_method !== 'measured' || !Object.is(a.q50, b.q50)) measuredDiffs.push(`${id}`);
   }
   for (const c of SAP_COLS) if (!Object.is(a[c], b[c])) sapDiffs.push(`${id}.${c}: ${b[c]} → ${a[c]}`);
+  if (alreadyApplied && Number(id) === GATE_TEST_ROW) continue;   // see GATE_TEST_ROW
   if (toJson(a.updated_at) !== toJson(b.updated_at)) updatedAtDiffs.push(id);
   // Every other pre-existing column must be untouched too.
   for (const c of Object.keys(b)) {
@@ -194,12 +265,78 @@ for (const [id, b] of Object.entries(beforeDb)) {
     if (toJson(a[c]) !== toJson(b[c])) otherColDiffs.push(`${id}.${c}`);
   }
 }
-check(`each migrated q50 === baseline resolved q50, method legacy_sap (${EXPECT.legacySap} rows)`,
+check(`each migrated q50 === baseline resolved q50, method legacy_sap (${countIn(commonIds, beforeDb, 'estimated')} rows)`,
   migratedQ50Diffs.length === 0, migratedQ50Diffs.slice(0, 10).join('; '));
 check('measured rows untouched (method and q50)', measuredDiffs.length === 0, measuredDiffs.join(', '));
 check('sap_* / storeys / shielding columns unchanged', sapDiffs.length === 0, sapDiffs.slice(0, 10).join('; '));
-check('updated_at unchanged on every row', updatedAtDiffs.length === 0, updatedAtDiffs.slice(0, 10).join(', '));
-check('no other pre-existing column changed', otherColDiffs.length === 0, otherColDiffs.slice(0, 10).join(', '));
+const exemptNote = alreadyApplied ? ` (since before 023; gate test row ${GATE_TEST_ROW} exempt)` : '';
+check(`updated_at unchanged on every row${exemptNote}`, updatedAtDiffs.length === 0, updatedAtDiffs.slice(0, 10).join(', '));
+check(`no other pre-existing column changed${exemptNote}`, otherColDiffs.length === 0, otherColDiffs.slice(0, 10).join(', '));
+
+// Rows the gate cannot compare with the before files: projects added since,
+// and rows this run's migration froze (they were 'estimated' in the pre-run
+// snapshot). Each must hold exactly what the pre-B25 production code computes.
+const legacyDir = outPath(`legacy_client_${LEGACY_REV}/`);
+mkdirSync(legacyDir, { recursive: true });
+for (const f of ['en12831Calculations.js', 'en12831VentilationData.js']) {
+  const r = spawnSync('git', ['show', `${LEGACY_REV}:client/src/utils/${f}`], { cwd: root, encoding: 'utf8' });
+  if (r.status !== 0) { console.error(`git show ${LEGACY_REV}:${f} failed: ${r.stderr}`); process.exit(1); }
+  writeFileSync(legacyDir + f, r.stdout);
+}
+const legacy = await import(pathToFileURL(legacyDir + 'en12831Calculations.js').href);
+// Pre-B25 loadProject mapping (b25_baseline.mjs at d85aaa5), method forced to 'estimated'.
+const legacyQ50ForRow = (row) => legacy.resolveQ50({
+  airPermeabilityMethod: 'estimated',
+  q50:                 row.q50,
+  sapStructural:       row.sap_structural          || 'masonry',
+  sapFloor:            row.sap_floor               || 'other',
+  sapWindowDraughtPct: row.sap_window_draught_pct  ?? 100,
+  sapDraughtLobby:     row.sap_draught_lobby       ?? 0,
+  buildingStoreys:     row.building_storeys        ?? 2,
+  buildingShielding:   row.building_shielding      || 'normal',
+});
+
+// Reference check: the legacy code reproduces the before baseline exactly.
+const legacyRefDiffs = commonIds
+  .filter(id => beforeDb[id].air_permeability_method === 'estimated')
+  .filter(id => !Object.is(legacyQ50ForRow(beforeDb[id]), B.get(id).resolvedQ50));
+check(`legacy code (${LEGACY_REV}) reproduces the before baseline q50 for every before-estimated row`,
+  legacyRefDiffs.length === 0, legacyRefDiffs.slice(0, 10).join(', '));
+
+const frozenThisRun = Object.keys(preRunDb).filter(id => preRunDb[id].air_permeability_method === 'estimated').map(Number);
+const toVerify = [...new Set([...added, ...frozenThisRun])].sort((x, y) => x - y);
+const verifyDiffs = [];
+for (const id of toVerify) {
+  const a = afterDb[id];
+  if (!a) { verifyDiffs.push(`${id}: no design_params row`); continue; }
+  if (!['legacy_sap', 'measured', 'default_table'].includes(a.air_permeability_method)) {
+    verifyDiffs.push(`${id}: method ${a.air_permeability_method}`); continue;
+  }
+  if (a.air_permeability_method === 'legacy_sap') {
+    const expected = legacyQ50ForRow(a);
+    const detail = `q50 ${a.q50}, ${LEGACY_REV} computes ${expected}`;
+    console.log(`        project ${id}: legacy_sap, ${detail}`);
+    if (!Object.is(a.q50, expected)) verifyDiffs.push(`${id}: ${detail}`);
+  }
+}
+check(`added / frozen-this-run rows hold exactly the pre-B25 q50 (${toVerify.join(', ') || 'none'})`,
+  verifyDiffs.length === 0, verifyDiffs.join('; '));
+
+if (alreadyApplied) {
+  // Every row must be identical to the pre-run snapshot, except that a row
+  // frozen by this run may change q50 and air_permeability_method only.
+  const runDiffs = [];
+  for (const id of Object.keys(preRunDb)) {
+    const pre = preRunDb[id], post = afterDb[id];
+    if (!post) { runDiffs.push(`${id}: row gone`); continue; }
+    const strip = (r) => frozenThisRun.includes(Number(id))
+      ? toJson({ ...r, q50: null, air_permeability_method: null }) : toJson(r);
+    if (strip(pre) !== strip(post)) runDiffs.push(id);
+  }
+  const sameIds = toJson(Object.keys(preRunDb)) === toJson(Object.keys(afterDb));
+  check(`this run's migration changed no design_params row beyond freezing ${frozenThisRun.length} 'estimated' row(s) (every column, ${Object.keys(preRunDb).length} rows)`,
+    runDiffs.length === 0 && sameIds, runDiffs.slice(0, 10).join(', '));
+}
 
 const { rows: colRows } = await db.query(`
   SELECT column_name, data_type, is_nullable, column_default
@@ -215,6 +352,12 @@ check('other four nullable, no default',
   NEW_COLS.slice(0, 4).every(c => cols[c]?.is_nullable === 'YES' && cols[c]?.column_default === null));
 check(`every row: four selection columns NULL, q50_statistic 'mean'`,
   Object.values(afterDb).every(r => NEW_COLS.slice(0, 4).every(c => r[c] === null) && r.q50_statistic === 'mean'));
+
+const { rows: [methodCol] } = await db.query(`
+  SELECT column_default FROM information_schema.columns
+   WHERE table_name = 'design_params' AND column_name = 'air_permeability_method'`);
+check(`air_permeability_method DEFAULT 'default_table' (025)`,
+  /^'default_table'/.test(methodCol?.column_default ?? ''), methodCol?.column_default ?? 'column missing');
 await db.end();
 
 // ---------------------------------------------------------------------------
@@ -222,7 +365,8 @@ await db.end();
 // ---------------------------------------------------------------------------
 console.log('\n== 6. Migrate (second run) ==');
 const secondOut = run('migrate.js (second run)', ['server/migrate.js']);
-check('second run skipped 023', /Migration 023 already applied/.test(secondOut));
+check('second run skipped 023 and 025',
+  /Migration 023 already applied/.test(secondOut) && /Migration 025 already applied/.test(secondOut));
 const db2 = await connectScratch();
 const afterSecond = await snapshotDesignParams(db2);
 await db2.end();
@@ -307,6 +451,15 @@ try { await designParams.update(target, missingPayload); } catch (e) { missErr =
 const r3 = await getRow(target);
 check('save with method and q50 undefined: no error, row unchanged',
   missErr === null && withoutUpdatedAt(r3) === withoutUpdatedAt(r1), missErr?.message ?? '');
+
+// d) createForProject on an existing row: ON CONFLICT DO NOTHING, so this
+//    writes nothing, but it executes the new default_table INSERT against the
+//    migrated schema (column names, types).
+let createErr = null;
+try { await designParams.createForProject(target); } catch (e) { createErr = e; }
+const r4 = await getRow(target);
+check('createForProject SQL runs on the migrated schema; existing row untouched (every column)',
+  createErr === null && toJson(r4) === toJson(r3), createErr?.message ?? '');
 
 // ---------------------------------------------------------------------------
 const failed = results.filter(r => !r.pass);

@@ -61,6 +61,12 @@ const PROJECT_FIELDS = [
   // Both columns are NOT NULL (audit: 0 NULLs), so before/after are equivalent.
   ['airPermeabilityMethod', 'air_permeability_method', dp => dp.air_permeability_method],
   ['q50',                   'q50',                     dp => dp.q50],
+  // B25 — Table 2-11 selection (migration 023), as loadProject.
+  ['q50BuiltForm',          'q50_built_form',          dp => dp.q50_built_form          ?? null],
+  ['q50AgeBand',            'q50_age_band',            dp => dp.q50_age_band            ?? null],
+  ['q50WallConstruction',   'q50_wall_construction',   dp => dp.q50_wall_construction   ?? null],
+  ['q50SelectionBasis',     'q50_selection_basis',     dp => dp.q50_selection_basis     ?? null],
+  ['q50Statistic',          'q50_statistic',           dp => dp.q50_statistic           ?? 'mean'],
   ['sapStructural',         'sap_structural',          dp => dp.sap_structural          || 'masonry'],
   ['sapFloor',              'sap_floor',               dp => dp.sap_floor               || 'other'],
   ['sapWindowDraughtPct',   'sap_window_draught_pct',  dp => dp.sap_window_draught_pct  ?? 100],
@@ -179,7 +185,10 @@ const results = projects.map(({ id }) => {
     elements: (elsByRoom[r.id] ?? []).map(e => ({ id: e.id, ...tally('element', ELEMENT_FIELDS, e) })),
   }));
 
-  const resolvedQ50 = resolveQ50(project);
+  // resolveQ50 returned a bare number before B25 commit 3, { q50, defaulted } after.
+  const rq = resolveQ50(project);
+  const resolvedQ50  = typeof rq === 'number' ? rq : rq.q50;
+  const q50Defaulted = typeof rq === 'number' ? null : rq.defaulted;
   // Informational only (not compared by the gate): the live SAP breakdown for 'estimated' rows.
   const sapEstimate = (project.airPermeabilityMethod !== 'estimated' || !en12831.estimateQ50SAP) ? null : en12831.estimateQ50SAP({
     structural:       project.sapStructural       ?? 'masonry',
@@ -234,6 +243,7 @@ const results = projects.map(({ id }) => {
       externalTemp: project.externalTemp, externalTempAutoApplied, referenceTemp: project.referenceTemp,
     },
     resolvedQ50,
+    q50Defaulted,
     sapEstimate,
     roomCount: roomResults.length,
     rooms: roomResults,

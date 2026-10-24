@@ -9,13 +9,8 @@
 // Field names are camelCase throughout, matching App.jsx loadProject() mapping.
 
 import { useState, useEffect } from 'react';
-import { estimateQ50SAP } from '../../utils/en12831Calculations';
-import {
-  SAP_STRUCTURAL_INFILTRATION,
-  SAP_FLOOR_INFILTRATION,
-  SAP_WINDOW_DOOR_INFILTRATION,
-  BUILDING_SHIELDING_OPTIONS,
-} from '../../utils/en12831VentilationData';
+import { resolveQ50 } from '../../utils/en12831Calculations';
+import { BUILDING_SHIELDING_OPTIONS } from '../../utils/en12831VentilationData';
 
 const inputClass  = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
@@ -72,20 +67,13 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   // recomputed SAP estimate, so the UI and the calculation agree.
   const isLegacySap    = method === 'legacy_sap';
   const isStoredOther  = method === 'legacy_sap' || method === 'design_target';
+  const isDefaultTable = method === 'default_table';
 
-  // Live q50 recalculates from current project fields on every render
-  const effectiveQ50 = isMeasured
-    ? (project.q50 ?? 12.0)
-    : isStoredOther
-    ? project.q50
-    : estimateQ50SAP({
-        structural:       project.sapStructural       ?? 'masonry',
-        floor:            project.sapFloor            ?? 'other',
-        windowDraughtPct: project.sapWindowDraughtPct ?? 100,
-        draughtLobby:     !!project.sapDraughtLobby,
-        storeys:          project.buildingStoreys     ?? 2,
-        shielding:        project.buildingShielding   ?? 'normal',
-      }).q50;
+  // Live q50 recalculates from current project fields on every render.
+  // B25 commit 3: the SAP estimate is gone; default_table resolves from Table 2-11
+  // (interim display — the selection UI is commit 4).
+  const resolved     = resolveQ50(project);
+  const effectiveQ50 = isMeasured ? (project.q50 ?? 12.0) : resolved.q50;
 
   // When switching to measured, seed q50 with the current estimated value
   // B25: the SAP estimate is superseded — no project can move ONTO 'estimated'.
@@ -219,69 +207,13 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
             </p>
           </div>
         ) : (
-          /* SAP estimation inputs */
-          <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+          /* B25 interim: Table 2-11 default — read-only until the commit 4 selection UI */
+          <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs text-gray-600">
-              Air permeability estimated from the SAP 10.2 component method
-              (CIBSE DHDG 2026 Tables 2-11 to 2-15). Summed ACH additions are
-              converted to q₅₀ using the shielding and height factors below.
+              {isDefaultTable && resolved.defaulted
+                ? 'Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001). No dwelling characteristic selected, so the all-dwellings mean is used.'
+                : 'Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001).'}
             </p>
-            <div className="grid grid-cols-2 gap-4">
-
-              <Field label="Primary construction" hint="Dominant wall construction type">
-                <select
-                  value={project.sapStructural ?? 'masonry'}
-                  onChange={e => onUpdate('sapStructural', e.target.value)}
-                  className={selectClass}
-                >
-                  {Object.entries(SAP_STRUCTURAL_INFILTRATION).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label} ({v.ach} ACH)</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Ground floor type" hint="Unsealed suspended timber floors add significant infiltration">
-                <select
-                  value={project.sapFloor ?? 'other'}
-                  onChange={e => onUpdate('sapFloor', e.target.value)}
-                  className={selectClass}
-                >
-                  {Object.entries(SAP_FLOOR_INFILTRATION).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label} ({v.ach} ACH)</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field
-                label="Windows & doors draught-proofed"
-                hint="Draught-proofed = installed within 10 years by FENSA-approved installer"
-              >
-                <select
-                  value={project.sapWindowDraughtPct ?? 100}
-                  onChange={e => onUpdate('sapWindowDraughtPct', parseInt(e.target.value))}
-                  className={selectClass}
-                >
-                  {Object.keys(SAP_WINDOW_DOOR_INFILTRATION).map(pct => (
-                    <option key={pct} value={pct}>{pct}%</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field
-                label="Draught lobby at main entrance?"
-                hint="Enclosed space ≥ 2 m² with two doors forming an airlock"
-              >
-                <select
-                  value={project.sapDraughtLobby ? 'yes' : 'no'}
-                  onChange={e => onUpdate('sapDraughtLobby', e.target.value === 'yes' ? 1 : 0)}
-                  className={selectClass}
-                >
-                  <option value="no">No draught lobby</option>
-                  <option value="yes">Draught lobby present</option>
-                </select>
-              </Field>
-
-            </div>
           </div>
         )}
 
@@ -293,7 +225,9 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
               {isMeasured ? 'from test — used directly in calculation'
                 : isLegacySap ? 'frozen superseded estimate — used directly in calculation'
                 : isStoredOther ? 'design target — used directly in calculation'
-                : 'SAP estimate — intermediate value, see note below'}
+                : isDefaultTable && resolved.defaulted ? 'Table 2-11 all-dwellings mean (no selection yet)'
+                : isDefaultTable ? 'Table 2-11 default — used directly in calculation'
+                : 'stored value — used directly in calculation'}
             </span>
           </div>
           <div className="text-right">
@@ -324,7 +258,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Building shielding"
-            hint="Affects the conversion from air permeability at 50 Pa to typical leakage (Table 2-17). Changing shielding or the number of storeys changes room ventilation heat loss."
+            hint="Affects the conversion from air permeability at 50 Pa to typical leakage (Table 2-13). Changing shielding or the number of storeys changes room ventilation heat loss."
           >
             <select
               value={project.buildingShielding ?? 'normal'}
@@ -339,7 +273,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Number of storeys"
-            hint="Used for the height band in Table 2-17."
+            hint="Used for the height band in Table 2-13."
           >
             <input
               type="number"

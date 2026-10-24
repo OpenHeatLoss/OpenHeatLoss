@@ -169,11 +169,11 @@ export default function VentilationEditor({ room, project, onUpdate }) {
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Background ventilation additions (Table 2-16)                    */}
+        {/* Background ventilation additions (Table 2-12)                    */}
         {/* ---------------------------------------------------------------- */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold">Background Ventilation (Table 2-16)</span>
+            <span className="text-sm font-semibold">Background Ventilation (Table 2-12)</span>
             <button
               onClick={() => setShowBgVentHelp(v => !v)}
               className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -203,13 +203,13 @@ export default function VentilationEditor({ room, project, onUpdate }) {
                 <li>• <strong>Flue ≥200 mm</strong> — unconnected flue, diameter 200 mm or more (435 m³/h at 50 Pa)</li>
                 <li>• <strong>Open fire / blocked flue</strong> — (109 m³/h at 50 Pa)</li>
               </ul>
-              <p className="text-blue-600 mt-1">Source: CIBSE DHDG 2026 Table 2-16 / SAP 10.2</p>
+              <p className="text-blue-600 mt-1">Source: CIBSE DHDG 2026 Table 2-12 / SAP 10.2</p>
             </div>
           )}
 
           <div className="border border-gray-200 rounded-lg px-3 py-1">
             <p className="text-xs text-gray-500 px-1 pt-2 pb-1">
-              Values are equivalent leakage additions at 50 Pa test pressure (CIBSE Table 2-16).
+              Values are equivalent leakage additions at 50 Pa test pressure (CIBSE Table 2-12).
               They are converted to typical-pressure flow rates in the calculation below —
               not directly comparable to the leakage rate shown in the audit panel.
             </p>

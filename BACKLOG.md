@@ -271,6 +271,51 @@ DECISIONS TAKEN DURING COMMIT 2 (2026-10):
     must add an explicit mechanism.
   - Gate is EXACT equality (scripts/b25_gate.mjs), no tolerance.
 
+DECISIONS TAKEN DURING COMMIT 3 (2026-10):
+  - design_target stays FREE ENTRY by decision: the designer or builder owns
+    the figure (AD L notional 5.0, or the as-built/target value), so no
+    regional or preset tables are offered for it.
+  - The heat loss report should record the selected q50 AND its Table 2-11
+    category (basis, category, statistic, or "all dwellings mean — defaulted").
+    Belongs with the Calculation basis export item; generate_heat_loss_pdf.py
+    does not render q50 today.
+  - getHeightBand is KEPT: the unchanged Table 2-13 (old 2-17) conversion uses
+    it. Deleted: the five SAP tables, getStoreyInfiltration, estimateQ50SAP.
+    Frozen copies stay in migrate.js, byte-for-byte.
+  - Table 2-11 + lookupDefaultQ50 live in en12831VentilationData.js with the
+    other section 2.5.4 tables. Unknown basis/category/statistic → null.
+  - resolveQ50 now returns { q50, defaulted }. default_table with no basis or
+    no category → all-dwellings mean 8.6, defaulted: true (commit 4 amber
+    nudge reads this flag). An invalid stored selection also falls back, with
+    console.error. 'estimated' is now an unknown method (stored q50 + error).
+  - Table renumbering per corrigendum: old 2-16 → 2-12 (background vents),
+    2-17 → 2-13 (50 Pa to typical), 2-18 → 2-14 (minimum ACH).
+  - New projects: designParams.createForProject inserts default_table / 8.6 /
+    'mean' explicitly (the client's createProject values never reach
+    design_params). The q50 COLUMN default is still 12.0 — only matters for an
+    INSERT that bypasses createForProject; none exists.
+  - VentilationSettings imported the SAP tables too (FILES IN SCOPE above
+    missed it). Commit 3 changed only what compiling required: SAP inputs
+    panel replaced by a read-only Table 2-11 note; the permanently disabled
+    SAP Estimate button and the dead isEstimated note are left for commit 4.
+    Until commit 4 a project cannot be switched back from Measured.
+  - sap_* columns and their load/save mapping are KEPT: frozen projects keep
+    their SAP inputs on record.
+  - VALIDATION (worked example, CIBSE DHDG 2026 one room: 45 m², q50 10.4,
+    vent + fan, normal, 2 storeys → 28.8 m³/h; MVHR 39 m³/h at 84%; Ti 21,
+    Te 0.9, Te,ref 10.1). Guide: 436.1 / 239.3 / 129.3 W. Our unrounded code:
+    436.28 / 239.46 / 129.86 W. The guide rounds supply temperatures and
+    factors to 1 dp; with that rounding our arithmetic gives 436.08 / 239.26 /
+    129.27. Difference is display rounding only, bounded by 0.05 °C × 39 ×
+    0.34 = 0.66 W. Tests: client/test/en12831AirPermeability.test.mjs
+    (npm test in client/). No rounding added to the app.
+  - Scratch DB note: project 1339 was created after 023 ran (presumably via
+    the app during the on-screen check), on the old 'estimated' column
+    default — the late-create case 025 exists for. 025 froze it
+    exactly as the pre-B25 code computes (9.999999999999998). Project 1325 was
+    deleted. The gate now requires such changes to be acknowledged with
+    --project-set-change=+1339,-1325.
+
 Wrinkle inside commit 2: VentilationSettings.jsx:72 calls estimateQ50SAP
 whenever !isMeasured. A legacy_sap project would display a recomputed
 estimate while the calculation uses the frozen value — UI and maths

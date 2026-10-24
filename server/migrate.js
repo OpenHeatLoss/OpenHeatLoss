@@ -2454,6 +2454,45 @@ const MIGRATIONS = [
       console.log('  Migration 024 complete: company registration + VAT registration numbers');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Migration 025 — B25: default_table becomes the column default; re-freeze
+  //
+  // Deploys together with 023 (B25 commits 2 and 3). The client no longer has
+  // a SAP estimate, so 'estimated' has no calculation behind it.
+  //
+  // 1. air_permeability_method DEFAULT 'default_table' (was 'estimated').
+  //    Deliberately not in 023. designParams.createForProject also sets it
+  //    explicitly, so this is the backstop for any other INSERT.
+  // 2. freezeLegacySapQ50() again, unchanged: any 'estimated' row that appeared
+  //    after 023 ran (a stale tab, a late create) is frozen exactly as 023 did.
+  //    Its log lines say "023:" because it is the same function.
+  // 3. Abort unless zero 'estimated' rows remain.
+  //
+  // Idempotent: SET DEFAULT is repeatable and the freeze touches only
+  // 'estimated' rows, of which there are none after the first run.
+  // ---------------------------------------------------------------------------
+  {
+    version: '025',
+    description: "B25: air_permeability_method defaults to 'default_table'; re-freeze late 'estimated' rows",
+    run: async () => {
+      await query(`ALTER TABLE design_params ALTER COLUMN air_permeability_method SET DEFAULT 'default_table'`);
+      console.log(`  025: design_params.air_permeability_method DEFAULT 'default_table'`);
+
+      console.log(`  025: re-running the 023 freeze for 'estimated' rows created since 023`);
+      await freezeLegacySapQ50();
+
+      const { rows } = await query(
+        `SELECT COUNT(*)::int AS n FROM design_params WHERE air_permeability_method = 'estimated'`
+      );
+      if (rows[0].n !== 0) {
+        throw new Error(`025 aborted: ${rows[0].n} 'estimated' row(s) remain after the freeze`);
+      }
+      console.log(`  025: 0 'estimated' rows remain`);
+
+      console.log('  Migration 025 complete: default_table default, late estimates frozen');
+    },
+  },
 ];
 
 async function runMigrations() {

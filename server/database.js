@@ -758,8 +758,12 @@ const designParams = {
     getQuery('SELECT * FROM design_params WHERE project_id = $1', [projectId]),
 
   // Seed the defaults row immediately after project creation.
+  // B25: new projects start on the corrected Table 2-11 default — explicit here
+  // rather than relying on column defaults (q50's column default is still 12.0).
+  // 8.6 = Table 2-11 all-dwellings mean; categories stay NULL until selected.
   createForProject: (projectId) => runQuery(`
-    INSERT INTO design_params (project_id) VALUES ($1)
+    INSERT INTO design_params (project_id, air_permeability_method, q50, q50_statistic)
+    VALUES ($1, 'default_table', 8.6, 'mean')
     ON CONFLICT (project_id) DO NOTHING`,
     [projectId]
   ),

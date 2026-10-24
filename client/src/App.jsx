@@ -570,8 +570,10 @@ function App() {
         heatPumpReturnTemp: 40,
         // EN 12831-1:2017 ventilation defaults
         ventilationMethod:     'en12831_cibse2026',
-        airPermeabilityMethod: 'estimated',
-        q50:                   12.0,
+        // B25: Table 2-11 default; q50 placeholder is the all-dwellings mean.
+        // (The server's createForProject sets the same defaults on the row.)
+        airPermeabilityMethod: 'default_table',
+        q50:                   8.6,
         q50BuiltForm:          null,
         q50AgeBand:            null,
         q50WallConstruction:   null,
