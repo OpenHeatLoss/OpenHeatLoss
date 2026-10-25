@@ -264,6 +264,13 @@ export const saveFailed = (result) =>
   result == null || typeof result !== 'object' || Object.hasOwn(result, 'error');
 
 /**
+ * Save status after the user types or chooses anything: "Saved" is cleared
+ * so it never sits beside unsaved or invalid input. 'saving' and 'error'
+ * stay — the save is still in flight, or the choice is still unsaved.
+ */
+export const statusAfterInput = (status) => (status?.state === 'saved' ? null : status);
+
+/**
  * Run saves one at a time, in the order requested, so an earlier save can
  * never land after a later one. onStatus receives only the LATEST save's
  * outcome: each save sends the whole current design params, so a later
@@ -272,6 +279,10 @@ export const saveFailed = (result) =>
  * The save function is passed with each request and captured then, so a
  * queued save always goes to the project it was made for.
  *
+ * save.noteInput() records that the user typed or chose something: a save
+ * requested before that input never reports 'saved' (it reports null — the
+ * screen no longer matches what it saved). Errors are still reported.
+ *
  * @param {Function} onStatus ({ state: 'saving'|'saved'|'error', fields?, message? }) => void
  * @returns {Function} save(fields, saveFn) → Promise that settles when that save is done;
  *                     saveFn is (fields) => Promise<API response>
@@ -279,20 +290,23 @@ export const saveFailed = (result) =>
 export const createSerialSaver = (onStatus) => {
   let queue = Promise.resolve();
   let seq = 0;
-  return (fields, saveFn) => {
+  let inputAt = 0;   // seq of the latest save requested before the latest input
+  const save = (fields, saveFn) => {
     const n = ++seq;
     onStatus({ state: 'saving', fields });
     queue = queue
       .then(() => saveFn(fields))
       .then((result) => {
         if (saveFailed(result)) throw new Error(result?.error ?? 'No response from the server');
-        if (n === seq) onStatus({ state: 'saved' });
+        if (n === seq) onStatus(n > inputAt ? { state: 'saved' } : null);
       })
       .catch((err) => {
         if (n === seq) onStatus({ state: 'error', fields, message: err?.message || 'Save failed' });
       });
     return queue;
   };
+  save.noteInput = () => { inputAt = seq; };
+  return save;
 };
 
 // ---------------------------------------------------------------------------

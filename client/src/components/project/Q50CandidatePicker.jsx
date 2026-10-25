@@ -178,7 +178,7 @@ const selectionText = (update) =>
 // ---------------------------------------------------------------------------
 // mode 'select'
 // ---------------------------------------------------------------------------
-const SelectPicker = ({ project, onSelect }) => {
+const SelectPicker = ({ project, onSelect, onInput }) => {
   const [local, setLocal] = useState(initialQ50Picker);
   useEffect(() => { setLocal(initialQ50Picker()); }, [project.id]);
 
@@ -187,6 +187,7 @@ const SelectPicker = ({ project, onSelect }) => {
   const view = q50PickerView(local, project);
 
   const onChange = (change) => {
+    onInput?.();   // clears "Saved" — also for comparison-only changes
     const { state, update } = q50PickerApply(view, change, project);
     setLocal(state);
     if (update) onSelect(update);

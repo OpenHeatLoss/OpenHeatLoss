@@ -32,6 +32,7 @@ import {
   methodSwitchUpdate,
   q50BlurSave,
   createSerialSaver,
+  statusAfterInput,
 } from '../../utils/q50Selection';
 import Q50CandidatePicker from './Q50CandidatePicker';
 
@@ -54,7 +55,7 @@ const METHOD_OPTIONS = [
 // ---------------------------------------------------------------------------
 // default_table panel
 // ---------------------------------------------------------------------------
-const DefaultTablePanel = ({ project, resolved, onSelect }) => (
+const DefaultTablePanel = ({ project, resolved, onSelect, onInput }) => (
   <div className="bg-gray-50 rounded-lg p-4 space-y-4">
     <p className="text-xs text-gray-600">
       Default air permeability from CIBSE DHDG 2026 Table 2-11 (as corrected by DHDG-2026-1-COR-001),
@@ -70,7 +71,7 @@ const DefaultTablePanel = ({ project, resolved, onSelect }) => (
       </p>
     )}
 
-    <Q50CandidatePicker mode="select" project={project} onSelect={onSelect} />
+    <Q50CandidatePicker mode="select" project={project} onSelect={onSelect} onInput={onInput} />
   </div>
 );
 
@@ -80,7 +81,7 @@ const DefaultTablePanel = ({ project, resolved, onSelect }) => (
 // Local text so an invalid entry is shown with its error but never reaches
 // the project (the calculation keeps the last valid value). Valid keystrokes
 // update project state; the value is saved on blur only if valid and changed.
-const Q50NumberInput = ({ project, onUpdate, onSave, label, hint }) => {
+const Q50NumberInput = ({ project, onUpdate, onSave, onInput, label, hint }) => {
   const asText = (q50) => (q50 == null ? '' : String(q50));
   const [text, setText] = useState(asText(project.q50));
   const lastSaved = useRef(project.q50);
@@ -105,6 +106,7 @@ const Q50NumberInput = ({ project, onUpdate, onSave, label, hint }) => {
             max={Q50_INPUT_MAX}
             value={text}
             onChange={e => {
+              onInput();
               setText(e.target.value);
               const r = validateQ50Input(e.target.value);
               if (r.error === undefined) onUpdate('q50', r.value);
@@ -142,7 +144,12 @@ const useSerialSave = (onSaveDesignParams, projectId) => {
   const save = (fields) => {
     if (onSaveDesignParams) saver.current.save(fields, onSaveDesignParams);
   };
-  return { status, save };
+  // Any input after a save clears "Saved" (see statusAfterInput).
+  const noteInput = () => {
+    saver.current.save.noteInput();
+    setStatus(statusAfterInput);
+  };
+  return { status, save, noteInput };
 };
 
 const SaveStatus = ({ status, onRetry }) => {
@@ -184,7 +191,7 @@ const LegacyBanner = ({ onStartUpdate, updating }) => (
 export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBatch, onSaveDesignParams }) {
   const [updatingLegacy, setUpdatingLegacy] = useState(false);
   useEffect(() => { setUpdatingLegacy(false); }, [project.id]);
-  const { status, save } = useSerialSave(onSaveDesignParams, project.id);
+  const { status, save, noteInput } = useSerialSave(onSaveDesignParams, project.id);
 
   const method       = project.airPermeabilityMethod;
   const isMeasured   = method === 'measured';
@@ -200,6 +207,7 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
 
   const handleMethod = (target) => {
     if (target === method) return;
+    noteInput();
     if (isLegacySap && target === 'default_table') {
       setUpdatingLegacy(true);      // comparison first — nothing changes yet
       return;
@@ -257,7 +265,7 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
       )}
 
       {method === 'default_table' && (
-        <DefaultTablePanel project={project} resolved={resolved} onSelect={choose} />
+        <DefaultTablePanel project={project} resolved={resolved} onSelect={choose} onInput={noteInput} />
       )}
 
       {isMeasured && (
@@ -266,6 +274,7 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
             project={project}
             onUpdate={onUpdate}
             onSave={save}
+            onInput={noteInput}
             label="Air permeability q₅₀"
             hint="From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result."
           />
@@ -282,6 +291,7 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
             project={project}
             onUpdate={onUpdate}
             onSave={save}
+            onInput={noteInput}
             label="Design target q₅₀"
             hint="The figure must come from the designer's or builder's own airtightness design or compliance evidence. No preset values are offered."
           />

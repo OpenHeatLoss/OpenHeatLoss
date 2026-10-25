@@ -30,6 +30,7 @@ import {
   q50BlurSave,
   saveFailed,
   createSerialSaver,
+  statusAfterInput,
   airPermeabilitySnapshot,
   ventilationTotalsChange,
   formatSignedKW,
@@ -533,6 +534,36 @@ test('createSerialSaver: each save uses the save function it was requested with'
   save({ q50: 1 }, forProject(229));
   await save({ q50: 2 }, forProject(1348));
   assert.deepEqual(calls, [[229, 1], [1348, 2]]);
+});
+
+test('statusAfterInput: any input clears "Saved"; saving and errors stay', () => {
+  assert.equal(statusAfterInput({ state: 'saved' }), null);
+  const saving = { state: 'saving', fields: { q50: 5.2 } };
+  const error  = { state: 'error', fields: { q50: 5.2 }, message: 'x' };
+  assert.equal(statusAfterInput(saving), saving);
+  assert.equal(statusAfterInput(error), error);
+  assert.equal(statusAfterInput(null), null);
+});
+
+test('createSerialSaver: a save requested before new input never reports "Saved"', async () => {
+  const statuses = [];
+  const save = createSerialSaver(st => statuses.push(st?.state ?? null));
+  let release;
+  const p = save({ q50: 5.2 }, () => new Promise(r => { release = () => r({ project_id: 1 }); }));
+  save.noteInput();                      // user types 0.4 while 5.2 is still saving
+  await new Promise(r => setImmediate(r));
+  release();
+  await p;
+  assert.deepEqual(statuses, ['saving', null]);
+  // A save requested AFTER the input reports 'saved' as usual.
+  await save({ q50: 6 }, async () => ({ project_id: 1 }));
+  assert.deepEqual(statuses.slice(-2), ['saving', 'saved']);
+  // Errors are still reported after input.
+  const s2 = []; const save2 = createSerialSaver(st => s2.push(st?.state ?? null));
+  const p2 = save2({ q50: 1 }, async () => ({ error: 'x' }));
+  save2.noteInput();
+  await p2;
+  assert.equal(s2.at(-1), 'error');
 });
 
 // ---------------------------------------------------------------------------

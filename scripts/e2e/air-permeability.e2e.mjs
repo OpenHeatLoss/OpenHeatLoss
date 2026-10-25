@@ -237,18 +237,27 @@ try {
   });
 
   // -------------------------------------------------------------------------
-  await step(page, 'Changing categories on cards not in use does not save', async () => {
+  await step(page, 'Changing categories on cards not in use does not save; clears "Saved"', async () => {
     const n = saves.length;
     let sawSaving = false;
+    // "Saved" from the reload is not shown; make a fresh one to test clearing.
+    await statRadio('Median').check();
+    await savedBadge.waitFor({ timeout: 5000 });
+    await statRadio('Lower quartile (Q1)').check();
+    await savedBadge.waitFor({ timeout: 5000 });
+    const m = saves.length;
     await card('Built form').locator('select').selectOption('detached');
+    expect(!(await savedBadge.isVisible()), '"Saved" still shown after a comparison change');
     sawSaving ||= await savingText.isVisible();
     await card('Wall construction').locator('select').selectOption('solid_uninsulated');
     sawSaving ||= await savingText.isVisible();
     await card('Built form').locator('select').selectOption('flat');
     sawSaving ||= await savingText.isVisible();
     await page.waitForTimeout(500);
-    expect(savesSince(n) === 0, `${savesSince(n)} save request(s)`);
+    expect(savesSince(m) === 0, `${savesSince(m)} save request(s) from comparison changes`);
+    expect(savesSince(n) === 2, `${savesSince(n)} saves, expected 2 (Median, then Q1)`);
     expect(!sawSaving && !(await savingText.isVisible()), '"Saving…" was shown');
+    expect(!(await savedBadge.isVisible()), '"Saved" reappeared');
     await expectPickShown();
     await expectPickSaved();
   });
@@ -282,22 +291,30 @@ try {
     const n = saves.length;
     await numberInput.focus();
     await numberInput.blur();
-    await numberInput.fill('5.2');          // retyping the same value
-    await numberInput.blur();
     await page.waitForTimeout(500);
     expect(savesSince(n) === 0, `${savesSince(n)} save request(s)`);
+    expect(await savedBadge.isVisible(), '"Saved" cleared although nothing was typed');
   });
 
-  await step(page, 'Measured 0.4: inline error, no save', async () => {
+  await step(page, 'Measured 0.4: inline error, "Saved" cleared, no save; retyped 5.2 no save', async () => {
     const n = saves.length;
+    expect(await savedBadge.isVisible(), 'precondition: "Saved" from the 5.2 save should be shown');
     await numberInput.fill('0.4');
     const error = section.getByText(/Enter a value between 0\.5 and 50/);
     await error.waitFor({ timeout: 2000 });
+    expect(!(await savedBadge.isVisible()), '"Saved" shown beside the invalid 0.4');
     await numberInput.blur();
     await page.waitForTimeout(500);
     expect(savesSince(n) === 0, `${savesSince(n)} save request(s)`);
     expect((await effective.textContent()).trim() === '5.2', `effective q50 ${await effective.textContent()}`);
     expect(Object.is((await dp(projectId)).q50, 5.2), 'database q50 changed');
+    // Retyping the saved value: valid but unchanged → no save on blur.
+    await numberInput.fill('5.2');
+    await numberInput.blur();
+    await page.waitForTimeout(500);
+    expect(savesSince(n) === 0, `${savesSince(n)} save request(s) after retyping 5.2`);
+    // Leave 0.4 in the field for the next step (switching must not save it).
+    await numberInput.fill('0.4');
   });
 
   // -------------------------------------------------------------------------
