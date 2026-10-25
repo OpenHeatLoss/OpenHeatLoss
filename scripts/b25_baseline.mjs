@@ -1,13 +1,24 @@
 // scripts/b25_baseline.mjs
 //
 // B25 baseline — READ-ONLY. Computes ventilation and heat loss figures for
-// every project in the scratch DB using the CURRENT client calculation code,
-// so the same script can be re-run after commit 2 (migration 023) and the two
-// outputs compared. After commit 2 every number must be identical.
+// every project in the scratch DB, so the "before" figures (pre-B25 code on
+// the unmigrated DB) can be compared with the "after" figures (current code
+// on the migrated DB). Every number must be identical.
+//
+// By default the calculation runs on the PRE-B25 client code (LEGACY_REV,
+// copied in scripts/out/legacy_client_<rev>/ — see lib/legacyClient.mjs),
+// never the current branch code. --current-code selects the current client
+// code; it is only for the "after" file and cannot write b25_before.json.
 //
 // Usage (DATABASE_URL already set in the environment, never from .env):
-//   node scripts/b25_baseline.mjs                 → scripts/out/b25_before.json
-//   node scripts/b25_baseline.mjs b25_after.json  → scripts/out/b25_after.json
+//   node scripts/b25_baseline.mjs                                → scripts/out/b25_before.json
+//   node scripts/b25_baseline.mjs b25_after.json --current-code  → scripts/out/b25_after.json
+//
+// Fails (exit 1, nothing written) if resolveQ50 logs an error (e.g. "unknown
+// airPermeabilityMethod") or returns a non-finite q50, or — on the pre-B25
+// code, which treats every non-measured method as SAP-estimated without
+// complaint — if any design_params row has a method that code did not know.
+// The code used is recorded in the output as `code`.
 //
 // The DB rows are mapped to camelCase with the SAME expressions (including
 // fallbacks) as App.jsx loadProject(), restricted to the fields the
@@ -15,8 +26,11 @@
 // this mapping must change with it.
 
 import { registerHooks } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { connectScratch, SCRATCH_DB } from './lib/scratchDbGuard.mjs';
+import { LEGACY_REV, ensureLegacyClient } from './lib/legacyClient.mjs';
 
 // The client code uses Vite-style extensionless imports ('./en12831VentilationData').
 // Teach Node to resolve those to .js so we run the real modules, unmodified.
@@ -33,18 +47,55 @@ registerHooks({
   },
 });
 
-// Namespace import: estimateQ50SAP is deleted in B25 commit 3, so treat it as optional.
-const en12831 = await import('../client/src/utils/en12831Calculations.js');
-const { resolveQ50, calculateRoomVentilationEN12831 } = en12831;
-const { calculateTransmissionLoss, calculateRoomTotal, calculateBuildingTotal } =
-  await import('../client/src/utils/calculations.js');
-const { getMCSDataFromPostcode } = await import('../client/src/utils/mcsData.js');
-
-const outName = process.argv[2] ?? 'b25_before.json';
+const args = process.argv.slice(2);
+const CURRENT_CODE = args.includes('--current-code');
+const unknownFlags = args.filter(a => a.startsWith('--') && a !== '--current-code');
+const outName = args.find(a => !a.startsWith('--')) ?? 'b25_before.json';
+if (unknownFlags.length) {
+  console.error(`Unknown option(s): ${unknownFlags.join(' ')}`);
+  process.exit(1);
+}
 if (!/^[\w.-]+\.json$/.test(outName)) {
   console.error(`Output name must be a plain .json filename, got "${outName}"`);
   process.exit(1);
 }
+if (CURRENT_CODE && outName === 'b25_before.json') {
+  console.error(`b25_before.json must be computed by the pre-B25 code (${LEGACY_REV}); --current-code is not allowed.`);
+  process.exit(1);
+}
+
+const fail = (why, lines = []) => {
+  console.error(`\nBASELINE FAILED: ${why}`);
+  for (const l of lines.slice(0, 20)) console.error(`  ${l}`);
+  if (lines.length > 20) console.error(`  … and ${lines.length - 20} more`);
+  console.error(`Nothing written to scripts/out/${outName}.`);
+  process.exit(1);
+};
+
+// The code that computes every figure. The whole module set comes from one
+// place, so the pre-B25 calculations.js uses the pre-B25 resolveQ50.
+let code, codeDir;
+if (CURRENT_CODE) {
+  const head = spawnSync('git', ['rev-parse', '--short', 'HEAD'],
+    { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' }).stdout?.trim() || null;
+  code = { source: 'current', rev: head };
+  codeDir = new URL('../client/src/utils/', import.meta.url);
+} else {
+  code = { source: 'legacy', rev: LEGACY_REV };
+  codeDir = pathToFileURL(ensureLegacyClient());
+}
+console.log(`Client code: ${code.source} ${code.rev ?? ''}`);
+
+// Namespace import: estimateQ50SAP exists only in the pre-B25 code.
+const en12831 = await import(new URL('en12831Calculations.js', codeDir).href);
+const { resolveQ50, calculateRoomVentilationEN12831 } = en12831;
+const { calculateTransmissionLoss, calculateRoomTotal, calculateBuildingTotal } =
+  await import(new URL('calculations.js', codeDir).href);
+const { getMCSDataFromPostcode } = await import(new URL('mcsData.js', codeDir).href);
+
+// Methods the pre-B25 resolveQ50 handled: 'measured', and 'estimated' (its
+// fallthrough for anything else, so other values would pass unnoticed).
+const LEGACY_METHODS = ['estimated', 'measured'];
 
 // ---------------------------------------------------------------------------
 // Field mapping — copied from App.jsx loadProject(). Each entry is
@@ -138,6 +189,15 @@ const addresses = await q(`SELECT pa.project_id, a.postcode, pa.is_primary
 await client.query('ROLLBACK');
 await client.end();
 
+if (!CURRENT_CODE) {
+  const unknown = dps.filter(dp => !LEGACY_METHODS.includes(dp.air_permeability_method));
+  if (unknown.length) {
+    fail(`${unknown.length} design_params row(s) have a method the pre-B25 code (${LEGACY_REV}) did not know ` +
+         `(it would silently SAP-estimate them). Is the DB already migrated?`,
+         unknown.map(dp => `project ${dp.project_id}: "${dp.air_permeability_method}"`));
+  }
+}
+
 const groupBy = (rows, key) => rows.reduce((m, r) => ((m[r[key]] ??= []).push(r), m), {});
 const dpByProject   = groupBy(dps, 'project_id');
 const roomsByProj   = groupBy(rooms, 'project_id');
@@ -156,7 +216,20 @@ const check = (where, obj) => {
   return obj;
 };
 
+// resolveQ50 reports problems (e.g. "unknown airPermeabilityMethod") with
+// console.error and carries on with a fallback. Capture them; any one fails the run.
+const resolveErrors = new Set();
+let currentProjectId = null;
+const consoleError = console.error;
+console.error = (...a) => {
+  const msg = a.map(String).join(' ');
+  if (msg.startsWith('resolveQ50:')) resolveErrors.add(`project ${currentProjectId}: ${msg}`);
+  consoleError(...a);
+};
+const badQ50 = [];
+
 const results = projects.map(({ id }) => {
+  currentProjectId = id;
   const dpRows = dpByProject[id] ?? [];
   if (dpRows.length > 1) throw new Error(`project ${id} has ${dpRows.length} design_params rows`);
   const dp = dpRows[0] ?? {};
@@ -189,6 +262,7 @@ const results = projects.map(({ id }) => {
   const rq = resolveQ50(project);
   const resolvedQ50  = typeof rq === 'number' ? rq : rq.q50;
   const q50Defaulted = typeof rq === 'number' ? null : rq.defaulted;
+  if (typeof resolvedQ50 !== 'number' || !Number.isFinite(resolvedQ50)) badQ50.push(`project ${id}: resolveQ50 → ${resolvedQ50}`);
   // Informational only (not compared by the gate): the live SAP breakdown for 'estimated' rows.
   const sapEstimate = (project.airPermeabilityMethod !== 'estimated' || !en12831.estimateQ50SAP) ? null : en12831.estimateQ50SAP({
     structural:       project.sapStructural       ?? 'masonry',
@@ -251,9 +325,17 @@ const results = projects.map(({ id }) => {
   };
 });
 
+console.error = consoleError;
+if (resolveErrors.size) fail(`resolveQ50 logged ${resolveErrors.size} error(s) on the ${code.source} code.`, [...resolveErrors]);
+if (badQ50.length) fail(`resolveQ50 returned a non-finite q50 for ${badQ50.length} project(s).`, badQ50);
+
 // ---------------------------------------------------------------------------
 // Write + report
 // ---------------------------------------------------------------------------
+
+const count = (pred) => results.filter(pred).length;
+const methods = results.reduce((m, r) => ((m[r.airPermeabilityMethod] = (m[r.airPermeabilityMethod] ?? 0) + 1), m), {});
+const allRooms = results.flatMap(r => r.rooms);
 
 const outDir = new URL('./out/', import.meta.url);
 mkdirSync(outDir, { recursive: true });
@@ -261,13 +343,17 @@ const outFile = new URL(outName, outDir);
 writeFileSync(outFile, JSON.stringify({
   generatedAt: new Date().toISOString(),
   database: SCRATCH_DB,
-  projectCount: results.length,
+  code,
+  // Recorded so the gate can compare the after-state with them.
+  counts: {
+    projects:  results.length,
+    byMethod:  methods,
+    withRooms: count(r => r.roomCount > 0),
+    rooms:     allRooms.length,
+    elements:  elements.length,
+  },
   projects: results,
 }, null, 2));
-
-const count = (pred) => results.filter(pred).length;
-const methods = results.reduce((m, r) => ((m[r.airPermeabilityMethod] = (m[r.airPermeabilityMethod] ?? 0) + 1), m), {});
-const allRooms = results.flatMap(r => r.rooms);
 
 console.log(`Wrote ${outFile.pathname}`);
 console.log(`Projects: ${results.length}  (${Object.entries(methods).map(([k, v]) => `${k}: ${v}`).join(', ')})`);

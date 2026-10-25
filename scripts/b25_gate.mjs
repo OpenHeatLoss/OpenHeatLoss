@@ -7,14 +7,17 @@
 // Sequence (scratch DB ohl_b25_check only):
 //   1. If migration 023 is not yet applied: take the "before" baseline
 //      (scripts/b25_baseline.mjs → b25_before.json, computed by the PRE-B25
-//      client code) and a design_params snapshot (b25_before_db.json). If it
-//      is already applied, both files must exist from the earlier run, and a
-//      "pre-run" snapshot of design_params is taken now.
+//      client code LEGACY_REV) and a design_params snapshot
+//      (b25_before_db.json). If it is already applied, both files must exist
+//      from the earlier run, and a "pre-run" snapshot of design_params is
+//      taken now. b25_before.json must record code LEGACY_REV.
 //   2. node server/migrate.js (child process, DATABASE_URL from environment).
-//   3. "After" baseline → b25_after.json, computed by the CURRENT client code.
-//   4. Compare: resolved q50 for every project; every room-level figure and
-//      every building total for every project with rooms.
-//   5. Database assertions: no 'estimated' left; 164 legacy_sap; 10 measured;
+//   3. "After" baseline → b25_after.json, computed by the CURRENT client code
+//      (--current-code).
+//   4. Compare: resolved q50 for every project; room count, every room-level
+//      figure and every building total for every project.
+//   5. Database assertions: no 'estimated' left; legacy_sap and measured
+//      counts as recorded in the before files (no hard-coded counts);
 //      each migrated q50 === before resolved q50; sap_* columns, measured
 //      rows and updated_at unchanged; new columns present with NULL / 'mean';
 //      air_permeability_method DEFAULT 'default_table' (025). When 023 was
@@ -55,18 +58,17 @@
 // Exit code 0 only if every check passes.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire, registerHooks } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertScratchUrl, connectScratch } from './lib/scratchDbGuard.mjs';
+import { LEGACY_REV, ensureLegacyClient } from './lib/legacyClient.mjs';
 
 assertScratchUrl();
 
-const EXPECT = { projects: 174, legacySap: 164, measured: 10, withRooms: 99 };
-
-// Pre-B25 production code (main before the B25 branch). Its resolveQ50 is the
-// reference for any 'estimated' row the gate did not see before 023.
-const LEGACY_REV = '8c453e1';
+// LEGACY_REV is the pre-B25 production code (main before the B25 branch). It
+// computes the before baseline, and its resolveQ50 is the reference for any
+// 'estimated' row the gate did not see before 023.
 
 const ackArg = process.argv.find(a => a.startsWith('--project-set-change='));
 const ACK_SET_CHANGE = ackArg ? ackArg.split('=')[1] : '';
@@ -148,6 +150,13 @@ if (!alreadyApplied) {
 }
 const before   = readJson('b25_before.json');
 const beforeDb = readJson('b25_before_db.json');
+// Every comparison below is meaningless if the before figures came from the
+// current code (which falls back to the stored q50 for 'estimated' rows).
+if (!check(`before baseline computed by the pre-B25 code ${LEGACY_REV} (recorded: ${before.code?.source ?? 'none'} ${before.code?.rev ?? ''})`,
+  before.code?.source === 'legacy' && before.code?.rev === LEGACY_REV && !!before.counts)) {
+  console.error('\nb25_before.json was not computed by the pre-B25 code. Restore the scratch DB and re-run — gate aborted.');
+  process.exit(1);
+}
 
 // Pre-run snapshot (this run, before migrate) — JSON round-tripped so it
 // compares like the stored files do.
@@ -173,8 +182,10 @@ if (!applied025Before) {
 // 3. After
 // ---------------------------------------------------------------------------
 console.log('\n== 3. After ==');
-run('baseline (after)', ['scripts/b25_baseline.mjs', 'b25_after.json']);
+run('baseline (after)', ['scripts/b25_baseline.mjs', 'b25_after.json', '--current-code']);
 const after = readJson('b25_after.json');
+check(`after baseline computed by the current code (recorded: ${after.code?.source ?? 'none'} ${after.code?.rev ?? ''})`,
+  after.code?.source === 'current');
 
 // ---------------------------------------------------------------------------
 // 4. Compare before / after — exact
@@ -183,8 +194,10 @@ console.log('\n== 4. Compare before / after (exact) ==');
 const byId = (list) => new Map(list.map(p => [p.projectId, p]));
 const B = byId(before.projects), A = byId(after.projects);
 
-check(`before baseline has ${before.projects.length} projects (expect ${EXPECT.projects})`,
-  before.projects.length === EXPECT.projects);
+const fmtCounts = (c) => `${c.projects} projects (${Object.entries(c.byMethod).map(([k, v]) => `${k} ${v}`).join(', ')}), ` +
+  `${c.withRooms} with rooms, ${c.rooms} rooms, ${c.elements} elements`;
+console.log(`        before: ${fmtCounts(before.counts)}`);
+console.log(`        after:  ${fmtCounts(after.counts)}`);
 
 const added   = [...A.keys()].filter(id => !B.has(id)).sort((x, y) => x - y);
 const removed = [...B.keys()].filter(id => !A.has(id)).sort((x, y) => x - y);
@@ -213,8 +226,12 @@ check(`resolved q50 identical for all ${commonIds.length - [...USER_UPDATED].fil
 
 const withRoomsAll = before.projects.filter(p => p.roomCount > 0);
 const withRooms    = withRoomsAll.filter(p => A.has(p.projectId));
-check(`projects with rooms: ${withRoomsAll.length} before (expect ${EXPECT.withRooms}), ${withRooms.length} still present`,
-  withRoomsAll.length === EXPECT.withRooms && withRooms.length === withRoomsAll.length - removed.filter(id => B.get(id).roomCount > 0).length);
+check(`after project count ${after.counts.projects} = before ${before.counts.projects} + ${added.length} added − ${removed.length} removed`,
+  after.counts.projects === before.counts.projects + added.length - removed.length);
+const roomCountDiffs = commonIds.filter(id => !isUserUpdated(id) && A.get(id).roomCount !== B.get(id).roomCount)
+  .map(id => `${id}: ${B.get(id).roomCount} → ${A.get(id).roomCount}`);
+check(`room count unchanged for every common project (${withRoomsAll.length} with rooms before, ${withRooms.length} still present)${userNote}`,
+  roomCountDiffs.length === 0, roomCountDiffs.slice(0, 10).join('; '));
 
 const ROOM_FIELDS = Object.keys(withRooms[0]?.rooms[0] ?? {}).filter(k => k !== 'roomId');
 const TOTAL_FIELDS = Object.keys(withRooms[0]?.totals ?? {});
@@ -258,8 +275,11 @@ const afterDb = await snapshotDesignParams(db);
 
 const counts = Object.values(afterDb).reduce((m, r) => ((m[r.air_permeability_method] = (m[r.air_permeability_method] ?? 0) + 1), m), {});
 const beforeCounts = Object.values(beforeDb).reduce((m, r) => ((m[r.air_permeability_method] = (m[r.air_permeability_method] ?? 0) + 1), m), {});
-check(`before files: ${beforeCounts.estimated} estimated, ${beforeCounts.measured} measured (expect ${EXPECT.legacySap}, ${EXPECT.measured})`,
-  beforeCounts.estimated === EXPECT.legacySap && beforeCounts.measured === EXPECT.measured && Object.keys(beforeCounts).length === 2);
+const sortedJson = (o) => toJson(Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y))));
+console.log(`        before files: baseline ${sortedJson(before.counts.byMethod)}, design_params snapshot ${sortedJson(beforeCounts)} (${Object.keys(beforeDb).length} rows)`);
+console.log(`        after:        ${sortedJson(counts)} (${Object.keys(afterDb).length} rows)`);
+check('before files agree: baseline method counts = design_params snapshot method counts',
+  sortedJson(before.counts.byMethod) === sortedJson(beforeCounts) && before.counts.projects === Object.keys(beforeDb).length);
 check(`no 'estimated' rows remain`, !counts.estimated, JSON.stringify(counts));
 const countIn = (ids, db, method) => ids.filter(id => db[id]?.air_permeability_method === method).length;
 // A user-updated row counts by its current method.
@@ -315,13 +335,7 @@ check(`no other pre-existing column changed${exemptNote}`, otherColDiffs.length 
 // Rows the gate cannot compare with the before files: projects added since,
 // and rows this run's migration froze (they were 'estimated' in the pre-run
 // snapshot). Each must hold exactly what the pre-B25 production code computes.
-const legacyDir = outPath(`legacy_client_${LEGACY_REV}/`);
-mkdirSync(legacyDir, { recursive: true });
-for (const f of ['en12831Calculations.js', 'en12831VentilationData.js']) {
-  const r = spawnSync('git', ['show', `${LEGACY_REV}:client/src/utils/${f}`], { cwd: root, encoding: 'utf8' });
-  if (r.status !== 0) { console.error(`git show ${LEGACY_REV}:${f} failed: ${r.stderr}`); process.exit(1); }
-  writeFileSync(legacyDir + f, r.stdout);
-}
+const legacyDir = ensureLegacyClient();
 const legacy = await import(pathToFileURL(legacyDir + 'en12831Calculations.js').href);
 // Pre-B25 loadProject mapping (b25_baseline.mjs at d85aaa5), method forced to 'estimated'.
 const legacyQ50ForRow = (row) => legacy.resolveQ50({
