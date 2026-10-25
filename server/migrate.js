@@ -2403,7 +2403,7 @@ const MIGRATIONS = [
   //
   // 1. Five new design_params columns for the corrected Table 2-11 lookup
   //    (used from commit 3/4; written by designParams.update from now on).
-  // 2. Data step: every 'estimated' row gets q50 = frozenEstimateQ50(row) at
+  // 2. Data step: every 'estimated' row gets q50 = frozenQ50ForRow(row) at
   //    full float precision and becomes 'legacy_sap'. 'measured' rows are
   //    never touched; rows already 'legacy_sap' are skipped, so re-running
   //    changes nothing. updated_at is deliberately not touched.
