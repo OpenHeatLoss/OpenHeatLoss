@@ -20,12 +20,15 @@
 //      air_permeability_method DEFAULT 'default_table' (025). When 023 was
 //      already applied: this run's migration changed no row at all.
 //   6. node server/migrate.js a second time: design_params must be identical.
-//   7. Old-client save: designParams.update with method 'estimated', q50 12
-//      and no q50_* fields must raise no error and change nothing.
+//   7. Old-client save on a TEMPORARY legacy_sap project (created and deleted
+//      by the gate): designParams.update with method 'estimated', q50 12 and
+//      no q50_* fields must raise no error and change nothing.
 //   8. Round trip on a TEMPORARY project (created and deleted by the gate):
 //      createForProject defaults, then Table 2-11 selections and method
 //      switches saved via buildDesignParamsPayload → designParams.update and
 //      reloaded via the loadProject mapping; stale categories never used.
+//   Afterwards: every design_params row that existed before step 7 must be
+//   identical (every column) — the gate writes to no pre-existing row.
 //
 // Project set changes. If projects were created or deleted in the scratch DB
 // after the before files were taken (e.g. by using the app against it), the
@@ -60,13 +63,6 @@ import { assertScratchUrl, connectScratch } from './lib/scratchDbGuard.mjs';
 assertScratchUrl();
 
 const EXPECT = { projects: 174, legacySap: 164, measured: 10, withRooms: 99 };
-
-// Step 7 saves through designParams.update, which bumps updated_at (and may
-// normalise unrelated NULLs) on its test row. On a re-run that row has already
-// been written by an earlier gate run, so it is exempt from the two
-// "untouched since before 023" checks below — and only from those. Its method
-// and q50 are still checked, and the pre-run → post-run check covers it fully.
-const GATE_TEST_ROW = 238;
 
 // Pre-B25 production code (main before the B25 branch). Its resolveQ50 is the
 // reference for any 'estimated' row the gate did not see before 023.
@@ -286,7 +282,6 @@ for (const [id, b] of Object.entries(beforeDb)) {
   const a = afterDb[id];
   if (!a) continue;   // removed project — see the project set check
   for (const c of SAP_COLS) if (!Object.is(a[c], b[c])) sapDiffs.push(`${id}.${c}: ${b[c]} → ${a[c]}`);
-  if (alreadyApplied && Number(id) === GATE_TEST_ROW) continue;   // see GATE_TEST_ROW
   const rowChanged = toJson(a.updated_at) !== toJson(b.updated_at)
     || (b.air_permeability_method === 'estimated'
         ? (a.air_permeability_method !== 'legacy_sap' || !Object.is(a.q50, B.get(Number(id))?.resolvedQ50))
@@ -313,7 +308,7 @@ check(`each migrated q50 === baseline resolved q50, method legacy_sap (${countIn
   migratedQ50Diffs.length === 0, migratedQ50Diffs.slice(0, 10).join('; '));
 check('measured rows untouched (method and q50)', measuredDiffs.length === 0, measuredDiffs.join(', '));
 check('sap_* / storeys / shielding columns unchanged', sapDiffs.length === 0, sapDiffs.slice(0, 10).join('; '));
-const exemptNote = (alreadyApplied ? ` (since before 023; gate test row ${GATE_TEST_ROW} exempt)` : '') + userNote;
+const exemptNote = (alreadyApplied ? ' (since before 023)' : '') + userNote;
 check(`updated_at unchanged on every row${exemptNote}`, updatedAtDiffs.length === 0, updatedAtDiffs.slice(0, 10).join(', '));
 check(`no other pre-existing column changed${exemptNote}`, otherColDiffs.length === 0, otherColDiffs.slice(0, 10).join(', '));
 
@@ -495,44 +490,65 @@ const getRow = async (id) => {
 };
 const withoutUpdatedAt = (r) => { const { updated_at, ...rest } = r; return toJson(rest); };
 
-// Reference project 238 if it is legacy_sap, else the first legacy_sap row with rooms.
-const target = [238, ...withRooms.map(p => p.projectId)].find(id => afterDb[id]?.air_permeability_method === 'legacy_sap');
-console.log(`  test row: project ${target}`);
+const { projects } = require('../server/database.js');
 
-// a) A save from the CURRENT client (same values) — establishes the row as
-//    any save leaves it (a save may normalise unrelated NULLs to defaults).
-await designParams.update(target, payloadFromRow(await getRow(target)));
-const r1 = await getRow(target);
-check('current-client save keeps method legacy_sap and frozen q50',
-  r1.air_permeability_method === 'legacy_sap' && Object.is(r1.q50, B.get(target).resolvedQ50));
+// The test row is a TEMPORARY project, frozen as legacy_sap with a known q50
+// (a float of the kind the freeze stores), and deleted afterwards. No room is
+// needed: designParams.update writes design_params only.
+const FROZEN_Q50 = 9.999999999999998;
+const { id: target } = await projects.create({ name: 'B25 GATE TEMP (old-client save) — safe to delete' });
+console.log(`  temporary legacy_sap project ${target}, q50 ${FROZEN_Q50}`);
+try {
+  await designParams.createForProject(target);
+  {
+    const c = await connectScratch();
+    try {
+      await c.query(`UPDATE design_params SET air_permeability_method = 'legacy_sap', q50 = $2 WHERE project_id = $1`,
+        [target, FROZEN_Q50]);
+    } finally { await c.end(); }
+  }
 
-// b) An OLD client: method 'estimated', stale q50 12, no q50_* fields at all.
-const oldPayload = { ...payloadFromRow(r1), airPermeabilityMethod: 'estimated', q50: 12 };
-for (const f of ['q50BuiltForm', 'q50AgeBand', 'q50WallConstruction', 'q50SelectionBasis', 'q50Statistic']) delete oldPayload[f];
-let oldErr = null;
-try { await designParams.update(target, oldPayload); } catch (e) { oldErr = e; }
-check('old-client save raises no error', oldErr === null, oldErr?.message ?? '');
-const r2 = await getRow(target);
-check('old-client save: row unchanged (every column except updated_at)', withoutUpdatedAt(r2) === withoutUpdatedAt(r1),
-  `method ${r2.air_permeability_method}, q50 ${r2.q50}, q50_statistic ${r2.q50_statistic}`);
+  // a) A save from the CURRENT client (same values) — establishes the row as
+  //    any save leaves it (a save may normalise unrelated NULLs to defaults).
+  await designParams.update(target, payloadFromRow(await getRow(target)));
+  const r1 = await getRow(target);
+  check('current-client save keeps method legacy_sap and frozen q50',
+    r1.air_permeability_method === 'legacy_sap' && Object.is(r1.q50, FROZEN_Q50));
 
-// c) Method and q50 missing entirely.
-const missingPayload = payloadFromRow(r1);
-delete missingPayload.airPermeabilityMethod; delete missingPayload.q50;
-let missErr = null;
-try { await designParams.update(target, missingPayload); } catch (e) { missErr = e; }
-const r3 = await getRow(target);
-check('save with method and q50 undefined: no error, row unchanged',
-  missErr === null && withoutUpdatedAt(r3) === withoutUpdatedAt(r1), missErr?.message ?? '');
+  // b) An OLD client: method 'estimated', stale q50 12, no q50_* fields at all.
+  const oldPayload = { ...payloadFromRow(r1), airPermeabilityMethod: 'estimated', q50: 12 };
+  for (const f of ['q50BuiltForm', 'q50AgeBand', 'q50WallConstruction', 'q50SelectionBasis', 'q50Statistic']) delete oldPayload[f];
+  let oldErr = null;
+  try { await designParams.update(target, oldPayload); } catch (e) { oldErr = e; }
+  check('old-client save raises no error', oldErr === null, oldErr?.message ?? '');
+  const r2 = await getRow(target);
+  check('old-client save: row unchanged (every column except updated_at)', withoutUpdatedAt(r2) === withoutUpdatedAt(r1),
+    `method ${r2.air_permeability_method}, q50 ${r2.q50}, q50_statistic ${r2.q50_statistic}`);
 
-// d) createForProject on an existing row: ON CONFLICT DO NOTHING, so this
-//    writes nothing, but it executes the new default_table INSERT against the
-//    migrated schema (column names, types).
-let createErr = null;
-try { await designParams.createForProject(target); } catch (e) { createErr = e; }
-const r4 = await getRow(target);
-check('createForProject SQL runs on the migrated schema; existing row untouched (every column)',
-  createErr === null && toJson(r4) === toJson(r3), createErr?.message ?? '');
+  // c) Method and q50 missing entirely.
+  const missingPayload = payloadFromRow(r1);
+  delete missingPayload.airPermeabilityMethod; delete missingPayload.q50;
+  let missErr = null;
+  try { await designParams.update(target, missingPayload); } catch (e) { missErr = e; }
+  const r3 = await getRow(target);
+  check('save with method and q50 undefined: no error, row unchanged',
+    missErr === null && withoutUpdatedAt(r3) === withoutUpdatedAt(r1), missErr?.message ?? '');
+
+  // d) createForProject on an existing row: ON CONFLICT DO NOTHING, so this
+  //    writes nothing, but it executes the new default_table INSERT against the
+  //    migrated schema (column names, types).
+  let createErr = null;
+  try { await designParams.createForProject(target); } catch (e) { createErr = e; }
+  const r4 = await getRow(target);
+  check('createForProject SQL runs on the migrated schema; existing row untouched (every column)',
+    createErr === null && toJson(r4) === toJson(r3), createErr?.message ?? '');
+} finally {
+  const c = await connectScratch();
+  await c.query('DELETE FROM projects WHERE id = $1', [target]);   // design_params cascades
+  const left = (await c.query('SELECT (SELECT COUNT(*)::int FROM projects WHERE id = $1) + (SELECT COUNT(*)::int FROM design_params WHERE project_id = $1) AS n', [target])).rows[0].n;
+  await c.end();
+  check(`temporary project ${target} and its design_params deleted`, left === 0);
+}
 
 // ---------------------------------------------------------------------------
 // 8. Round trip (B25 commit 4) — temporary project, deleted afterwards
@@ -547,7 +563,6 @@ const { resolveQ50 } = await import('../client/src/utils/en12831Calculations.js'
 const { buildQ50SelectionUpdate } = await import('../client/src/utils/q50Selection.js');
 const { Q50_TABLE_2_11, Q50_CATEGORY_FIELD } = await import('../client/src/utils/en12831VentilationData.js');
 const BUNGALOW_Q1 = Q50_TABLE_2_11.built_form.bungalow.q1;
-const { projects } = require('../server/database.js');
 
 // loadProject's mapping for the air permeability fields (App.jsx).
 const loadMapped = (row) => ({
@@ -620,6 +635,19 @@ try {
   const left = (await c.query('SELECT (SELECT COUNT(*)::int FROM projects WHERE id = $1) + (SELECT COUNT(*)::int FROM design_params WHERE project_id = $1) AS n', [tempId])).rows[0].n;
   await c.end();
   check(`temporary project ${tempId} and its design_params deleted`, left === 0);
+}
+
+// ---------------------------------------------------------------------------
+// Steps 7 and 8 wrote only to their temporary projects: every design_params
+// row present after the second migration run is identical now, every column.
+// ---------------------------------------------------------------------------
+{
+  const c = await connectScratch();
+  const endDb = await snapshotDesignParams(c);
+  await c.end();
+  const touched = Object.keys(afterSecond).filter(id => toJson(endDb[id]) !== toJson(afterSecond[id]));
+  check(`steps 7–8 wrote to no pre-existing design_params row (every column, ${Object.keys(afterSecond).length} rows)`,
+    touched.length === 0, touched.slice(0, 10).join(', '));
 }
 
 // ---------------------------------------------------------------------------
