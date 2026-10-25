@@ -1,0 +1,12 @@
+{
+  "name": "ohl-e2e",
+  "private": true,
+  "description": "Browser tests against a LOCAL app (http://localhost:3100) on the scratch DB only. Not a production dependency.",
+  "type": "module",
+  "scripts": {
+    "air-permeability": "node air-permeability.e2e.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

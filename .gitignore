@@ -180,3 +180,6 @@ client/src/App(a).jsx
 
 # Local script output (B25 baseline etc.)
 scripts/out/
+
+# Browser test output (screenshots)
+scripts/e2e/out/
