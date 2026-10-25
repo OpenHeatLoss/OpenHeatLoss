@@ -1,6 +1,6 @@
 // scripts/e2e/air-permeability.e2e.mjs
 //
-// End-to-end browser test of the B25 air permeability checklist (commit 4b),
+// End-to-end browser test of the B25 air permeability checklist (commits 4b–4d),
 // against the LOCAL app at http://localhost:3100 backed by the scratch DB.
 //
 //   cd scripts/e2e && npm install && node air-permeability.e2e.mjs
@@ -104,6 +104,7 @@ page.on('request', req => {
   }
 });
 const savesSince = (n) => saves.length - n;
+const lastSave = () => saves[saves.length - 1] ?? {};
 
 let projectId = null;
 let sessionToken = null;
@@ -116,6 +117,7 @@ const useRadio   = (title) => card(title).getByRole('radio', { name: 'Use this c
 const statRadio  = (label) => section.getByRole('radio', { name: label });
 const effective  = section.locator('span.text-xl');
 const savedBadge = section.getByText('✓ Saved');
+const draftNote  = section.getByText(/stays in use and nothing is saved/);
 const savingText = section.getByText('Saving…');
 
 const gotoProjectInfo = async () => {
@@ -264,27 +266,86 @@ try {
 
   // -------------------------------------------------------------------------
   const numberInput = section.locator('input[type="number"]');
-  await step(page, 'Switch to Measured: saves; method selector still under the heading', async () => {
+  const expectStillOnTable = async (n) => {
+    expect(savesSince(n) === 0, `${savesSince(n)} save request(s)`);
+    expect((await effective.textContent()).trim() === AGE_Q1.toFixed(1), `effective q50 ${await effective.textContent()}`);
+    await expectPickSaved();
+  };
+
+  await step(page, 'Choose Measured: empty draft, nothing saved', async () => {
     const n = saves.length;
     await methodBtn('Measured').click();
-    await savedBadge.waitFor({ timeout: 5000 });
-    expect(savesSince(n) === 1, `${savesSince(n)} saves, expected 1`);
-    const row = await dp(projectId);
-    expect(row.air_permeability_method === 'measured' && Object.is(row.q50, AGE_Q1), `database: ${row.air_permeability_method}, q50 ${row.q50}`);
+    await draftNote.waitFor({ timeout: 2000 });
+    expect(await numberInput.inputValue() === '', `draft input is not empty (${await numberInput.inputValue()})`);
+    expect(!(await section.getByText(/Enter a value between/).isVisible()), 'error shown on an empty draft');
+    await page.waitForTimeout(500);
+    await expectStillOnTable(n);
     await expectMethodOrder();
   });
 
-  await step(page, 'Measured 5.2 saves on blur', async () => {
+  await step(page, 'Empty draft, then a full design-params save: nothing invalid stored', async () => {
+    // Anonymous users have no Save Project button ("Register free to Save"
+    // opens the sign-up form). Stand-in: leave the empty draft and trigger
+    // App's saveDesignParams from the MCS020 tab — it sends
+    // buildDesignParamsPayload(currentProject), the same payload as Save
+    // Project's design-params save.
+    expect(await page.getByRole('button', { name: /Register free to Save/ }).count() === 1, 'no "Register free to Save" button');
+    expect(await page.getByRole('button', { name: /^Save Project$/ }).count() === 0, 'a Save Project button is shown');
     const n = saves.length;
+    await page.getByRole('button', { name: /^MCS020$/ }).click();
+    const sound = page.locator('label', { hasText: 'A-weighted Sound Power Level' }).locator('xpath=..').locator('input');
+    const resp = page.waitForResponse(r => r.request().method() === 'PUT' && /\/design-params$/.test(r.url()));
+    await sound.focus();
+    await sound.blur();
+    expect((await resp).ok(), 'design-params save failed');
+    expect(savesSince(n) === 1, `${savesSince(n)} saves, expected 1`);
+    const body = lastSave();
+    expect(body.airPermeabilityMethod === 'default_table' && Object.is(body.q50, AGE_Q1),
+      `payload sent ${body.airPermeabilityMethod}, q50 ${body.q50}`);
+    await expectPickSaved();
+    await gotoProjectInfo();
+    expect(!(await draftNote.isVisible()), 'draft still open after leaving the tab');
+    await expectPickShown();
+    return 'no Save Project for anonymous users — MCS020 save (same payload) instead';
+  });
+
+  await step(page, 'Draft back to Table 2-11 is free (invalid, valid + Table 2-11, valid + Keep)', async () => {
+    const n = saves.length;
+    await methodBtn('Measured').click();
+    await numberInput.fill('0.4');
+    await section.getByText(/current method's q₅₀ is still in use/).waitFor({ timeout: 2000 });
+    await methodBtn('Table 2-11 default').click();
+    await expectPickShown();
+    // A valid figure typed but not yet blurred: leaving the draft must not save it.
+    await methodBtn('Measured').click();
+    await numberInput.fill('3');
+    await methodBtn('Table 2-11 default').click();
+    await expectPickShown();
+    await methodBtn('Measured').click();
+    await numberInput.fill('3');
+    await section.getByRole('button', { name: 'Keep the current method' }).click();
+    await expectPickShown();
+    await page.waitForTimeout(500);
+    await expectStillOnTable(n);
+  });
+
+  await step(page, 'Measured draft 5.2 saves method + 5.2 together on blur', async () => {
+    const n = saves.length;
+    await methodBtn('Measured').click();
     await numberInput.fill('5.2');
     await page.waitForTimeout(300);
     expect(savesSince(n) === 0, `saved while typing (${savesSince(n)})`);
+    expect((await effective.textContent()).trim() === AGE_Q1.toFixed(1), 'draft keystrokes changed the effective q50');
     await numberInput.blur();
-    await savingText.or(savedBadge).first().waitFor({ timeout: 5000 });
     await savedBadge.waitFor({ timeout: 5000 });
     expect(savesSince(n) === 1, `${savesSince(n)} saves, expected 1`);
+    const body = lastSave();
+    expect(body.airPermeabilityMethod === 'measured' && Object.is(body.q50, 5.2), `payload sent ${body.airPermeabilityMethod}, q50 ${body.q50}`);
     const row = await dp(projectId);
     expect(row.air_permeability_method === 'measured' && Object.is(row.q50, 5.2), `database: ${row.air_permeability_method}, q50 ${row.q50}`);
+    expect(!(await draftNote.isVisible()), 'draft note still shown');
+    expect((await effective.textContent()).trim() === '5.2', `effective q50 ${await effective.textContent()}`);
+    await expectMethodOrder();
   });
 
   await step(page, 'Measured: unchanged blur does not save', async () => {
@@ -313,6 +374,19 @@ try {
     await numberInput.blur();
     await page.waitForTimeout(500);
     expect(savesSince(n) === 0, `${savesSince(n)} save request(s) after retyping 5.2`);
+  });
+
+  await step(page, 'Design target draft from Measured: back to Measured is free', async () => {
+    const n = saves.length;
+    await methodBtn('Design target').click();
+    await draftNote.waitFor({ timeout: 2000 });
+    expect(await numberInput.inputValue() === '', 'design target draft is not empty');
+    await methodBtn('Measured').click();
+    expect(await numberInput.inputValue() === '5.2', `measured input shows ${await numberInput.inputValue()}`);
+    await page.waitForTimeout(500);
+    expect(savesSince(n) === 0, `${savesSince(n)} save request(s)`);
+    const row = await dp(projectId);
+    expect(row.air_permeability_method === 'measured' && Object.is(row.q50, 5.2), `database: ${row.air_permeability_method}, q50 ${row.q50}`);
     // Leave 0.4 in the field for the next step (switching must not save it).
     await numberInput.fill('0.4');
   });

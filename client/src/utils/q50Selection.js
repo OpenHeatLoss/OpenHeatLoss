@@ -216,33 +216,67 @@ export const q50CategoryOptionLabel = (basis, category, statistic) => {
 // Auto-save rules (stopgap until a single design_params save path exists —
 // see BACKLOG). Outside legacy_sap, each discrete choice saves at once:
 // "Use this candidate", the statistic, the category on the card in use
-// (q50PickerApply returns an update only for these), and a method switch.
-// Typed numbers save on blur, only when valid and changed. Categories on
-// cards not in use are comparison only and never save.
+// (q50PickerApply returns an update only for these), and a switch to
+// Table 2-11. Typed numbers save on blur, only when valid and changed; a
+// draft (Measured / Design target just chosen) saves its method and value
+// together on the first valid blur. Categories on cards not in use are
+// comparison only and never save.
 // ---------------------------------------------------------------------------
-
-const round1 = (x) => parseFloat(x.toFixed(1));
 
 /** The q50 the calculation uses (measured shows its stored value, 12 if none). */
 export const effectiveQ50 = (project) =>
   project.airPermeabilityMethod === 'measured' ? (project.q50 ?? 12.0) : resolveQ50(project).q50;
 
 /**
- * Fields for switching a non-legacy project to another method, or null when
- * there is nothing to switch. default_table resolves its own value (restoring
- * a stored selection); measured / design target are seeded with the current
- * effective value rounded to 1 dp.
+ * Fields for switching a project to default_table, or null when it is
+ * already there. default_table resolves its own value, restoring a stored
+ * selection. (Measured and Design target are never switched to directly:
+ * they open a draft — see methodClick.)
  */
 export const methodSwitchUpdate = (project, target) => {
-  if (!project || target === project.airPermeabilityMethod) return null;
+  if (!project || target !== 'default_table' || project.airPermeabilityMethod === 'default_table') return null;
+  const next = { ...project, airPermeabilityMethod: 'default_table' };
+  return { airPermeabilityMethod: 'default_table', q50: resolveQ50(next).q50 };
+};
+
+// Methods whose q50 is typed in. Choosing one opens a draft: an empty input,
+// with the stored method and q50 (and the calculation) unchanged until a
+// valid figure is entered.
+export const TYPED_Q50_METHODS = ['measured', 'design_target'];
+
+/**
+ * What a click on a method button does.
+ *
+ * @param {Object} project      the project as stored (state)
+ * @param {string|null} draft   the method of the open draft, if any
+ * @param {string} target       the method clicked
+ * @returns {{ kind: 'none' }
+ *         | { kind: 'cancelDraft' }              back to the stored method: nothing to save
+ *         | { kind: 'openDraft', method }        empty input, nothing saved
+ *         | { kind: 'legacyUpdate' }             legacy_sap → Table 2-11 update flow
+ *         | { kind: 'save', fields }}            switch to default_table now
+ */
+export const methodClick = (project, draft, target) => {
+  const stored = project?.airPermeabilityMethod;
+  if (target === (draft ?? stored)) return { kind: 'none' };
+  if (draft && target === stored) return { kind: 'cancelDraft' };
+  if (TYPED_Q50_METHODS.includes(target)) return { kind: 'openDraft', method: target };
   if (target === 'default_table') {
-    const next = { ...project, airPermeabilityMethod: 'default_table' };
-    return { airPermeabilityMethod: 'default_table', q50: resolveQ50(next).q50 };
+    if (stored === 'legacy_sap') return { kind: 'legacyUpdate' };
+    const fields = methodSwitchUpdate(project, target);
+    if (fields) return { kind: 'save', fields };
   }
-  if (target === 'measured' || target === 'design_target') {
-    return { airPermeabilityMethod: target, q50: round1(effectiveQ50(project)) };
-  }
-  return null;
+  return { kind: 'none' };
+};
+
+/**
+ * Fields to save when a draft's input loses focus: the method and the value
+ * together, or null (nothing saved) while the text is empty or invalid.
+ */
+export const draftBlurSave = (method, text) => {
+  if (!TYPED_Q50_METHODS.includes(method)) return null;
+  const r = validateQ50Input(text);
+  return r.error !== undefined ? null : { airPermeabilityMethod: method, q50: r.value };
 };
 
 /**

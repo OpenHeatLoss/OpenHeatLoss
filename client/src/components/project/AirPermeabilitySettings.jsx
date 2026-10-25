@@ -17,9 +17,15 @@
 // Saving (stopgap — see BACKLOG "Single design_params save path"): outside
 // legacy_sap, each discrete choice is saved at once through
 // onSaveDesignParams (App's saveDesignParams, as the MCS tabs use): picker
-// choices, method switches, and typed numbers on blur when valid and
+// choices, a switch to Table 2-11, and typed numbers on blur when valid and
 // changed. Saves run one at a time in order; "Saved" or an error shows in the
 // heading row. legacy_sap keeps its Review → Confirm save.
+//
+// Drafts: choosing Measured or Design target opens an empty input and saves
+// nothing. The project's method and q50 (and so the calculation and Save
+// Project) stay as they were until a valid figure is entered; on blur the
+// method and value are saved together. Clicking the stored method again
+// drops the draft. The draft is local state here only.
 //
 // All pure logic lives in utils/q50Selection.js.
 
@@ -29,8 +35,9 @@ import { Q50_TABLE_2_11, Q50_INPUT_MIN, Q50_INPUT_MAX } from '../../utils/en1283
 import {
   validateQ50Input,
   effectiveQ50 as effectiveQ50Of,
-  methodSwitchUpdate,
+  methodClick,
   q50BlurSave,
+  draftBlurSave,
   createSerialSaver,
   statusAfterInput,
 } from '../../utils/q50Selection';
@@ -81,15 +88,23 @@ const DefaultTablePanel = ({ project, resolved, onSelect, onInput }) => (
 // Local text so an invalid entry is shown with its error but never reaches
 // the project (the calculation keeps the last valid value). Valid keystrokes
 // update project state; the value is saved on blur only if valid and changed.
-const Q50NumberInput = ({ project, onUpdate, onSave, onInput, label, hint }) => {
+//
+// With draftMethod set (the method was just chosen and is not stored yet) the
+// input starts empty, keystrokes never touch the project, and blur hands the
+// method and value to onSave together once the text is valid.
+const Q50NumberInput = ({ project, draftMethod, onUpdate, onSave, onInput, label, hint }) => {
   const asText = (q50) => (q50 == null ? '' : String(q50));
-  const [text, setText] = useState(asText(project.q50));
+  const [text, setText] = useState(draftMethod ? '' : asText(project.q50));
   const lastSaved = useRef(project.q50);
-  useEffect(() => { setText(asText(project.q50)); lastSaved.current = project.q50; }, [project.id]);
-  const check = validateQ50Input(text);
+  useEffect(() => {
+    if (draftMethod) return;
+    setText(asText(project.q50)); lastSaved.current = project.q50;
+  }, [project.id]);
+  // An empty draft is not an error yet — the draft note explains it.
+  const check = draftMethod && text.trim() === '' ? {} : validateQ50Input(text);
 
   const handleBlur = () => {
-    const fields = q50BlurSave(text, lastSaved.current);
+    const fields = draftMethod ? draftBlurSave(draftMethod, text) : q50BlurSave(text, lastSaved.current);
     if (!fields) return;
     lastSaved.current = fields.q50;
     onSave(fields);
@@ -108,6 +123,7 @@ const Q50NumberInput = ({ project, onUpdate, onSave, onInput, label, hint }) => 
             onChange={e => {
               onInput();
               setText(e.target.value);
+              if (draftMethod) return;
               const r = validateQ50Input(e.target.value);
               if (r.error === undefined) onUpdate('q50', r.value);
             }}
@@ -117,7 +133,13 @@ const Q50NumberInput = ({ project, onUpdate, onSave, onInput, label, hint }) => 
           <span className="text-sm text-gray-600 whitespace-nowrap">m³/(h·m²)</span>
         </div>
       </Field>
-      {check.error && <p className="text-xs text-red-600">{check.error} The last valid value is still in use and nothing is saved.</p>}
+      {check.error && (
+        <p className="text-xs text-red-600">
+          {check.error}{' '}
+          {draftMethod ? "The current method's q₅₀ is still in use and nothing is saved."
+            : 'The last valid value is still in use and nothing is saved.'}
+        </p>
+      )}
     </>
   );
 };
@@ -185,46 +207,86 @@ const LegacyBanner = ({ onStartUpdate, updating }) => (
   </div>
 );
 
+// Buttons used while a draft is open keep focus off them on mousedown, so the
+// input's blur (which would save a valid figure) does not run before a cancel.
+const keepFocus = (e) => e.preventDefault();
+
+// Shown while a Measured / Design target draft is open.
+const DraftNote = ({ effectiveQ50, onCancel }) => (
+  <p className="text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+    Enter a figure to use this method. Until a valid figure is entered, the current method's
+    q₅₀ ({effectiveQ50.toFixed(1)} m³/(h·m²)) stays in use and nothing is saved.{' '}
+    <button onMouseDown={keepFocus} onClick={onCancel} className="underline hover:text-blue-700">Keep the current method</button>
+  </p>
+);
+
 // ---------------------------------------------------------------------------
 // Section
 // ---------------------------------------------------------------------------
 export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBatch, onSaveDesignParams }) {
   const [updatingLegacy, setUpdatingLegacy] = useState(false);
+  const [draft, setDraftState] = useState(null);   // method of an open Measured / Design target draft
+  // Mirrors draft synchronously, so a blur that lands after a cancel is ignored.
+  const draftRef = useRef(null);
+  const setDraft = (m) => { draftRef.current = m; setDraftState(m); };
   useEffect(() => { setUpdatingLegacy(false); }, [project.id]);
+  useEffect(() => { setDraft(null); }, [project.id, project.airPermeabilityMethod]);
   const { status, save, noteInput } = useSerialSave(onSaveDesignParams, project.id);
 
-  const method       = project.airPermeabilityMethod;
+  const method       = project.airPermeabilityMethod;   // as stored — what the calculation uses
+  const shown        = draft ?? method;                 // what the selector and panel show
   const isMeasured   = method === 'measured';
   const isLegacySap  = method === 'legacy_sap';
   const resolved     = resolveQ50(project);
   const effectiveQ50 = effectiveQ50Of(project);
 
-  // A discrete choice outside legacy_sap: into project state, then saved.
+  // A discrete choice: into project state, then saved.
   const choose = (fields) => {
     onUpdateBatch(fields);
     save(fields);
   };
 
   const handleMethod = (target) => {
-    if (target === method) return;
+    const action = methodClick(project, draft, target);
+    if (action.kind === 'none') return;
     noteInput();
-    if (isLegacySap && target === 'default_table') {
+    if (action.kind === 'cancelDraft') { setDraft(null); return; }
+    if (action.kind === 'legacyUpdate') {
+      setDraft(null);
       setUpdatingLegacy(true);      // comparison first — nothing changes yet
       return;
     }
-    const fields = methodSwitchUpdate(project, target);
-    if (!fields) return;
-    if (isLegacySap) {
-      // Leaving legacy_sap is not auto-saved: state only, normal Save path.
-      if (!window.confirm(
+    if (action.kind === 'openDraft') {
+      if (isLegacySap && !draft && !window.confirm(
         // TODO(commit 5): final wording.
         'Switch this project away from its frozen superseded estimate? Once saved, the frozen estimate is no longer used.'
       )) return;
-      onUpdateBatch(fields);
+      setUpdatingLegacy(false);
+      setDraft(action.method);
       return;
     }
+    choose(action.fields);
+  };
+
+  // A draft's first valid blur: method and value saved together.
+  const commitDraft = (fields) => {
+    if (draftRef.current !== fields.airPermeabilityMethod) return;   // cancelled meanwhile
+    setDraft(null);
     choose(fields);
   };
+
+  const typedInput = (label, hint) => (
+    <Q50NumberInput
+      key={draft ? `draft-${draft}` : 'stored'}
+      project={project}
+      draftMethod={draft}
+      onUpdate={onUpdate}
+      onSave={draft ? commitDraft : save}
+      onInput={noteInput}
+      label={label}
+      hint={hint}
+    />
+  );
 
   return (
     <div>
@@ -238,18 +300,19 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         {METHOD_OPTIONS.map(({ value, label, sub }) => (
           <button
             key={value}
+            onMouseDown={draft ? keepFocus : undefined}
             onClick={() => handleMethod(value)}
             className={`flex-1 py-2 px-3 text-left transition ${
-              method === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+              shown === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
             <span className="font-semibold block">{label}</span>
-            <span className={`text-xs ${method === value ? 'text-blue-100' : 'text-gray-500'}`}>{sub}</span>
+            <span className={`text-xs ${shown === value ? 'text-blue-100' : 'text-gray-500'}`}>{sub}</span>
           </button>
         ))}
       </div>
 
-      {isLegacySap && (
+      {isLegacySap && !draft && (
         <div className="mb-4 space-y-3">
           <LegacyBanner onStartUpdate={() => setUpdatingLegacy(true)} updating={updatingLegacy} />
           {updatingLegacy && (
@@ -264,20 +327,17 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         </div>
       )}
 
-      {method === 'default_table' && (
+      {shown === 'default_table' && (
         <DefaultTablePanel project={project} resolved={resolved} onSelect={choose} onInput={noteInput} />
       )}
 
-      {isMeasured && (
+      {shown === 'measured' && (
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-          <Q50NumberInput
-            project={project}
-            onUpdate={onUpdate}
-            onSave={save}
-            onInput={noteInput}
-            label="Air permeability q₅₀"
-            hint="From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result."
-          />
+          {draft && <DraftNote effectiveQ50={effectiveQ50} onCancel={() => handleMethod(method)} />}
+          {typedInput(
+            'Air permeability q₅₀',
+            'From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result.'
+          )}
           <p className="text-xs text-gray-500">
             If vents or fans were sealed during the test, background ventilation
             additions are still made at room level.
@@ -285,20 +345,17 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         </div>
       )}
 
-      {method === 'design_target' && (
+      {shown === 'design_target' && (
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-          <Q50NumberInput
-            project={project}
-            onUpdate={onUpdate}
-            onSave={save}
-            onInput={noteInput}
-            label="Design target q₅₀"
-            hint="The figure must come from the designer's or builder's own airtightness design or compliance evidence. No preset values are offered."
-          />
+          {draft && <DraftNote effectiveQ50={effectiveQ50} onCancel={() => handleMethod(method)} />}
+          {typedInput(
+            'Design target q₅₀',
+            "The figure must come from the designer's or builder's own airtightness design or compliance evidence. No preset values are offered."
+          )}
         </div>
       )}
 
-      {isLegacySap && (
+      {isLegacySap && !draft && (
         <div className="bg-gray-50 rounded-lg p-4">
           <p className="text-xs text-gray-600">
             Frozen estimate from the superseded SAP 10.2 method (CIBSE DHDG 2026-01, corrected by

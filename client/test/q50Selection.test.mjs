@@ -27,6 +27,8 @@ import {
   q50CategoryOptionLabel,
   effectiveQ50,
   methodSwitchUpdate,
+  methodClick,
+  draftBlurSave,
   q50BlurSave,
   saveFailed,
   createSerialSaver,
@@ -449,25 +451,77 @@ test('auto-save, picker: only "Use this candidate", the statistic and the in-use
   assert.equal(s.update.q50, Q50_TABLE_2_11.age_band.pre1919.median);
 });
 
-test('auto-save, method switch: fields to save; default_table restores the stored selection', () => {
+test('auto-save, switch to Table 2-11: fields to save; the stored selection is restored', () => {
   const sel = buildQ50SelectionUpdate({ basis: 'built_form', category: 'bungalow', statistic: 'q1' });
   const onTable = { ...freshProject, ...sel };
   assert.equal(methodSwitchUpdate(onTable, 'default_table'), null);   // no change, no save
-  const toMeasured = methodSwitchUpdate(onTable, 'measured');
-  assert.deepEqual(toMeasured, { airPermeabilityMethod: 'measured', q50: Q50_TABLE_2_11.built_form.bungalow.q1 });
-  const measured = { ...onTable, ...toMeasured, q50: 5.2 };
-  assert.deepEqual(methodSwitchUpdate(measured, 'design_target'), { airPermeabilityMethod: 'design_target', q50: 5.2 });
+  const measured = { ...onTable, airPermeabilityMethod: 'measured', q50: 5.2 };
   // Back to default_table: the stored (inert) selection is restored.
   assert.deepEqual(methodSwitchUpdate(measured, 'default_table'), { airPermeabilityMethod: 'default_table', q50: Q50_TABLE_2_11.built_form.bungalow.q1 });
   // No stored selection → all-dwellings mean.
   assert.deepEqual(methodSwitchUpdate({ ...freshProject, airPermeabilityMethod: 'measured', q50: 3 }, 'default_table'),
     { airPermeabilityMethod: 'default_table', q50: 8.6 });
-  // Seeded value is the effective value rounded to 1 dp.
-  assert.equal(methodSwitchUpdate({ ...freshProject, airPermeabilityMethod: 'legacy_sap', q50: 16.649999999999995 }, 'measured').q50, 16.6);
   assert.equal(effectiveQ50({ airPermeabilityMethod: 'measured', q50: null }), 12);
-  // Never 'legacy_sap' or 'estimated' as a target.
-  assert.equal(methodSwitchUpdate(onTable, 'legacy_sap'), null);
-  assert.equal(methodSwitchUpdate(onTable, 'estimated'), null);
+  // Measured / Design target are never switched to directly (they open a
+  // draft), and never 'legacy_sap' or 'estimated'.
+  for (const t of ['measured', 'design_target', 'legacy_sap', 'estimated']) assert.equal(methodSwitchUpdate(onTable, t), null, t);
+});
+
+test('draft: choosing Measured or Design target opens a draft and saves nothing', () => {
+  const sel = buildQ50SelectionUpdate({ basis: 'built_form', category: 'bungalow', statistic: 'q1' });
+  const onTable  = { ...freshProject, ...sel };
+  const measured = { ...onTable, airPermeabilityMethod: 'measured', q50: 5.2 };
+  const legacy   = { ...freshProject, airPermeabilityMethod: 'legacy_sap', q50: 16.65 };
+  for (const p of [onTable, measured, legacy]) {
+    for (const t of ['measured', 'design_target']) {
+      if (t === p.airPermeabilityMethod) continue;
+      assert.deepEqual(methodClick(p, null, t), { kind: 'openDraft', method: t }, `${p.airPermeabilityMethod} → ${t}`);
+    }
+  }
+  // Within a draft: the other typed method moves the draft; nothing is saved.
+  assert.deepEqual(methodClick(onTable, 'measured', 'design_target'), { kind: 'openDraft', method: 'design_target' });
+  // Clicking what is shown does nothing.
+  assert.deepEqual(methodClick(onTable, null, 'default_table'), { kind: 'none' });
+  assert.deepEqual(methodClick(onTable, 'measured', 'measured'), { kind: 'none' });
+});
+
+test('draft: back to the stored method is free; Table 2-11 from another method saves', () => {
+  const sel = buildQ50SelectionUpdate({ basis: 'built_form', category: 'bungalow', statistic: 'q1' });
+  const onTable  = { ...freshProject, ...sel };
+  const measured = { ...onTable, airPermeabilityMethod: 'measured', q50: 5.2 };
+  const legacy   = { ...freshProject, airPermeabilityMethod: 'legacy_sap', q50: 16.65 };
+  assert.deepEqual(methodClick(onTable, 'measured', 'default_table'), { kind: 'cancelDraft' });
+  assert.deepEqual(methodClick(measured, 'design_target', 'measured'), { kind: 'cancelDraft' });
+  assert.deepEqual(methodClick(legacy, 'measured', 'legacy_sap'), { kind: 'cancelDraft' });
+  // Table 2-11 when the stored method is something else: saved at once…
+  assert.deepEqual(methodClick(measured, null, 'default_table'),
+    { kind: 'save', fields: { airPermeabilityMethod: 'default_table', q50: Q50_TABLE_2_11.built_form.bungalow.q1 } });
+  assert.deepEqual(methodClick(measured, 'design_target', 'default_table').kind, 'save');
+  // …except from legacy_sap, which opens the update flow (draft or not).
+  assert.deepEqual(methodClick(legacy, null, 'default_table'), { kind: 'legacyUpdate' });
+  assert.deepEqual(methodClick(legacy, 'measured', 'default_table'), { kind: 'legacyUpdate' });
+});
+
+test('draft: blur saves method and value together, only when valid', () => {
+  assert.deepEqual(draftBlurSave('measured', '5.2'), { airPermeabilityMethod: 'measured', q50: 5.2 });
+  assert.deepEqual(draftBlurSave('design_target', ' 3 '), { airPermeabilityMethod: 'design_target', q50: 3 });
+  for (const bad of ['', '   ', 'abc', '0.4', '50.1', '-1']) assert.equal(draftBlurSave('measured', bad), null, bad);
+  assert.equal(draftBlurSave('default_table', '5.2'), null);
+  assert.equal(draftBlurSave('legacy_sap', '5.2'), null);
+});
+
+test('draft: an empty or invalid draft never reaches the payload — Save Project keeps the previous method and q50', () => {
+  // The draft is local UI state; the project object is unchanged until
+  // draftBlurSave returns fields, so the Save Project payload is the old one.
+  const sel = buildQ50SelectionUpdate({ basis: 'age_band', category: '1945_1964', statistic: 'q1' });
+  const onTable = { ...freshProject, ...sel };
+  for (const text of ['', '0.4']) {
+    const fields = draftBlurSave('measured', text);
+    const project = fields ? { ...onTable, ...fields } : onTable;
+    const payload = buildDesignParamsPayload(project);
+    assert.equal(payload.airPermeabilityMethod, 'default_table', text);
+    assert.equal(payload.q50, Q50_TABLE_2_11.age_band['1945_1964'].q1, text);
+  }
 });
 
 test('auto-save, typed numbers: save on blur only when valid and changed', () => {
