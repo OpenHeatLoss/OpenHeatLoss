@@ -672,6 +672,23 @@ Company name, MCS number, RECC number, address, postcode, email, phone, website
 fields implemented. Cover letter template with merge token support added.
 Logo upload deferred — needs logo_url column and storage solution (future).
 
+**Unregistered users: quote pack** — consider removing the quote pack for
+unregistered (anonymous free trial) users.
+
+**Multi-project note for installers** — consider a note for installers who
+manage several projects, inviting them to ask for a beta multi-project
+account with the project Kanban.
+
+**Anonymous expiry: edits don't extend it** — a tab left open for more than
+48 hours without reloading can hit the expiry mid-session, because edits
+don't extend it (only GET /api/anonymous/project on app load refreshes
+expires_at). Rare, but it loses a user's work silently.
+
+**Anonymous expiry: scheduled cleanup** — expired anonymous projects are only
+deleted when the server restarts (cleanupAnonymousProjects at startup), so
+retention depends on how often it restarts. A scheduled cleanup would make
+"deleted after 48 hours" true in practice and not just from the user's side.
+
 **Independent status page for outage communication**
 Raised 2026-07 after a Railway hardware-failure outage (their infrastructure,
 not OHL code/DB — confirmed via Railway's automated incident email; no

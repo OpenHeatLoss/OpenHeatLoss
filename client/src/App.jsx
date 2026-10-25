@@ -1625,9 +1625,9 @@ const deleteProject = async (id) => {
         <div className="bg-amber-50 border-b border-amber-300 px-4 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
             <p className="text-amber-800 text-sm">
-              <span className="font-semibold">You're working anonymously.</span>{' '}
-              Your project will be lost if you close this browser tab.
-              Register free to save your work and come back to it.
+              <span className="font-semibold">This is a free trial project.</span>{' '}
+              It is deleted if you don’t open it in this browser again within 48 hours.
+              Register free to keep it and come back to edit it in later sessions.
             </p>
             <div className="flex gap-2 shrink-0">
               <button
