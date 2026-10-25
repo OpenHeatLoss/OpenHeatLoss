@@ -239,7 +239,7 @@ try {
   });
 
   // -------------------------------------------------------------------------
-  await step(page, 'Changing categories on cards not in use does not save; clears "Saved"', async () => {
+  await step(page, 'Changing categories on cards not in use does not save; clears "Saved"; status line placed, no jump', async () => {
     const n = saves.length;
     let sawSaving = false;
     // "Saved" from the reload is not shown; make a fresh one to test clearing.
@@ -247,9 +247,28 @@ try {
     await savedBadge.waitFor({ timeout: 5000 });
     await statRadio('Lower quartile (Q1)').check();
     await savedBadge.waitFor({ timeout: 5000 });
+    // Status line: below the picker panel, above Effective q50, centred, 14px.
+    const effCard = effective.locator('xpath=../..');
+    const layout = await savedBadge.evaluate((el, cardEl) => {
+      const line = el.parentElement;
+      const panel = line.previousElementSibling;
+      const cs = getComputedStyle(line);
+      return {
+        lineTop: line.getBoundingClientRect().top, lineBottom: line.getBoundingClientRect().bottom,
+        panelBottom: panel.getBoundingClientRect().bottom, cardTop: cardEl.getBoundingClientRect().top,
+        nextIsCard: line.nextElementSibling === cardEl, align: cs.textAlign, size: cs.fontSize,
+        weight: getComputedStyle(el).fontWeight,
+      };
+    }, await effCard.elementHandle());
+    expect(layout.nextIsCard && layout.lineTop >= layout.panelBottom && layout.lineBottom <= layout.cardTop,
+      `status line not between panel and Effective q50 (${JSON.stringify(layout)})`);
+    expect(layout.align === 'center' && layout.size === '14px', `status line ${layout.align}, ${layout.size}`);
+    const cardTopWithSaved = (await effCard.boundingBox()).y;
     const m = saves.length;
     await card('Built form').locator('select').selectOption('detached');
     expect(!(await savedBadge.isVisible()), '"Saved" still shown after a comparison change');
+    const cardTopCleared = (await effCard.boundingBox()).y;
+    expect(cardTopCleared === cardTopWithSaved, `Effective q50 card moved ${cardTopCleared - cardTopWithSaved}px when "Saved" cleared`);
     sawSaving ||= await savingText.isVisible();
     await card('Wall construction').locator('select').selectOption('solid_uninsulated');
     sawSaving ||= await savingText.isVisible();

@@ -18,8 +18,9 @@
 // legacy_sap, each discrete choice is saved at once through
 // onSaveDesignParams (App's saveDesignParams, as the MCS tabs use): picker
 // choices, a switch to Table 2-11, and typed numbers on blur when valid and
-// changed. Saves run one at a time in order; "Saved" or an error shows in the
-// heading row. legacy_sap keeps its Review → Confirm save.
+// changed. Saves run one at a time in order; "Saved" or an error shows on
+// a status line below the panel, above Effective q50. legacy_sap keeps its
+// Review → Confirm save.
 //
 // Drafts: choosing Measured or Design target opens an empty input and saves
 // nothing. The project's method and q50 (and so the calculation and Save
@@ -174,12 +175,20 @@ const useSerialSave = (onSaveDesignParams, projectId) => {
   return { status, save, noteInput };
 };
 
-const SaveStatus = ({ status, onRetry }) => {
+// Centred line between the panel and Effective q50. Its height is reserved
+// (min-h) so the card below does not move when a status appears or clears.
+const SaveStatus = ({ status, onRetry }) => (
+  <div className="min-h-[1.25rem] my-2 text-center text-sm leading-5" aria-live="polite">
+    <SaveStatusText status={status} onRetry={onRetry} />
+  </div>
+);
+
+const SaveStatusText = ({ status, onRetry }) => {
   if (!status) return null;
-  if (status.state === 'saving') return <span className="text-xs text-gray-600">Saving…</span>;
-  if (status.state === 'saved')  return <span className="text-xs font-semibold text-green-700">✓ Saved</span>;
+  if (status.state === 'saving') return <span className="text-gray-600">Saving…</span>;
+  if (status.state === 'saved')  return <span className="font-semibold text-green-700">✓ Saved</span>;
   return (
-    <span className="text-xs font-semibold text-red-700" role="alert">
+    <span className="font-bold text-red-700" role="alert">
       ⚠ Not saved ({status.message}). Your choice is still shown; press Save Project or{' '}
       <button onClick={onRetry} className="underline hover:text-red-900">retry</button>.
     </span>
@@ -290,9 +299,8 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 pb-1 mb-3">
+      <div className="border-b border-gray-200 pb-1 mb-3">
         <h3 className="text-sm font-semibold text-gray-700">Air Permeability</h3>
-        <SaveStatus status={status} onRetry={() => status?.fields && save(status.fields)} />
       </div>
 
       {/* Method selector — directly under the heading in every state */}
@@ -364,8 +372,10 @@ export default function AirPermeabilitySettings({ project, onUpdate, onUpdateBat
         </div>
       )}
 
+      <SaveStatus status={status} onRetry={() => status?.fields && save(status.fields)} />
+
       {/* Effective q50 — always visible */}
-      <div className="mt-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+      <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
         <div>
           <span className="text-sm font-semibold text-gray-700">Effective q₅₀</span>
           <span className="text-xs text-gray-500 ml-2">
