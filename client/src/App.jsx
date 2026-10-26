@@ -18,6 +18,7 @@ import SettingsPage from './components/settings/SettingsPage';
 import AdminPage from './components/admin/AdminPage';
 import { getMCSDataFromPostcode } from './utils/mcsData';
 import { buildRoomPayload, buildDesignParamsPayload } from './utils/projectPayloads';
+import { airPermeabilitySnapshot } from './utils/q50Selection';
 import { AuthModal, ResetPasswordModal } from './components/auth/AuthModal';
 
 function App() {
@@ -306,8 +307,16 @@ function App() {
 
       // EN 12831-1:2017 / CIBSE DHDG 2026 ventilation fields (migration 010)
       ventilationMethod:      dp.ventilation_method        || 'en12831_cibse2026',
-      airPermeabilityMethod:  dp.air_permeability_method   || 'estimated',
-      q50:                    dp.q50                       ?? 12.0,
+      // B25: no fallbacks — both columns are NOT NULL, and a default here
+      // would silently relabel a project (e.g. legacy_sap → estimated).
+      airPermeabilityMethod:  dp.air_permeability_method,
+      q50:                    dp.q50,
+      // B25 — Table 2-11 selection (migration 023)
+      q50BuiltForm:           dp.q50_built_form            ?? null,
+      q50AgeBand:             dp.q50_age_band              ?? null,
+      q50WallConstruction:    dp.q50_wall_construction     ?? null,
+      q50SelectionBasis:      dp.q50_selection_basis       ?? null,
+      q50Statistic:           dp.q50_statistic             ?? 'mean',
       sapStructural:          dp.sap_structural             || 'masonry',
       sapFloor:               dp.sap_floor                  || 'other',
       sapWindowDraughtPct:    dp.sap_window_draught_pct    ?? 100,
@@ -510,7 +519,16 @@ function App() {
         })).catch(err => console.error('MCS auto-apply failed:', err));
       }
     }
-    setCurrentProject(project);
+    // B25: UI-only snapshot of the air permeability fields as opened, for the
+    // "Change vs. when this project was opened" readout. Never saved
+    // (buildDesignParamsPayload is a whitelist). A reload of the SAME project
+    // (preserveTab, e.g. after a room edit) keeps the original snapshot.
+    setCurrentProject(prev => ({
+      ...project,
+      airPermeabilityAtOpen: (preserveTab && prev?.id === project.id && prev.airPermeabilityAtOpen)
+        ? prev.airPermeabilityAtOpen
+        : airPermeabilitySnapshot(project),
+    }));
     if (!preserveTab) setActiveTab('project');
 
     // Load pipe sections, pipe materials and fittings separately from their
@@ -562,8 +580,15 @@ function App() {
         heatPumpReturnTemp: 40,
         // EN 12831-1:2017 ventilation defaults
         ventilationMethod:     'en12831_cibse2026',
-        airPermeabilityMethod: 'estimated',
-        q50:                   12.0,
+        // B25: Table 2-11 default; q50 placeholder is the all-dwellings mean.
+        // (The server's createForProject sets the same defaults on the row.)
+        airPermeabilityMethod: 'default_table',
+        q50:                   8.6,
+        q50BuiltForm:          null,
+        q50AgeBand:            null,
+        q50WallConstruction:   null,
+        q50SelectionBasis:     null,
+        q50Statistic:          'mean',
         sapStructural:         'masonry',
         sapFloor:              'other',
         sapWindowDraughtPct:   100,
@@ -624,74 +649,9 @@ function App() {
     }
 
     // Save 3: all design/technical data
-    await api.updateDesignParams(currentProject.id, {
-      externalTemp:      currentProject.externalTemp,
-      annualAvgTemp:     currentProject.annualAvgTemp,
-      airDensity:        currentProject.airDensity,
-      specificHeat:      currentProject.specificHeat,
-      designFlowTemp:    currentProject.designFlowTemp,
-      designReturnTemp:  currentProject.designReturnTemp,
-      mcsPostcodePrefix: currentProject.mcsPostcodePrefix,
-      mcsDegreeDays:     currentProject.mcsDegreeDays,
-      mcsOutdoorLowTemp: currentProject.mcsOutdoorLowTemp,
-      mcsHeatPumpType:       currentProject.mcsHeatPumpType,
-      mcsEmitterType:        currentProject.mcsEmitterType,
-      mcsSystemProvides:     currentProject.mcsSystemProvides,
-      mcsCylinderVolume:     currentProject.mcsCylinderVolume,
-      mcsPasteurizationFreq: currentProject.mcsPasteurizationFreq,
-      mcsUFHType:            currentProject.mcsUFHType,
-      mcsBedrooms:           currentProject.mcsBedrooms,
-      mcsOccupants:          currentProject.mcsOccupants,
-      // Legacy ventilation fields — kept so old data survives
-      useSAPVentilation:        currentProject.useSAPVentilation,
-      buildingCategory:         currentProject.buildingCategory,
-      dwellingType:             currentProject.dwellingType,
-      numberOfStoreys:          currentProject.numberOfStoreys,
-      shelterFactor:            currentProject.shelterFactor,
-      numberOfBedrooms:         currentProject.numberOfBedrooms,
-      hasBlowerTest:            currentProject.hasBlowerTest,
-      sapAgeBand:               currentProject.sapAgeBand,
-      airPermeabilityQ50:       currentProject.airPermeabilityQ50,
-      numberOfChimneys:         currentProject.numberOfChimneys,
-      numberOfOpenFlues:        currentProject.numberOfOpenFlues,
-      numberOfIntermittentFans: currentProject.numberOfIntermittentFans,
-      numberOfPassiveVents:     currentProject.numberOfPassiveVents,
-      ventilationSystemType:    currentProject.ventilationSystemType,
-      mvhrEfficiency:           currentProject.mvhrEfficiency,
-      mvhrWholeHouseRate:       currentProject.mvhrWholeHouseRate ?? 0,
-      // EN 12831-1:2017 ventilation fields (migration 010)
-      ventilationMethod:      currentProject.ventilationMethod,
-      airPermeabilityMethod:  currentProject.airPermeabilityMethod,
-      q50:                    currentProject.q50,
-      sapStructural:          currentProject.sapStructural,
-      sapFloor:               currentProject.sapFloor,
-      sapWindowDraughtPct:    currentProject.sapWindowDraughtPct,
-      sapDraughtLobby:        currentProject.sapDraughtLobby,
-      buildingStoreys:        currentProject.buildingStoreys,
-      buildingShielding:      currentProject.buildingShielding,
-      referenceTemp:          currentProject.referenceTemp,
-      mcsHeatPumpSoundPower:  currentProject.mcsHeatPumpSoundPower,
-      mcsSoundAssessments:    currentProject.mcsSoundAssessments    || [],
-      mcsSoundSnapshot:       currentProject.mcsSoundSnapshot       || null,
-      mcsCalculationSnapshot: currentProject.mcsCalculationSnapshot || null,
-      pipeSections:           null,   // now managed via /api/pipe-sections — not stored in design_params
-      circuits:               currentProject.circuits               || null,
-      heatPumpManufacturer:   currentProject.heatPumpManufacturer,
-      heatPumpModel:          currentProject.heatPumpModel,
-      heatPumpRatedOutput:    currentProject.heatPumpRatedOutput,
-      heatPumpMinModulation:  currentProject.heatPumpMinModulation  ?? 0,
-      heatPumpFlowTemp:       currentProject.heatPumpFlowTemp,
-      heatPumpReturnTemp:     currentProject.heatPumpReturnTemp,
-      epcSpaceHeatingDemand:  currentProject.epcSpaceHeatingDemand,
-      epcHotWaterDemand:      currentProject.epcHotWaterDemand,
-      epcTotalFloorArea:      currentProject.epcTotalFloorArea,
-      heatPumpInternalVolume: currentProject.heatPumpInternalVolume ?? 0,
-      bufferVesselVolume:     currentProject.bufferVesselVolume     ?? 0,
-      en14511TestPoints:      currentProject.en14511TestPoints      || [],
-      defrostPct:             currentProject.defrostPct             ?? 5,
-      balancePoint:           currentProject.balancePoint           ?? 12.5,
-      scopEmitterType:        currentProject.scopEmitterType        || 'radiator',
-    });
+    // Single whitelist shared with every other design params save path —
+    // new fields are added once, in projectPayloads.js.
+    await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject));
 
     await loadProjects();
     alert('Project saved successfully!');
@@ -1379,9 +1339,12 @@ const deleteProject = async (id) => {
   // Called from MCS/pipe-sizing components on blur or action, so that
   // loadProject triggered by other tabs never resets unsaved values.
   // Pass a partial object — it is merged with currentProject before saving.
+  // Returns the API response so a caller can check it: an HTTP error
+  // resolves as { error } rather than rejecting (see saveFailed in
+  // utils/q50Selection.js). Existing callers ignore the return value.
   const saveDesignParams = async (fields) => {
     try {
-      await api.updateDesignParams(currentProject.id,
+      return await api.updateDesignParams(currentProject.id,
         buildDesignParamsPayload(currentProject, fields)
       );
     } catch (error) {
@@ -1662,9 +1625,9 @@ const deleteProject = async (id) => {
         <div className="bg-amber-50 border-b border-amber-300 px-4 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
             <p className="text-amber-800 text-sm">
-              <span className="font-semibold">You're working anonymously.</span>{' '}
-              Your project will be lost if you close this browser tab.
-              Register free to save your work and come back to it.
+              <span className="font-semibold">This is a free trial project.</span>{' '}
+              It is deleted if you don’t open it in this browser again within 48 hours.
+              Register free to keep it and come back to edit it in later sessions.
             </p>
             <div className="flex gap-2 shrink-0">
               <button
@@ -1785,6 +1748,7 @@ const deleteProject = async (id) => {
                 project={currentProject}
                 onUpdate={updateProject}
                 onUpdateBatch={updateProjectBatch}
+                onSaveDesignParams={saveDesignParams}
                 onApplyMVHR={applyWholeHouseMVHR}
                 onClearMVHR={clearWholeHouseMVHR}
                 onSaveContact={handleSaveContact}

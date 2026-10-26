@@ -255,6 +255,106 @@ covers all 141 projects rather than one reference project, and is only
 available because the cancellation is exact. It is the single most valuable
 verification point in this piece of work.
 
+DECISIONS TAKEN DURING COMMIT 2 (2026-10):
+  - Commits 2 and 3 deploy TOGETHER. Commit 3 adds migration 025:
+    ALTER air_permeability_method SET DEFAULT 'default_table', then calls
+    freezeLegacySapQ50() again to catch any 'estimated' rows created since
+    023. The default change is deliberately NOT in 023.
+  - designParams.update ignores an incoming 'estimated' (keeps stored method
+    AND q50) — old browser tabs cannot revert a frozen project. Consequence:
+    no project can move onto 'estimated'; the SAP Estimate button is disabled
+    for any project not already on it ("Superseded (DHDG-2026-1-COR-001)").
+  - COMMIT 4 NOTE: the five q50_* columns use COALESCE($n, column), so the
+    UPDATE can never clear a Table 2-11 selection back to NULL. Accepted —
+    q50_selection_basis decides which characteristic applies, so a stale
+    value in another column is inert. If clearing is ever needed, commit 4
+    must add an explicit mechanism.
+  - Gate is EXACT equality (scripts/b25_gate.mjs), no tolerance.
+
+DECISIONS TAKEN DURING COMMIT 3 (2026-10):
+  - design_target stays FREE ENTRY by decision: the designer or builder owns
+    the figure (AD L notional 5.0, or the as-built/target value), so no
+    regional or preset tables are offered for it.
+  - The heat loss report should record the selected q50 AND its Table 2-11
+    category (basis, category, statistic, or "all dwellings mean — defaulted").
+    Belongs with the Calculation basis export item; generate_heat_loss_pdf.py
+    does not render q50 today.
+  - getHeightBand is KEPT: the unchanged Table 2-13 (old 2-17) conversion uses
+    it. Deleted: the five SAP tables, getStoreyInfiltration, estimateQ50SAP.
+    Frozen copies stay in migrate.js, byte-for-byte.
+  - Table 2-11 + lookupDefaultQ50 live in en12831VentilationData.js with the
+    other section 2.5.4 tables. Unknown basis/category/statistic → null.
+  - resolveQ50 now returns { q50, defaulted }. default_table with no basis or
+    no category → all-dwellings mean 8.6, defaulted: true (commit 4 amber
+    nudge reads this flag). An invalid stored selection also falls back, with
+    console.error. 'estimated' is now an unknown method (stored q50 + error).
+  - Table renumbering per corrigendum: old 2-16 → 2-12 (background vents),
+    2-17 → 2-13 (50 Pa to typical), 2-18 → 2-14 (minimum ACH).
+  - New projects: designParams.createForProject inserts default_table / 8.6 /
+    'mean' explicitly (the client's createProject values never reach
+    design_params). The q50 COLUMN default is still 12.0 — only matters for an
+    INSERT that bypasses createForProject; none exists.
+  - VentilationSettings imported the SAP tables too (FILES IN SCOPE above
+    missed it). Commit 3 changed only what compiling required: SAP inputs
+    panel replaced by a read-only Table 2-11 note; the permanently disabled
+    SAP Estimate button and the dead isEstimated note are left for commit 4.
+    Until commit 4 a project cannot be switched back from Measured.
+  - sap_* columns and their load/save mapping are KEPT: frozen projects keep
+    their SAP inputs on record.
+  - VALIDATION (worked example, CIBSE DHDG 2026 one room: 45 m², q50 10.4,
+    vent + fan, normal, 2 storeys → 28.8 m³/h; MVHR 39 m³/h at 84%; Ti 21,
+    Te 0.9, Te,ref 10.1). Guide: 436.1 / 239.3 / 129.3 W. Our unrounded code:
+    436.28 / 239.46 / 129.86 W. The guide rounds supply temperatures and
+    factors to 1 dp; with that rounding our arithmetic gives 436.08 / 239.26 /
+    129.27. Difference is display rounding only, bounded by 0.05 °C × 39 ×
+    0.34 = 0.66 W. Tests: client/test/en12831AirPermeability.test.mjs
+    (npm test in client/). No rounding added to the app.
+  - Scratch DB note: project 1339 was created after 023 ran (presumably via
+    the app during the on-screen check), on the old 'estimated' column
+    default — the late-create case 025 exists for. 025 froze it
+    exactly as the pre-B25 code computes (9.999999999999998). Project 1325 was
+    deleted. The gate now requires such changes to be acknowledged with
+    --project-set-change=+1339,-1325.
+
+DECISIONS TAKEN DURING COMMIT 4 (2026-10):
+  - NO audit trail for the legacy_sap -> default_table change. The method
+    value is the trail: legacy_sap means the frozen estimate is in use; any
+    other value means someone moved it, deliberately, via the comparison
+    (default_table) or a confirm prompt (measured / design_target).
+  - design_target is FREE ENTRY ONLY — no regional or preset values. Range
+    0.5-50 m3/(h.m2), the same limits as the measured input; an invalid entry
+    shows inline and never reaches the calculation (last valid value kept).
+  - Statistics offered: mean (default), median, Q1, Q3. min, max and SD are
+    deliberately NOT offered; they stay in Q50_TABLE_2_11 for reference.
+  - COALESCE handling (closes the commit 2 note): the UI only ever writes a
+    COMPLETE selection — basis together with its category, or all_dwellings —
+    via buildQ50SelectionUpdate, which also clears the other two category
+    fields in state. Categories chosen on the other candidate cards stay in
+    local UI state for comparison and are never written (commit 4a replaced
+    the basis/category/statistic wizard with the shared candidate picker,
+    Q50CandidatePicker.jsx, used for default_table and for the legacy update).
+    So the saved basis always pairs with the category just written;
+    the cleared columns may come back from the DB with stale values, but
+    resolveQ50 reads only the category matching q50_selection_basis. No
+    server change needed. Proven by test (every selection over a row with
+    stale values in all three columns) and gate step 8 (real save + reload).
+  - q50 column is kept equal to the looked-up value on every default_table
+    change, so the stored q50 always matches the q50 the calculation uses.
+  - Live readout: "Change vs. when this project was opened". The baseline is
+    a UI-only snapshot (airPermeabilityAtOpen) taken in loadProject (every
+    create path ends in loadProject) and kept across same-project reloads.
+    It is never saved: buildDesignParamsPayload is a whitelist, and a test
+    fails on any new spread/Object.assign of a project object in client/src.
+    The change is the difference of two calculateBuildingVentilationEN12831
+    calls — no new formulas (fabric does not depend on q50). Hidden when
+    there is no snapshot, no rooms, or not the EN 12831 method.
+  - Legacy update flow saves immediately on confirm (saveDesignParams, then
+    state) — like the MCS tabs, this also saves any other unsaved edits in
+    the project. Cancel touches nothing.
+  - Placeholders marked TODO(commit 5): legacy banner wording, the confirm
+    prompt when leaving legacy_sap for measured / design target, and help
+    text on choosing the most representative Table 2-11 value.
+
 Wrinkle inside commit 2: VentilationSettings.jsx:72 calls estimateQ50SAP
 whenever !isMeasured. A legacy_sap project would display a recomputed
 estimate while the calculation uses the frozen value — UI and maths
@@ -572,6 +672,23 @@ Company name, MCS number, RECC number, address, postcode, email, phone, website
 fields implemented. Cover letter template with merge token support added.
 Logo upload deferred — needs logo_url column and storage solution (future).
 
+**Unregistered users: quote pack** — consider removing the quote pack for
+unregistered (anonymous free trial) users.
+
+**Multi-project note for installers** — consider a note for installers who
+manage several projects, inviting them to ask for a beta multi-project
+account with the project Kanban.
+
+**Anonymous expiry: edits don't extend it** — a tab left open for more than
+48 hours without reloading can hit the expiry mid-session, because edits
+don't extend it (only GET /api/anonymous/project on app load refreshes
+expires_at). Rare, but it loses a user's work silently.
+
+**Anonymous expiry: scheduled cleanup** — expired anonymous projects are only
+deleted when the server restarts (cleanupAnonymousProjects at startup), so
+retention depends on how often it restarts. A scheduled cleanup would make
+"deleted after 48 hours" true in practice and not just from the user's side.
+
 **Independent status page for outage communication**
 Raised 2026-07 after a Railway hardware-failure outage (their infrastructure,
 not OHL code/DB — confirmed via Railway's automated incident email; no
@@ -693,6 +810,31 @@ customer portal. Webhooks update users.plan in the DB. ~2 sessions to integrate.
 Postgres RLS policies as a belt-and-braces layer under the application-level
 company_id scoping. Worth adding before going beyond a handful of companies.
 
+**design_params q50 column default disagrees with the method default (B25)**
+New-project defaults now live in three places: createNewProject (client),
+designParams.createForProject (server) and the design_params column
+defaults. They agree except q50, whose column default is still 12.0 beside
+an air_permeability_method default of 'default_table' (8.6 is the Table 2-11
+all-dwellings mean). Harmless today: every create goes through
+createForProject, which sets both explicitly. If another way to create a
+project is added (import, public API), it could inherit a method and q50
+that disagree. Fix then, or before: ALTER q50 SET DEFAULT 8.6 in a migration,
+or route every create through createForProject.
+
+**Single design_params save path with a saved snapshot**
+The app has eight separate places that save design_params (App.jsx: main
+Save, saveDesignParams for the MCS tabs, the postcode auto-apply in
+loadProject, applyMCSFromPostcode, handleSaveInstallAddress; Summary.jsx:
+three direct calls), each sending the current in-memory state, with no
+shared saved-state tracking. (Counted as "seven" in the commit 4
+discussion; grep api.updateDesignParams gives eight.) A single save path that records what was last saved is
+worth doing before the SaaS multi-user work: it is also what an "unsaved
+changes" warning and any audit trail would need. (B25 commit 4's readout
+compares against "when this project was opened" for this reason.)
+The narrow auto-save in the air permeability section (B25 commit 4b: each
+discrete choice and each typed q50 on blur saves via saveDesignParams) is a
+stopgap; this single save path with saved-state tracking is still the proper fix.
+
 **DB snapshots before migrations**
 Railway TCP proxy URL used for pg_dump from local machine. Beekeeper Studio
 installed for GUI DB management. Always snapshot before any SQL touching live
@@ -701,6 +843,14 @@ data. Command:
     --no-owner --no-acl -f backup_$(date +%Y%m%d_%H%M%S).sql
 
 ### Priority 4 — Calculation / standards extensions
+
+**Re-check help text against any later DHDG corrigendum (B25)**
+Several screens now cite DHDG-2026-1-COR-001 and the renumbered Tables
+2-11 to 2-14 (VentilationSettings, VentilationEditor, migration and code
+comments; Summary banner from commit 5). If CIBSE issues a further
+corrigendum or a revised edition, re-check every such citation, table number
+and help text against it. grep "COR-001" and "Table 2-1" across client/src
+and server to find them.
 
 **Full BS EN 12831-1:2017 mode**
 Alternative to the CIBSE reduced method, selectable at project level. For new

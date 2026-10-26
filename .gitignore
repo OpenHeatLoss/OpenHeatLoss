@@ -173,3 +173,13 @@ server/generate_quote_pdf(a).py
 .sync_4b440a2043cf.db-shm
 .sync_4b440a2043cf.db-wal
 client/src/App(a).jsx
+
+# Database dumps and ad-hoc SQL — may contain production data
+*.dump
+*.sql
+
+# Local script output (B25 baseline etc.)
+scripts/out/
+
+# Browser test output (screenshots)
+scripts/e2e/out/

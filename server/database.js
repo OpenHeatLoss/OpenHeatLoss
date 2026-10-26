@@ -758,8 +758,12 @@ const designParams = {
     getQuery('SELECT * FROM design_params WHERE project_id = $1', [projectId]),
 
   // Seed the defaults row immediately after project creation.
+  // B25: new projects start on the corrected Table 2-11 default — explicit here
+  // rather than relying on column defaults (q50's column default is still 12.0).
+  // 8.6 = Table 2-11 all-dwellings mean; categories stay NULL until selected.
   createForProject: (projectId) => runQuery(`
-    INSERT INTO design_params (project_id) VALUES ($1)
+    INSERT INTO design_params (project_id, air_permeability_method, q50, q50_statistic)
+    VALUES ($1, 'default_table', 8.6, 'mean')
     ON CONFLICT (project_id) DO NOTHING`,
     [projectId]
   ),
@@ -789,14 +793,31 @@ const designParams = {
       epc_total_floor_area = $47,
       heat_pump_internal_volume = $48, buffer_vessel_volume = $49,
       en14511_test_points = $50, defrost_pct = $51,
-      ventilation_method = $52, air_permeability_method = $53,
-      q50 = $54, sap_structural = $55, sap_floor = $56,
+      ventilation_method = $52,
+      -- B25: method and q50 are never overwritten by a missing value, and an
+      -- incoming 'estimated' (only sent by old browser tabs running pre-B25
+      -- JS) leaves BOTH the stored method and the stored q50 unchanged, so a
+      -- frozen legacy_sap project cannot be reverted with a stale q50.
+      air_permeability_method = CASE
+        WHEN $53::text IS NULL OR $53::text = 'estimated' THEN air_permeability_method
+        ELSE $53::text END,
+      q50 = CASE
+        WHEN $53::text = 'estimated' OR $54::double precision IS NULL THEN q50
+        ELSE $54::double precision END,
+      sap_structural = $55, sap_floor = $56,
       sap_window_draught_pct = $57, sap_draught_lobby = $58,
       building_storeys = $59, building_shielding = $60, reference_temp = $61,
       balance_point = $62, scop_emitter_type = $63,
       mvhr_whole_house_rate_m3h = $64,
+      -- B25 (migration 023): Table 2-11 selection. COALESCE so a payload
+      -- without these fields (old client) never nulls them.
+      q50_built_form        = COALESCE($65::text, q50_built_form),
+      q50_age_band          = COALESCE($66::text, q50_age_band),
+      q50_wall_construction = COALESCE($67::text, q50_wall_construction),
+      q50_selection_basis   = COALESCE($68::text, q50_selection_basis),
+      q50_statistic         = COALESCE($69::text, q50_statistic),
       updated_at = NOW()
-    WHERE project_id = $65`,
+    WHERE project_id = $70`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
@@ -827,8 +848,8 @@ const designParams = {
       data.en14511TestPoints     ? JSON.stringify(data.en14511TestPoints)     : null,
       data.defrostPct            ?? 5,
       data.ventilationMethod     || 'en12831_cibse2026',
-      data.airPermeabilityMethod || 'estimated',
-      data.q50                   ?? 12.0,
+      data.airPermeabilityMethod || null,   // null → keep stored (see SQL)
+      data.q50                   ?? null,   // null → keep stored (see SQL)
       data.sapStructural         || 'masonry',
       data.sapFloor              || 'other',
       data.sapWindowDraughtPct   ?? 100,
@@ -839,7 +860,12 @@ const designParams = {
       data.balancePoint          ?? 12.5,
       data.scopEmitterType       || 'radiator',
       data.mvhrWholeHouseRate    ?? 0,
-      projectId,
+      data.q50BuiltForm          ?? null,   // $65
+      data.q50AgeBand            ?? null,   // $66
+      data.q50WallConstruction   ?? null,   // $67
+      data.q50SelectionBasis     ?? null,   // $68
+      data.q50Statistic          ?? null,   // $69
+      projectId,                            // $70
     ]
   ),
 };

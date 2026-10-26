@@ -36,14 +36,12 @@
 // See CALCULATIONS.md for the complete reference.
 
 import {
-  SAP_STRUCTURAL_INFILTRATION,
-  SAP_FLOOR_INFILTRATION,
-  SAP_WINDOW_DOOR_INFILTRATION,
-  SAP_TO_50PA_FACTOR,
   PA50_TO_TYPICAL_FACTOR,
   BACKGROUND_VENT_ADDITIONS_M3H,
   MIN_ROOM_ACH,
-  getStoreyInfiltration,
+  Q50_TABLE_2_11,
+  Q50_CATEGORY_FIELD,
+  lookupDefaultQ50,
   getHeightBand,
   getRoomMinACHCategory,
 } from './en12831VentilationData';
@@ -54,81 +52,58 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Estimate building air permeability at 50 Pa using the SAP 10.2 component method.
- * Use when no measured or designed value is available.
- *
- * Process:
- *   1. Sum four ACH additions (structural + floor + window/door + storeys)
- *   2. Multiply by shielding/height conversion factor (Table 2-15) → q50 in m³/(h·m²)
- *
- * @param {Object} params
- * @param {string}  params.structural        'masonry' | 'timber_steel'
- * @param {string}  params.floor             'unsealed_suspended' | 'sealed_suspended' | 'other'
- * @param {number}  params.windowDraughtPct  0 | 25 | 50 | 75 | 100
- * @param {boolean} params.draughtLobby      true if draught lobby present
- * @param {number}  params.storeys           number of storeys
- * @param {string}  params.shielding         'intensive' | 'normal' | 'none'
- * @returns {Object} { q50, breakdown }
- */
-export const estimateQ50SAP = ({
-  structural = 'masonry',
-  floor = 'other',
-  windowDraughtPct = 100,
-  draughtLobby = false,
-  storeys = 2,
-  shielding = 'normal',
-}) => {
-  // Round draught percentage to nearest valid table key
-  const draughtKey = [0, 25, 50, 75, 100].reduce((prev, curr) =>
-    Math.abs(curr - windowDraughtPct) < Math.abs(prev - windowDraughtPct) ? curr : prev
-  );
-
-  const structuralACH = SAP_STRUCTURAL_INFILTRATION[structural]?.ach ?? 0.35;
-  const floorACH      = SAP_FLOOR_INFILTRATION[floor]?.ach ?? 0.00;
-  const windowRow     = SAP_WINDOW_DOOR_INFILTRATION[draughtKey] ?? SAP_WINDOW_DOOR_INFILTRATION[100];
-  const windowACH     = draughtLobby ? windowRow.withLobby : windowRow.withoutLobby;
-  const storeyACH     = getStoreyInfiltration(storeys);
-
-  const totalACH   = structuralACH + floorACH + windowACH + storeyACH;
-  const heightBand = getHeightBand(storeys);
-  const convFactor = SAP_TO_50PA_FACTOR[shielding]?.[heightBand] ?? 20;
-  const q50        = totalACH * convFactor;
-
-  return {
-    q50,
-    breakdown: { structuralACH, floorACH, windowACH, storeyACH, totalACH, heightBand, convFactor, q50 },
-  };
-};
-
-/**
- * Resolve the effective q50 for a project, regardless of method.
+ * Resolve the effective q50 for a project, regardless of method (B25).
  *
  * Reads camelCase fields as set by App.jsx loadProject():
- *   project.airPermeabilityMethod  'measured' | 'estimated'
- *   project.q50                    measured value (m³/h·m²)
- *   project.sapStructural          'masonry' | 'timber_steel'
- *   project.sapFloor               'unsealed_suspended' | 'sealed_suspended' | 'other'
- *   project.sapWindowDraughtPct    0 | 25 | 50 | 75 | 100
- *   project.sapDraughtLobby        0 | 1
- *   project.buildingStoreys        number
- *   project.buildingShielding      'intensive' | 'normal' | 'none'
+ *   project.airPermeabilityMethod  'default_table' | 'measured' | 'design_target' | 'legacy_sap'
+ *   project.q50                    stored value (m³/h·m²) — measured, design target,
+ *                                  or the frozen SAP estimate (migration 023)
+ *   project.q50SelectionBasis      'built_form' | 'age_band' | 'wall_construction' | 'all_dwellings'
+ *   project.q50BuiltForm           Table 2-11 row when basis = 'built_form'
+ *   project.q50AgeBand             Table 2-11 row when basis = 'age_band'
+ *   project.q50WallConstruction    Table 2-11 row when basis = 'wall_construction'
+ *   project.q50Statistic           'mean' | 'median' | 'q1' | 'q3'
+ *
+ * 'default_table' looks the value up in Table 2-11. With no basis or no
+ * category selected it falls back to the all-dwellings mean and sets
+ * defaulted: true, so callers can nudge the designer to make a selection.
  *
  * @param {Object} project - project object from React state
- * @returns {number} q50 in m³/(h·m²)
+ * @returns {{ q50: number, defaulted: boolean }} q50 in m³/(h·m²)
  */
+// Methods whose q50 is a stored number, used as-is.
+const STORED_Q50_METHODS = ['measured', 'legacy_sap', 'design_target'];
+
 export const resolveQ50 = (project) => {
-  if (project.airPermeabilityMethod === 'measured') {
-    return project.q50 ?? 12.0;
+  const method = project.airPermeabilityMethod;
+  if (STORED_Q50_METHODS.includes(method)) {
+    return { q50: project.q50, defaulted: false };
   }
-  const { q50 } = estimateQ50SAP({
-    structural:       project.sapStructural       ?? 'masonry',
-    floor:            project.sapFloor            ?? 'other',
-    windowDraughtPct: project.sapWindowDraughtPct ?? 100,
-    draughtLobby:     !!project.sapDraughtLobby,
-    storeys:          project.buildingStoreys     ?? 2,
-    shielding:        project.buildingShielding   ?? 'normal',
-  });
-  return q50;
+  if (method !== 'default_table') {
+    // Includes 'estimated' (withdrawn; migrations 023/025 leave none).
+    // Do not throw — there is no error boundary yet, so a throw blanks the screen.
+    console.error(`resolveQ50: unknown airPermeabilityMethod "${method}" — using stored q50`);
+    return { q50: project.q50, defaulted: false };
+  }
+
+  const fallback = { q50: Q50_TABLE_2_11.all.mean, defaulted: true };
+  const basis = project.q50SelectionBasis ?? null;
+  if (basis === null) return fallback;
+  // Known basis with no category chosen yet → defaulted. An unknown basis falls
+  // through to the lookup, which returns null and is reported below.
+  // Only the category matching the basis is read — a stale value left in
+  // another category column (the server cannot clear them) is inert.
+  const category = Object.hasOwn(Q50_CATEGORY_FIELD, basis) ? (project[Q50_CATEGORY_FIELD[basis]] ?? null) : null;
+  if (Object.hasOwn(Q50_CATEGORY_FIELD, basis) && category === null) return fallback;
+
+  const statistic = project.q50Statistic ?? 'mean';
+  const q50 = lookupDefaultQ50({ basis, category, statistic });
+  if (q50 === null) {
+    console.error(`resolveQ50: no Table 2-11 value for basis "${basis}", category "${category}", ` +
+                  `statistic "${statistic}" — using the all-dwellings mean`);
+    return fallback;
+  }
+  return { q50, defaulted: false };
 };
 
 // ---------------------------------------------------------------------------
@@ -141,11 +116,11 @@ export const resolveQ50 = (project) => {
  *
  * Formula:
  *   baseLeakage50Pa     = exposedEnvelope × q50
- *   backgroundTotal50Pa = sum of Table 2-16 additions
+ *   backgroundTotal50Pa = sum of Table 2-12 additions
  *   totalAt50Pa         = baseLeakage50Pa + backgroundTotal50Pa
- *   approximateRate     = totalAt50Pa × conversionFactor (Table 2-17)
+ *   approximateRate     = totalAt50Pa × conversionFactor (Table 2-13)
  *
- * Also calculates and checks minimum room leakage rate (Table 2-18).
+ * Also calculates and checks minimum room leakage rate (Table 2-14).
  *
  * Reads camelCase fields as set by App.jsx loadProject():
  *   room.exposedEnvelopeM2    room.bgVentCount     room.bgFanCount
@@ -165,7 +140,7 @@ export const calculateRoomLeakageRate = (room, q50, shielding, storeys) => {
   // CIBSE DHDG 2026 section 2.5.4.2 "Approximate Room Leakage Rate"
   const baseLeakage50Pa = exposedEnvelope * q50;
 
-  // Background ventilation additions (Table 2-16)
+  // Background ventilation additions (Table 2-12)
   const bgVent      = (room.bgVentCount      ?? 0) * BACKGROUND_VENT_ADDITIONS_M3H.vent;
   const bgFan       = (room.bgFanCount       ?? 0) * BACKGROUND_VENT_ADDITIONS_M3H.fan;
   const bgFlueSmall = (room.bgFlueSmallCount ?? 0) * BACKGROUND_VENT_ADDITIONS_M3H.flue_small;
@@ -175,13 +150,13 @@ export const calculateRoomLeakageRate = (room, q50, shielding, storeys) => {
 
   const totalAt50Pa = baseLeakage50Pa + backgroundTotal50Pa;
 
-  // 50 Pa to typical pressure conversion (Table 2-17)
+  // 50 Pa to typical pressure conversion (Table 2-13)
   // CIBSE DHDG 2026 section 2.5.4.2 "50 Pa to Typical Conversion Factor"
   const heightBand = getHeightBand(storeys);
   const convFactor = PA50_TO_TYPICAL_FACTOR[shielding]?.[heightBand] ?? 0.05;
   const approximateRoomLeakageRate = totalAt50Pa * convFactor;
 
-  // Minimum room leakage rate check (Table 2-18)
+  // Minimum room leakage rate check (Table 2-14)
   // CIBSE DHDG 2026 section 2.5.4.2 "Minimum Room Leakage Rate"
   const minACHCategory     = getRoomMinACHCategory(room.roomType ?? 'living_room');
   const minACH             = MIN_ROOM_ACH[minACHCategory] ?? 0.5;
@@ -340,8 +315,8 @@ export const calculateVentilationHeatLoss = (factors) => {
  * for a single room. Returns three figures plus full audit trail.
  *
  * Project fields read: buildingShielding, buildingStoreys, externalTemp, referenceTemp,
- *                      airPermeabilityMethod, q50, sapStructural, sapFloor,
- *                      sapWindowDraughtPct, sapDraughtLobby
+ *                      airPermeabilityMethod, q50, q50SelectionBasis, q50BuiltForm,
+ *                      q50AgeBand, q50WallConstruction, q50Statistic
  * Room fields read:    internalTemp, exposedEnvelopeM2, bgVentCount, bgFanCount,
  *                      bgFlueSmallCount, bgFlueLargeCount, bgOpenFireCount,
  *                      continuousVentType, continuousVentRateM3h, mvhrEfficiency,
@@ -352,7 +327,7 @@ export const calculateVentilationHeatLoss = (factors) => {
  * @returns {Object}
  */
 export const calculateRoomVentilationEN12831 = (room, project) => {
-  const q50          = resolveQ50(project);
+  const { q50, defaulted: q50Defaulted } = resolveQ50(project);
   const shielding    = project.buildingShielding ?? 'normal';
   const storeys      = project.buildingStoreys   ?? 2;
   const designTemp   = project.externalTemp      ?? -3;
@@ -371,7 +346,7 @@ export const calculateRoomVentilationEN12831 = (room, project) => {
     ventGeneratorTypical:    lossStage.ventGeneratorTypical,
     belowMinimumVentilation: leakageStage.belowMinimum,
     contVentWarning:         factorsStage.contVentWarning,
-    stages: { q50, leakage: leakageStage, factors: factorsStage, loss: lossStage },
+    stages: { q50, q50Defaulted, leakage: leakageStage, factors: factorsStage, loss: lossStage },
   };
 };
 

@@ -720,6 +720,156 @@ async function seedWindowsAndDoors() {
 }
 
 // ---------------------------------------------------------------------------
+// B25 / MIGRATION 023 — FROZEN COPY OF THE SAP 10.2 q50 ESTIMATE
+//
+// FROZEN INLINE COPY. Copied exactly from client/src/utils/en12831VentilationData.js
+// (SAP_* tables, getStoreyInfiltration, getHeightBand) and
+// client/src/utils/en12831Calculations.js (estimateQ50SAP) as at commit 3ad92e1.
+// This must NEVER import client code and must never be "kept in sync" with it:
+// commit 3 deletes the client-side originals, and the migration has to keep
+// producing the numbers the app actually ran on.
+// ---------------------------------------------------------------------------
+const FROZEN_SAP_STRUCTURAL_INFILTRATION = {
+  masonry:      { label: 'Masonry',             ach: 0.35 },
+  timber_steel: { label: 'Steel or timber frame', ach: 0.25 },
+};
+
+const FROZEN_SAP_FLOOR_INFILTRATION = {
+  unsealed_suspended: { label: 'Unsealed suspended wooden floor', ach: 0.20 },
+  sealed_suspended:   { label: 'Sealed suspended wooden floor',   ach: 0.10 },
+  other:              { label: 'Other ground floor (solid, etc)', ach: 0.00 },
+};
+
+const FROZEN_SAP_WINDOW_DOOR_INFILTRATION = {
+  0:   { withLobby: 0.25, withoutLobby: 0.30 },
+  25:  { withLobby: 0.20, withoutLobby: 0.25 },
+  50:  { withLobby: 0.15, withoutLobby: 0.20 },
+  75:  { withLobby: 0.10, withoutLobby: 0.15 },
+  100: { withLobby: 0.05, withoutLobby: 0.10 },
+};
+
+const FROZEN_SAP_STOREY_INFILTRATION = {
+  1:    0.00,
+  2:    0.05,
+  3:    0.07,
+  4:    0.08,  // 4–6 storeys
+};
+
+const FROZEN_SAP_TO_50PA_FACTOR = {
+  intensive: { '1_2': 33.3, '2_4': 20.0, '4_8': 12.5, '8+': 9.1 },
+  normal:    { '1_2': 20.0, '2_4': 20.0, '4_8': 12.5, '8+': 9.1 },
+  none:      { '1_2': 14.3, '2_4': 14.3, '4_8': 12.5, '8+': 9.1 },
+};
+
+const frozenGetStoreyInfiltration = (storeys) => {
+  if (storeys <= 1) return FROZEN_SAP_STOREY_INFILTRATION[1];
+  if (storeys === 2) return FROZEN_SAP_STOREY_INFILTRATION[2];
+  if (storeys === 3) return FROZEN_SAP_STOREY_INFILTRATION[3];
+  return FROZEN_SAP_STOREY_INFILTRATION[4]; // 4–6
+};
+
+const frozenGetHeightBand = (storeys) => {
+  if (storeys <= 2)  return '1_2';
+  if (storeys <= 4)  return '2_4';
+  if (storeys <= 8)  return '4_8';
+  return '8+';
+};
+
+const frozenEstimateQ50SAP = ({
+  structural = 'masonry',
+  floor = 'other',
+  windowDraughtPct = 100,
+  draughtLobby = false,
+  storeys = 2,
+  shielding = 'normal',
+}) => {
+  // Round draught percentage to nearest valid table key
+  const draughtKey = [0, 25, 50, 75, 100].reduce((prev, curr) =>
+    Math.abs(curr - windowDraughtPct) < Math.abs(prev - windowDraughtPct) ? curr : prev
+  );
+
+  const structuralACH = FROZEN_SAP_STRUCTURAL_INFILTRATION[structural]?.ach ?? 0.35;
+  const floorACH      = FROZEN_SAP_FLOOR_INFILTRATION[floor]?.ach ?? 0.00;
+  const windowRow     = FROZEN_SAP_WINDOW_DOOR_INFILTRATION[draughtKey] ?? FROZEN_SAP_WINDOW_DOOR_INFILTRATION[100];
+  const windowACH     = draughtLobby ? windowRow.withLobby : windowRow.withoutLobby;
+  const storeyACH     = frozenGetStoreyInfiltration(storeys);
+
+  const totalACH   = structuralACH + floorACH + windowACH + storeyACH;
+  const heightBand = frozenGetHeightBand(storeys);
+  const convFactor = FROZEN_SAP_TO_50PA_FACTOR[shielding]?.[heightBand] ?? 20;
+  return totalACH * convFactor;
+};
+
+// The q50 the app computes today for a raw design_params row. Two layers of
+// defaults, reproduced in order, because that is what the app applies:
+//   1. App.jsx loadProject() — `||` for the text fields (so '' also defaults),
+//      `??` for the numeric ones.
+//   2. resolveQ50() — `??` defaults and !!lobby (no-ops after layer 1).
+const frozenQ50ForRow = (row) => frozenEstimateQ50SAP({
+  structural:       (row.sap_structural || 'masonry')            ?? 'masonry',
+  floor:            (row.sap_floor || 'other')                   ?? 'other',
+  windowDraughtPct: (row.sap_window_draught_pct ?? 100)          ?? 100,
+  draughtLobby:     !!(row.sap_draught_lobby ?? 0),
+  storeys:          (row.building_storeys ?? 2)                  ?? 2,
+  shielding:        (row.building_shielding || 'normal')         ?? 'normal',
+});
+
+async function freezeLegacySapQ50() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Lock the rows so a save landing mid-migration cannot change the SAP
+    // inputs between reading them and writing the frozen q50.
+    const { rows } = await client.query(`
+      SELECT project_id, sap_structural, sap_floor, sap_window_draught_pct,
+             sap_draught_lobby, building_storeys, building_shielding
+        FROM design_params
+       WHERE air_permeability_method = 'estimated'
+       ORDER BY project_id
+         FOR UPDATE`);
+
+    // Compute and validate EVERY value before writing ANY.
+    const frozen = rows.map(row => ({ projectId: row.project_id, q50: frozenQ50ForRow(row) }));
+    const bad = frozen.filter(f => !Number.isFinite(f.q50) || f.q50 < 1 || f.q50 > 60);
+    if (bad.length) {
+      throw new Error(
+        `023 aborted, nothing written: ${bad.length} q50 value(s) not finite or outside 1–60: ` +
+        bad.map(f => `project ${f.projectId} = ${f.q50}`).join(', ')
+      );
+    }
+
+    // Full float precision — no rounding. updated_at deliberately untouched.
+    let updated = 0;
+    for (const { projectId, q50 } of frozen) {
+      const res = await client.query(`
+        UPDATE design_params
+           SET q50 = $1, air_permeability_method = 'legacy_sap'
+         WHERE project_id = $2 AND air_permeability_method = 'estimated'`,
+        [q50, projectId]
+      );
+      updated += res.rowCount;
+    }
+    if (updated !== frozen.length) {
+      throw new Error(`023 aborted, rolled back: computed ${frozen.length} q50 values but updated ${updated} rows`);
+    }
+
+    await client.query('COMMIT');
+
+    const counts = await client.query(`
+      SELECT air_permeability_method AS method, COUNT(*)::int AS n
+        FROM design_params GROUP BY 1 ORDER BY 1`);
+    console.log(`  023: froze ${updated} 'estimated' row(s) as 'legacy_sap'`);
+    console.log(`  023: design_params by method now: ${counts.rows.map(r => `${r.method} ${r.n}`).join(', ')}`);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Each entry is { version, description, run: async fn }.
 // New migrations go at the bottom. Migrations already recorded in
 // schema_migrations are skipped automatically.
@@ -2243,6 +2393,42 @@ const MIGRATIONS = [
   },
 
   // ---------------------------------------------------------------------------
+  // Migration 023 — B25: freeze SAP-estimated q50 (CIBSE DHDG-2026-1-COR-001)
+  //
+  // The corrigendum withdraws the SAP 10.2 air permeability estimation pathway.
+  // The freeze stores the exact q50 the app computes today, so the unchanged
+  // downstream calculation reproduces every existing result identically. This
+  // does not depend on how the two tables relate to each other. See BACKLOG.md
+  // B25.
+  //
+  // 1. Five new design_params columns for the corrected Table 2-11 lookup
+  //    (used from commit 3/4; written by designParams.update from now on).
+  // 2. Data step: every 'estimated' row gets q50 = frozenQ50ForRow(row) at
+  //    full float precision and becomes 'legacy_sap'. 'measured' rows are
+  //    never touched; rows already 'legacy_sap' are skipped, so re-running
+  //    changes nothing. updated_at is deliberately not touched.
+  //
+  // All q50 values are computed and checked (finite, 1–60 m³/(h·m²)) BEFORE
+  // anything is written; the writes happen in one transaction and roll back
+  // unless the row count matches. pg_dump production before deploying.
+  // ---------------------------------------------------------------------------
+  {
+    version: '023',
+    description: 'B25: q50 Table 2-11 selection columns; freeze SAP-estimated q50 as legacy_sap',
+    run: async () => {
+      await addColumnIfMissing('design_params', 'q50_built_form',        'TEXT');
+      await addColumnIfMissing('design_params', 'q50_age_band',          'TEXT');
+      await addColumnIfMissing('design_params', 'q50_wall_construction', 'TEXT');
+      await addColumnIfMissing('design_params', 'q50_selection_basis',   'TEXT');
+      await addColumnIfMissing('design_params', 'q50_statistic',         "TEXT NOT NULL DEFAULT 'mean'");
+
+      await freezeLegacySapQ50();
+
+      console.log('  Migration 023 complete: q50 columns added, SAP estimates frozen');
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Migration 024 — company registration number and VAT registration number
   //
   // Raised 2026-09: a customer's finance lender rejected a quote pack because
@@ -2254,9 +2440,9 @@ const MIGRATIONS = [
   // on the platform will be VAT-registered. PDF generators treat either as
   // "omit the line" rather than printing a blank field.
   //
-  // Note: version 023 is intentionally skipped here — reserved for the
-  // deferred B25 (SAP air permeability) fix (see BACKLOG.md), so that when
-  // B25 lands it doesn't collide with this migration's version number.
+  // Note: version 023 is B25 (SAP air permeability freeze, above). It was
+  // reserved while B25 was deferred and landed after this migration, so 023
+  // is applied after 024 on databases that already had 024.
   // ---------------------------------------------------------------------------
   {
     version: '024',
@@ -2266,6 +2452,45 @@ const MIGRATIONS = [
       await addColumnIfMissing('companies', 'vat_registration_number',     'TEXT');
 
       console.log('  Migration 024 complete: company registration + VAT registration numbers');
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Migration 025 — B25: default_table becomes the column default; re-freeze
+  //
+  // Deploys together with 023 (B25 commits 2 and 3). The client no longer has
+  // a SAP estimate, so 'estimated' has no calculation behind it.
+  //
+  // 1. air_permeability_method DEFAULT 'default_table' (was 'estimated').
+  //    Deliberately not in 023. designParams.createForProject also sets it
+  //    explicitly, so this is the backstop for any other INSERT.
+  // 2. freezeLegacySapQ50() again, unchanged: any 'estimated' row that appeared
+  //    after 023 ran (a stale tab, a late create) is frozen exactly as 023 did.
+  //    Its log lines say "023:" because it is the same function.
+  // 3. Abort unless zero 'estimated' rows remain.
+  //
+  // Idempotent: SET DEFAULT is repeatable and the freeze touches only
+  // 'estimated' rows, of which there are none after the first run.
+  // ---------------------------------------------------------------------------
+  {
+    version: '025',
+    description: "B25: air_permeability_method defaults to 'default_table'; re-freeze late 'estimated' rows",
+    run: async () => {
+      await query(`ALTER TABLE design_params ALTER COLUMN air_permeability_method SET DEFAULT 'default_table'`);
+      console.log(`  025: design_params.air_permeability_method DEFAULT 'default_table'`);
+
+      console.log(`  025: re-running the 023 freeze for 'estimated' rows created since 023`);
+      await freezeLegacySapQ50();
+
+      const { rows } = await query(
+        `SELECT COUNT(*)::int AS n FROM design_params WHERE air_permeability_method = 'estimated'`
+      );
+      if (rows[0].n !== 0) {
+        throw new Error(`025 aborted: ${rows[0].n} 'estimated' row(s) remain after the freeze`);
+      }
+      console.log(`  025: 0 'estimated' rows remain`);
+
+      console.log('  Migration 025 complete: default_table default, late estimates frozen');
     },
   },
 ];

@@ -73,6 +73,13 @@ export const buildDesignParamsPayload = (proj, overrides = {}) => ({
   ventilationMethod:      proj.ventilationMethod,
   airPermeabilityMethod:  proj.airPermeabilityMethod,
   q50:                    proj.q50,
+  // B25 — Table 2-11 selection (migration 023). No fallbacks: undefined is
+  // sent as null and the server keeps the stored value (COALESCE).
+  q50BuiltForm:           proj.q50BuiltForm,
+  q50AgeBand:             proj.q50AgeBand,
+  q50WallConstruction:    proj.q50WallConstruction,
+  q50SelectionBasis:      proj.q50SelectionBasis,
+  q50Statistic:           proj.q50Statistic,
   sapStructural:          proj.sapStructural,
   sapFloor:               proj.sapFloor,
   sapWindowDraughtPct:    proj.sapWindowDraughtPct,

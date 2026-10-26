@@ -9,13 +9,8 @@
 // Field names are camelCase throughout, matching App.jsx loadProject() mapping.
 
 import { useState, useEffect } from 'react';
-import { estimateQ50SAP } from '../../utils/en12831Calculations';
-import {
-  SAP_STRUCTURAL_INFILTRATION,
-  SAP_FLOOR_INFILTRATION,
-  SAP_WINDOW_DOOR_INFILTRATION,
-  BUILDING_SHIELDING_OPTIONS,
-} from '../../utils/en12831VentilationData';
+import { BUILDING_SHIELDING_OPTIONS } from '../../utils/en12831VentilationData';
+import AirPermeabilitySettings from './AirPermeabilitySettings';
 
 const inputClass  = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
@@ -28,7 +23,7 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
-export default function VentilationSettings({ project, onUpdate, onUpdateBatch, onApplyMVHR, onClearMVHR }) {
+export default function VentilationSettings({ project, onUpdate, onUpdateBatch, onSaveDesignParams, onApplyMVHR, onClearMVHR }) {
   const [showMethodInfo, setShowMethodInfo] = useState(false);
 
   // Local state for the whole-house MVHR inputs so they don't round-trip
@@ -62,32 +57,6 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   const handleClear = async () => {
     if (!window.confirm('Remove whole-house MVHR from all rooms? This resets continuous ventilation to "None" for every room.')) return;
     await onClearMVHR();
-  };
-
-  const isMeasured = project.airPermeabilityMethod === 'measured';
-
-  // Live q50 recalculates from current project fields on every render
-  const effectiveQ50 = isMeasured
-    ? (project.q50 ?? 12.0)
-    : estimateQ50SAP({
-        structural:       project.sapStructural       ?? 'masonry',
-        floor:            project.sapFloor            ?? 'other',
-        windowDraughtPct: project.sapWindowDraughtPct ?? 100,
-        draughtLobby:     !!project.sapDraughtLobby,
-        storeys:          project.buildingStoreys     ?? 2,
-        shielding:        project.buildingShielding   ?? 'normal',
-      }).q50;
-
-  // When switching to measured, seed q50 with the current estimated value
-  const handleMethodToggle = (method) => {
-    if (method === 'measured') {
-      onUpdateBatch({
-        airPermeabilityMethod: 'measured',
-        q50: parseFloat(effectiveQ50.toFixed(1)),
-      });
-    } else {
-      onUpdate('airPermeabilityMethod', 'estimated');
-    }
   };
 
   return (
@@ -138,152 +107,14 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
       )}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Air permeability method                                             */}
+      {/* Air permeability (B25 commit 4 — see AirPermeabilitySettings.jsx)    */}
       {/* ------------------------------------------------------------------ */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 border-b border-gray-200 pb-1 mb-3">
-          Air Permeability
-        </h3>
-
-        {/* Method toggle */}
-        <div className="flex rounded-lg border border-gray-300 overflow-hidden mb-4 text-sm">
-          {[
-            { value: 'estimated', label: 'SAP Estimate',      sub: 'No test available' },
-            { value: 'measured',  label: 'Measured / Tested', sub: 'Blower door or pulse test' },
-          ].map(({ value, label, sub }) => (
-            <button
-              key={value}
-              onClick={() => handleMethodToggle(value)}
-              className={`flex-1 py-2 px-3 text-left transition ${
-                project.airPermeabilityMethod === value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <span className="font-semibold block">{label}</span>
-              <span className={`text-xs ${project.airPermeabilityMethod === value ? 'text-blue-100' : 'text-gray-500'}`}>
-                {sub}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {isMeasured ? (
-          /* Measured q50 */
-          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-            <Field
-              label="Air permeability q₅₀"
-              hint="From blower door or pulse test report, m³/(h·m²) at 50 Pa. Post-2006 homes: check EPC for result."
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.5"
-                  max="50"
-                  value={project.q50 ?? 12}
-                  onChange={e => onUpdate('q50', parseFloat(e.target.value) || 12)}
-                  className={inputClass + ' flex-1'}
-                />
-                <span className="text-sm text-gray-600 whitespace-nowrap">m³/(h·m²)</span>
-              </div>
-            </Field>
-            <p className="text-xs text-gray-500">
-              If vents or fans were sealed during the test, background ventilation
-              additions are still made at room level.
-            </p>
-          </div>
-        ) : (
-          /* SAP estimation inputs */
-          <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-            <p className="text-xs text-gray-600">
-              Air permeability estimated from the SAP 10.2 component method
-              (CIBSE DHDG 2026 Tables 2-11 to 2-15). Summed ACH additions are
-              converted to q₅₀ using the shielding and height factors below.
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-
-              <Field label="Primary construction" hint="Dominant wall construction type">
-                <select
-                  value={project.sapStructural ?? 'masonry'}
-                  onChange={e => onUpdate('sapStructural', e.target.value)}
-                  className={selectClass}
-                >
-                  {Object.entries(SAP_STRUCTURAL_INFILTRATION).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label} ({v.ach} ACH)</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Ground floor type" hint="Unsealed suspended timber floors add significant infiltration">
-                <select
-                  value={project.sapFloor ?? 'other'}
-                  onChange={e => onUpdate('sapFloor', e.target.value)}
-                  className={selectClass}
-                >
-                  {Object.entries(SAP_FLOOR_INFILTRATION).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label} ({v.ach} ACH)</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field
-                label="Windows & doors draught-proofed"
-                hint="Draught-proofed = installed within 10 years by FENSA-approved installer"
-              >
-                <select
-                  value={project.sapWindowDraughtPct ?? 100}
-                  onChange={e => onUpdate('sapWindowDraughtPct', parseInt(e.target.value))}
-                  className={selectClass}
-                >
-                  {Object.keys(SAP_WINDOW_DOOR_INFILTRATION).map(pct => (
-                    <option key={pct} value={pct}>{pct}%</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field
-                label="Draught lobby at main entrance?"
-                hint="Enclosed space ≥ 2 m² with two doors forming an airlock"
-              >
-                <select
-                  value={project.sapDraughtLobby ? 'yes' : 'no'}
-                  onChange={e => onUpdate('sapDraughtLobby', e.target.value === 'yes' ? 1 : 0)}
-                  className={selectClass}
-                >
-                  <option value="no">No draught lobby</option>
-                  <option value="yes">Draught lobby present</option>
-                </select>
-              </Field>
-
-            </div>
-          </div>
-        )}
-
-        {/* Effective q50 — always visible */}
-        <div className="mt-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
-          <div>
-            <span className="text-sm font-semibold text-gray-700">Effective q₅₀</span>
-            <span className="text-xs text-gray-500 ml-2">
-              {isMeasured ? 'from test — used directly in calculation' : 'SAP estimate — intermediate value, see note below'}
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-xl font-bold text-blue-600">{effectiveQ50.toFixed(1)}</span>
-            <span className="text-sm text-gray-500 ml-1">m³/(h·m²)</span>
-          </div>
-        </div>
-        {!isMeasured && (
-          <p className="text-xs text-gray-500 mt-1">
-            Note: when using the SAP estimate, shielding affects q₅₀ and the 50 Pa→typical conversion in opposite directions — they largely cancel for 1–2 storey buildings. The q₅₀ figure above will vary with shielding choice but room ventilation heat loss will be very similar. If you switch to a measured q₅₀ from a blower door test, shielding then only affects the 50 Pa→typical conversion and has its expected effect.
-          </p>
-        )}
-        {isMeasured && effectiveQ50 > 15 && (
-          <p className="text-xs text-amber-600 mt-1">
-            ⚠ Measured q₅₀ above 15 — unusually high for a modern building. Double-check the test report units (should be m³/(h·m²) at 50 Pa, not ACH).
-          </p>
-        )}
-      </div>
+      <AirPermeabilitySettings
+        project={project}
+        onUpdate={onUpdate}
+        onUpdateBatch={onUpdateBatch}
+        onSaveDesignParams={onSaveDesignParams}
+      />
 
       {/* ------------------------------------------------------------------ */}
       {/* Building characteristics                                            */}
@@ -296,7 +127,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Building shielding"
-            hint="Affects both the ACH→q₅₀ conversion (Table 2-15) and the q₅₀→typical leakage conversion (Table 2-17). The two effects largely cancel for 1–2 storey buildings, so the displayed q₅₀ will vary with shielding but room heat loss will be similar. Shielding has more impact on taller buildings."
+            hint="Affects the conversion from air permeability at 50 Pa to typical leakage (Table 2-13). Changing shielding or the number of storeys changes room ventilation heat loss."
           >
             <select
               value={project.buildingShielding ?? 'normal'}
@@ -311,7 +142,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
 
           <Field
             label="Number of storeys"
-            hint="Used for height band in Table 2-15 / 2-17 and SAP storey addition"
+            hint="Used for the height band in Table 2-13."
           >
             <input
               type="number"
