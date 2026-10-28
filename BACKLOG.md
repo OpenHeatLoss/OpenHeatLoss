@@ -1,6 +1,6 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR efficiency opened, follow-ups from B25 and the pipe library fix, smoke test anchors updated)
+Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR efficiency opened, follow-ups from B25 and the pipe library fix, smoke test anchors updated, session log for 2026-10)
 
 ---
 
@@ -20,10 +20,12 @@ Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR eff
   - A data fix for the 3 rooms, rehearsed on a production restore first
     (see "DB snapshots before migrations" in Priority 3).
   - A decision on whether and how to tell the two project owners.
-  - A check whether design_params.mvhr_efficiency is still INTEGER (a 0.85
-    would not fit, which may be how percentages got in).
+  - Checked: migration 017 changed design_params.mvhr_efficiency to DOUBLE
+    PRECISION, so the column type is not the cause; the percentages got in
+    through input with no range check. Confirm which table holds the three
+    bad values (rooms or design_params) before designing the data fix.
 
-### Closed (this session)
+### Closed (June 2026 security session)
 - B22 — Unauthenticated access to project data via GET /api/projects/:id —
   resolved. An anonymous session (anon_token cookie present, no auth_token)
   could fetch any registered project by guessing its ID. Fixed in
@@ -104,6 +106,22 @@ Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR eff
   project), new Table 2-11 default lookup, and an opt-in update flow that
   shows the consequences before the engineer commits. Details in the Project
   handover note claude/handover_b25_air_permeability_2026-10-26.md.
+  Source for Table 2-11: DESNZ Research Paper Number 2025/002, "Baseline
+  airtightness of the GB housing stock: Gathering evidence to improve
+  airtightness in the UK housing stock" (Roberts et al.), September 2025.
+  https://www.gov.uk/government/publications/gathering-evidence-to-improve-airtightness-in-the-uk-housing-stock
+  Why it was not caught: 0.50 ACH x 20 = 10.0 m3/(h.m2) sat plausibly next to
+  the true GB mean of 8.6, so every magnitude check passed; only a dimensional
+  check would have caught it. The cancellation was documented in the UI help
+  text as a property of the method, not recognised as an error. Signal class:
+  "this reference data behaves oddly but consistently" can be about the
+  reference, not our understanding of it.
+  BUG CLASS: plausible output accepted as validation. For any new
+  reference-data pathway, check units end to end, not just that the answer
+  looks sensible (see DEVELOPMENT_PRINCIPLES.md section 11, item 6).
+  The original design section (about 300 lines) was removed from this file on
+  2026-10-28; it remains in git history before the docs-b25-wrapup merge and
+  in the Project doc b25_design_archive.md.
 
 ---
 
@@ -128,9 +146,10 @@ it happened. The proper fix is the single save path with a saved snapshot
 (Priority 3, "Single design_params save path with a saved snapshot"); until
 then, audit the reload calls and save or warn first.
 
-**Track DEVELOPMENT_PRINCIPLES.md in git**
-The file is listed in .gitignore, so it has no history and is not in the
-repo. Remove it from .gitignore and commit it.
+**SMOKE_TEST.md and DEVELOPMENT_PRINCIPLES.md stay out of git (decision)**
+Both stay in .gitignore because the repo is public: SMOKE_TEST.md section 11
+documents an open access gap, and DEVELOPMENT_PRINCIPLES.md has personal
+notes. Copies live in the Claude Project.
 
 **Drop the 2026-10-23 remap backup tables (around 2026-10-31)**
 remap_backup_20261023_sections and remap_backup_20261023_fittings were kept
@@ -564,6 +583,10 @@ rehearsal):
     -f backup_$(date +%Y%m%d_%H%M%S).dump
 Beekeeper Studio is installed for GUI DB management; it needs the same
 temporary proxy.
+Before starting, check Railway's status page for open deployment incidents.
+Dumps contain customer data: never upload them to any cloud service, and
+delete them and any scratch databases after a few days. See
+DEVELOPMENT_PRINCIPLES.md sections 9 and 11.
 
 **API client does not check HTTP status**
 Most calls in api.js do fetch().then(r => r.json()) without checking
@@ -660,6 +683,7 @@ customer project share feature.
 **SMOKE_TEST.md** — created June 2026. Lives in project root. Run after every
 meaningful deploy. Anchored to a 15-room reference project with known outputs
 (as in SMOKE_TEST.md, last verified 2026-10-26):
+- Effective q50: 16.6 m3/h.m2
 - Generator heat loss: 5.32 kW
 - Emitter heat load: 7.13 kW
 - Index circuit: 24.32 kPa, 0.335 l/s
@@ -790,7 +814,7 @@ form (added May 2026) provides the right escape hatch — saves to library with
 a name, keeping every value traceable.
 
 **Reference constants in JS files, not database**
-Standards reference data (SAP infiltration tables, 50 Pa conversion factors,
+Standards reference data (Table 2-11 default air permeability values, 50 Pa conversion factors,
 regional reference temperatures, ELEMENT_TYPES etc.) is kept in utils/*.js
 rather than the DB because: (1) it's tightly coupled to calculation logic —
 changes should be atomic with the code that uses them; (2) Vite bundles it
@@ -904,6 +928,19 @@ Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-10 — Railway incident, pipe library fix, B25 deployed
+
+- Railway environment-variable disclosure, 2026-10-23: public TCP proxy
+  deleted, Postgres password and app secrets rotated. See SECURITY.md.
+- Pipe library fix for Free and anonymous users, and the company remap. See
+  handover_pipe_library_fix_2026-09-30.md.
+- Email and APP_URL fixes (password-reset emails and link).
+- B25 deployed 2026-10-26 via migrations 023/025: 178 projects on
+  legacy_sap, 10 measured, none estimated.
+- New working rules for Claude Code (scratch DB only, branch only, ask-first
+  permission mode), now in DEVELOPMENT_PRINCIPLES.md sections 10 and 11.
+- B26 opened (MVHR efficiency stored as a percentage).
 
 ### 2026-07 — Quote & contract pack generation shipped
 
