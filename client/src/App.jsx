@@ -952,15 +952,18 @@ const deleteProject = async (id) => {
     }
   };
 
+  // Returns { ok: true } or { ok: false, error } on every path. Most callers
+  // ignore the result; VentilationEditor uses it to tell the engineer a value
+  // wasn't saved.
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
-    if (!room) return;
+    if (!room) return { ok: false, error: 'Room not found.' };
 
     // Block efficiency override at room level when whole-house MVHR is active —
     // efficiency is governed by the central unit and must be changed in Ventilation Settings.
     if (field === 'mvhrEfficiency' && currentProject.ventilationSystemType === 'mvhr') {
       console.warn('mvhrEfficiency is controlled by whole-house MVHR — change in Ventilation Settings');
-      return;
+      return { ok: false, error: 'Efficiency is set in Ventilation Settings while whole-house MVHR is active.' };
     }
 
     let updates = { [field]: value };
@@ -970,12 +973,28 @@ const deleteProject = async (id) => {
     // roomHeight are no longer used for geometry — those fields are kept in the DB
     // for backward compat but not recalculated here.
 
+    let response;
     try {
-      await api.updateRoom(roomId, buildRoomPayload(room, updates));
-      await loadProject(currentProject.id, true);
+      response = await api.updateRoom(roomId, buildRoomPayload(room, updates));
     } catch (error) {
       console.error('Error updating room:', error);
+      return { ok: false, error: 'Could not save. Check your connection and try again.' };
     }
+
+    // Reload after any server response, success or failure, so the screen
+    // shows what the database actually holds.
+    try {
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error reloading project after room update:', error);
+    }
+
+    // api.js resolves (not rejects) on HTTP errors, with { error } in the body.
+    if (response && typeof response === 'object' && 'error' in response) {
+      console.error('Error updating room:', response.error);
+      return { ok: false, error: String(response.error) };
+    }
+    return { ok: true };
   };
 
   const deleteRoom = async (roomId) => {

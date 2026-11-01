@@ -12,9 +12,20 @@
 //     - Checkboxes, dropdowns, +/- buttons: immediately but via local state first,
 //       so the UI responds instantly and the server catches up in the background
 
+//
+// MVHR efficiency (B26) is the exception: the engineer types a percentage,
+// local.mvhrEfficiency holds the last valid FRACTION (used by roomForCalc),
+// and all conversion goes through utils/mvhrEfficiency. Invalid text stays a
+// draft in the input and is never saved.
+
 import { useState, useEffect } from 'react';
 import { calculateRoomVentilationEN12831 } from '../../utils/en12831Calculations';
 import { CONTINUOUS_VENT_TYPES } from '../../utils/en12831VentilationData';
+import {
+  parseEfficiencyPercentInput,
+  fractionToPercentText,
+  shouldSaveEfficiency,
+} from '../../utils/mvhrEfficiency';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +82,59 @@ export default function VentilationEditor({ room, project, onUpdate }) {
       mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
     });
   }, [room.id, room.exposedEnvelopeM2]); // re-sync on room switch or external envelope update
+
+  // MVHR efficiency: the input holds percentage TEXT, separate from the stored
+  // fraction, so an invalid draft can stay in the field without being saved.
+  // The error belongs to the unsaved draft, so it lives in state.
+  const [effText,  setEffText]  = useState(() => fractionToPercentText(room.mvhrEfficiency ?? 0));
+  const [effError, setEffError] = useState(null);
+
+  // The warning belongs to the STORED value, so it is derived at render: a
+  // stored unusual value warns as soon as the room is opened, a successful
+  // save updates it through the reload, and an invalid draft shows only its error.
+  const effWarning = effError
+    ? null
+    : parseEfficiencyPercentInput(fractionToPercentText(room.mvhrEfficiency ?? 0)).warning ?? null;
+
+  // Re-sync efficiency when the room or its stored value changes from outside
+  // (room switch, reload after save, whole-house settings write).
+  useEffect(() => {
+    const stored = room.mvhrEfficiency ?? 0;
+    setEffText(fractionToPercentText(stored));
+    setLocal(prev => ({ ...prev, mvhrEfficiency: stored }));
+    setEffError(null);
+  }, [room.id, room.mvhrEfficiency]);
+
+  const handleEfficiencyBlur = async () => {
+    const stored = room.mvhrEfficiency ?? 0;
+
+    // Unchanged from what was displayed: don't save (a stored 0.8333 would
+    // otherwise be rewritten as 0.833). Clear any error left from an earlier
+    // invalid draft, since the field now shows the stored value again.
+    if (!shouldSaveEfficiency(effText, stored)) {
+      setEffError(null);
+      return;
+    }
+
+    const parsed = parseEfficiencyPercentInput(effText);
+    if (!parsed.ok) {
+      // Keep the text so the engineer can fix it; nothing is saved.
+      setEffError(parsed.error);
+      return;
+    }
+
+    setEffError(null);
+    setLocal(prev => ({ ...prev, mvhrEfficiency: parsed.fraction }));
+
+    const result = await onUpdate('mvhrEfficiency', parsed.fraction);
+
+    // Anything other than an explicit success is a failure.
+    if (result?.ok !== true) {
+      setEffError('Not saved: ' + (result?.error ?? 'the save did not report success.'));
+      setEffText(fractionToPercentText(stored));
+      setLocal(prev => ({ ...prev, mvhrEfficiency: stored }));
+    }
+  };
 
   // Update local state immediately, then persist to server
   const handleDiscreteChange = (field, value) => {
@@ -324,29 +388,38 @@ export default function VentilationEditor({ room, project, onUpdate }) {
                     {local.continuousVentType === 'mvhr' && (
                       <Field
                         label="Heat recovery efficiency"
-                        hint={isWhMVHR ? 'Set in Ventilation Settings — not editable per room' : 'From manufacturer data — typically 0.75–0.90'}
+                        hint={isWhMVHR ? 'Set in Ventilation Settings — not editable per room' : 'From manufacturer data — typically 75–90 %'}
                       >
                         {isWhMVHR ? (
                           <div className="flex items-center gap-2">
                             <div className={inputClass + ' flex-1 bg-gray-50 text-gray-500 cursor-not-allowed'}>
-                              {local.mvhrEfficiency}
+                              {fractionToPercentText(local.mvhrEfficiency)}
                             </div>
-                            <span className="text-sm text-gray-500">fraction</span>
+                            <span className="text-sm text-gray-500">%</span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="0.95"
-                              value={local.mvhrEfficiency}
-                              onChange={e => handleNumberChange('mvhrEfficiency', e.target.value)}
-                              onBlur={() => handleNumberBlur('mvhrEfficiency')}
-                              className={inputClass + ' flex-1'}
-                            />
-                            <span className="text-sm text-gray-500">fraction</span>
-                          </div>
+                          <>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                value={effText}
+                                onChange={e => setEffText(e.target.value)}
+                                onBlur={handleEfficiencyBlur}
+                                aria-invalid={effError ? true : undefined}
+                                className={inputClass + ' flex-1' + (effError ? ' border-red-500' : '')}
+                              />
+                              <span className="text-sm text-gray-500">%</span>
+                            </div>
+                            {effError && (
+                              <p className="text-xs text-red-600 mt-1">{effError}</p>
+                            )}
+                            {effWarning && (
+                              <p className="text-xs text-amber-600 mt-1">⚠ {effWarning}</p>
+                            )}
+                          </>
                         )}
                       </Field>
                     )}
