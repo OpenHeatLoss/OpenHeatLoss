@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react';
 import { BUILDING_SHIELDING_OPTIONS } from '../../utils/en12831VentilationData';
 import AirPermeabilitySettings from './AirPermeabilitySettings';
+import { parseEfficiencyPercentInput, fractionToPercentText } from '../../utils/mvhrEfficiency';
 
 const inputClass  = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
@@ -29,34 +30,81 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   // Local state for the whole-house MVHR inputs so they don't round-trip
   // through the server on every keystroke. Applied only when the engineer
   // clicks "Apply to all rooms".
+  // mvhrEff is the efficiency input TEXT (a percentage); the stored value is a
+  // fraction, and utils/mvhrEfficiency does all conversion.
   const isWHMVHR = project.ventilationSystemType === 'mvhr';
   const [mvhrRate, setMvhrRate]       = useState(project.mvhrWholeHouseRate ?? 0);
-  const [mvhrEff,  setMvhrEff]        = useState(project.mvhrEfficiency ?? 0);
+  const [mvhrEff,  setMvhrEff]        = useState(() => fractionToPercentText(project.mvhrEfficiency ?? 0));
   const [applying, setApplying]       = useState(false);
-  const [applied,  setApplied]        = useState(false);
+  // Outcome of the last apply / re-apply / remove: null | { ok, text }.
+  // Shown below both panels, since a successful apply or remove switches panel.
+  const [status,   setStatus]         = useState(null);
 
   // Sync local MVHR inputs when project reloads (e.g. after apply or on tab switch).
   // Same pattern as DeltaTInput — useState initialisers only run on first mount.
   useEffect(() => {
     setMvhrRate(project.mvhrWholeHouseRate ?? 0);
-    setMvhrEff(project.mvhrEfficiency ?? 0);
+    setMvhrEff(fractionToPercentText(project.mvhrEfficiency ?? 0));
   }, [project.mvhrWholeHouseRate, project.mvhrEfficiency]);
+
+  // Parsed live, so the error or warning shows while typing and Apply is
+  // disabled until the value is valid.
+  const effParse = parseEfficiencyPercentInput(mvhrEff);
+
+  const effMessage = effParse.ok
+    ? (effParse.warning && <p className="text-xs text-amber-600 mt-1">⚠ {effParse.warning}</p>)
+    : <p className="text-xs text-red-600 mt-1">{effParse.error}</p>;
+
+  const showSuccess = (text) => {
+    const shown = { ok: true, text };
+    setStatus(shown);
+    setTimeout(() => setStatus(cur => (cur === shown ? null : cur)), 3000);
+  };
+
+  // Anything other than an explicit success is reported as a failure.
+  const failureText = (result, verb, advice) => {
+    if (result?.error) return `Not ${verb}: ${result.error}`;
+    const n = result?.failedRooms ?? 0;
+    return `Not fully ${verb}: ${n} room(s) and/or the project setting could not be saved. ${advice}`;
+  };
 
   const handleApply = async () => {
     const rate = parseFloat(mvhrRate) || 0;
-    const eff  = parseFloat(mvhrEff)  || 0;
-    if (rate <= 0) return;
+    if (rate <= 0 || !effParse.ok) return;   // a blank or invalid efficiency is never sent
+    const wasActive = isWHMVHR;
     setApplying(true);
-    setApplied(false);
-    await onApplyMVHR(rate, eff);
-    setApplying(false);
-    setApplied(true);
-    setTimeout(() => setApplied(false), 3000);
+    setStatus(null);
+    let result;
+    try {
+      result = await onApplyMVHR(rate, effParse.fraction);
+    } catch (error) {
+      console.error('Apply whole-house MVHR failed:', error);
+      result = { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+    } finally {
+      setApplying(false);
+    }
+    if (result?.ok === true) {
+      showSuccess(wasActive ? '✓ Rates redistributed to all rooms' : '✓ Whole-house MVHR applied to all rooms');
+    } else {
+      setStatus({ ok: false, text: failureText(result, 'applied', 'Check the values and try again.') });
+    }
   };
 
   const handleClear = async () => {
     if (!window.confirm('Remove whole-house MVHR from all rooms? This resets continuous ventilation to "None" for every room.')) return;
-    await onClearMVHR();
+    setStatus(null);
+    let result;
+    try {
+      result = await onClearMVHR();
+    } catch (error) {
+      console.error('Remove whole-house MVHR failed:', error);
+      result = { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+    }
+    if (result?.ok === true) {
+      showSuccess('✓ Whole-house MVHR removed from all rooms');
+    } else {
+      setStatus({ ok: false, text: failureText(result, 'removed', 'Try again.') });
+    }
   };
 
   return (
@@ -204,32 +252,29 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
               </Field>
               <Field
                 label="Heat recovery efficiency"
-                hint="Manufacturer's stated thermal efficiency — typically 0.75–0.90"
+                hint="Manufacturer's stated thermal efficiency — typically 75–90 %"
               >
                 <div className="flex items-center gap-2">
                   <input
-                    type="number" step="0.01" min="0" max="0.95"
+                    type="number" step="0.1" min="0" max="100"
                     value={mvhrEff}
                     onChange={e => setMvhrEff(e.target.value)}
-                    className={inputClass + ' flex-1'}
-                    placeholder="e.g. 0.82"
+                    aria-invalid={effParse.ok ? undefined : true}
+                    className={inputClass + ' flex-1' + (effParse.ok ? '' : ' border-red-500')}
+                    placeholder="e.g. 82"
                   />
-                  <span className="text-sm text-gray-500 whitespace-nowrap">fraction</span>
+                  <span className="text-sm text-gray-500 whitespace-nowrap">%</span>
                 </div>
+                {effMessage}
               </Field>
             </div>
             <button
               onClick={handleApply}
-              disabled={applying || !mvhrRate || parseFloat(mvhrRate) <= 0}
+              disabled={applying || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
               className="w-full py-2 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {applying ? 'Applying…' : 'Apply to all rooms'}
             </button>
-            {applied && (
-              <p className="text-xs text-green-700 font-medium text-center">
-                ✓ Whole-house MVHR applied to all rooms
-              </p>
-            )}
           </div>
         ) : (
           <div className="border border-green-200 bg-green-50 rounded-lg p-4 space-y-3">
@@ -240,7 +285,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
                 </p>
                 <p className="text-xs text-green-700 mt-0.5">
                   {project.mvhrWholeHouseRate ?? '—'} m³/h total · {
-                    project.mvhrEfficiency ? `${(project.mvhrEfficiency * 100).toFixed(0)}% efficiency` : '—'
+                    project.mvhrEfficiency != null ? `${fractionToPercentText(project.mvhrEfficiency)}% efficiency` : '—'
                   } · distributed to rooms by volume
                 </p>
               </div>
@@ -262,23 +307,26 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
               </Field>
               <Field
                 label="Update efficiency"
-                hint="Change and re-apply"
+                hint="Manufacturer's stated thermal efficiency — typically 75–90 %"
               >
                 <div className="flex items-center gap-2">
                   <input
-                    type="number" step="0.01" min="0" max="0.95"
+                    type="number" step="0.1" min="0" max="100"
                     value={mvhrEff}
                     onChange={e => setMvhrEff(e.target.value)}
-                    className={inputClass + ' flex-1'}
+                    aria-invalid={effParse.ok ? undefined : true}
+                    className={inputClass + ' flex-1' + (effParse.ok ? '' : ' border-red-500')}
+                    placeholder="e.g. 82"
                   />
-                  <span className="text-sm text-gray-500 whitespace-nowrap">fraction</span>
+                  <span className="text-sm text-gray-500 whitespace-nowrap">%</span>
                 </div>
+                {effMessage}
               </Field>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={handleApply}
-                disabled={applying}
+                disabled={applying || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
                 className="flex-1 py-2 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
               >
                 {applying ? 'Re-applying…' : 'Re-apply to all rooms'}
@@ -290,12 +338,16 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
                 Remove
               </button>
             </div>
-            {applied && (
-              <p className="text-xs text-green-700 font-medium text-center">
-                ✓ Rates redistributed to all rooms
-              </p>
-            )}
           </div>
+        )}
+
+        {status && (
+          <p
+            role={status.ok ? 'status' : 'alert'}
+            className={'mt-2 text-xs font-medium text-center ' + (status.ok ? 'text-green-700' : 'text-red-600')}
+          >
+            {status.text}
+          </p>
         )}
       </div>
 
