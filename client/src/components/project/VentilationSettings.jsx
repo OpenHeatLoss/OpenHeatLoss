@@ -32,20 +32,32 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   // clicks "Apply to all rooms".
   // mvhrEff is the efficiency input TEXT (a percentage); the stored value is a
   // fraction, and utils/mvhrEfficiency does all conversion.
+  //
+  // When whole-house MVHR is NOT active the inputs start blank (initially and
+  // on every re-sync, including straight after Remove), so the placeholders
+  // show and the blank-field error keeps Apply disabled until the engineer
+  // types a value. Typing 0 deliberately is still accepted. When it IS active
+  // they show the stored values.
   const isWHMVHR = project.ventilationSystemType === 'mvhr';
-  const [mvhrRate, setMvhrRate]       = useState(project.mvhrWholeHouseRate ?? 0);
-  const [mvhrEff,  setMvhrEff]        = useState(() => fractionToPercentText(project.mvhrEfficiency ?? 0));
+  const storedRateText = () => (isWHMVHR ? (project.mvhrWholeHouseRate ?? 0) : '');
+  const storedEffText  = () => (isWHMVHR ? fractionToPercentText(project.mvhrEfficiency ?? 0) : '');
+
+  const [mvhrRate, setMvhrRate]       = useState(storedRateText);
+  const [mvhrEff,  setMvhrEff]        = useState(storedEffText);
   const [applying, setApplying]       = useState(false);
+  const [removing, setRemoving]       = useState(false);
+  const busy = applying || removing;   // Apply/Re-apply and Remove are disabled while either runs
   // Outcome of the last apply / re-apply / remove: null | { ok, text }.
   // Shown below both panels, since a successful apply or remove switches panel.
   const [status,   setStatus]         = useState(null);
 
-  // Sync local MVHR inputs when project reloads (e.g. after apply or on tab switch).
+  // Sync local MVHR inputs when project reloads (e.g. after apply or on tab switch)
+  // or whole-house MVHR is switched on or off.
   // Same pattern as DeltaTInput — useState initialisers only run on first mount.
   useEffect(() => {
-    setMvhrRate(project.mvhrWholeHouseRate ?? 0);
-    setMvhrEff(fractionToPercentText(project.mvhrEfficiency ?? 0));
-  }, [project.mvhrWholeHouseRate, project.mvhrEfficiency]);
+    setMvhrRate(storedRateText());
+    setMvhrEff(storedEffText());
+  }, [isWHMVHR, project.mvhrWholeHouseRate, project.mvhrEfficiency]);
 
   // Parsed live, so the error or warning shows while typing and Apply is
   // disabled until the value is valid.
@@ -61,14 +73,19 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
     setTimeout(() => setStatus(cur => (cur === shown ? null : cur)), 3000);
   };
 
-  // Anything other than an explicit success is reported as a failure.
+  // Anything other than an explicit success is reported as a failure, naming
+  // what failed: "3 of 8 rooms", "the project setting", or both.
   const failureText = (result, verb, advice) => {
     if (result?.error) return `Not ${verb}: ${result.error}`;
-    const n = result?.failedRooms ?? 0;
-    return `Not fully ${verb}: ${n} room(s) and/or the project setting could not be saved. ${advice}`;
+    const parts = [];
+    if (result?.failedRooms > 0)     parts.push(`${result.failedRooms} of ${result.totalRooms} rooms`);
+    if (result?.designParamsFailed)  parts.push('the project setting');
+    if (parts.length === 0) return `Not ${verb}: the save did not report success. ${advice}`;
+    return `Not fully ${verb}: ${parts.join(' and ')} could not be saved. ${advice}`;
   };
 
   const handleApply = async () => {
+    if (busy) return;
     const rate = parseFloat(mvhrRate) || 0;
     if (rate <= 0 || !effParse.ok) return;   // a blank or invalid efficiency is never sent
     const wasActive = isWHMVHR;
@@ -91,7 +108,9 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   };
 
   const handleClear = async () => {
+    if (busy) return;
     if (!window.confirm('Remove whole-house MVHR from all rooms? This resets continuous ventilation to "None" for every room.')) return;
+    setRemoving(true);
     setStatus(null);
     let result;
     try {
@@ -99,6 +118,8 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
     } catch (error) {
       console.error('Remove whole-house MVHR failed:', error);
       result = { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+    } finally {
+      setRemoving(false);
     }
     if (result?.ok === true) {
       showSuccess('✓ Whole-house MVHR removed from all rooms');
@@ -270,7 +291,7 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
             </div>
             <button
               onClick={handleApply}
-              disabled={applying || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
+              disabled={busy || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
               className="w-full py-2 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {applying ? 'Applying…' : 'Apply to all rooms'}
@@ -326,19 +347,29 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
             <div className="flex gap-2">
               <button
                 onClick={handleApply}
-                disabled={applying || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
+                disabled={busy || !mvhrRate || parseFloat(mvhrRate) <= 0 || !effParse.ok}
                 className="flex-1 py-2 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
               >
                 {applying ? 'Re-applying…' : 'Re-apply to all rooms'}
               </button>
               <button
                 onClick={handleClear}
-                className="py-2 px-4 bg-white border border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 transition"
+                disabled={busy}
+                className="py-2 px-4 bg-white border border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
-                Remove
+                {removing ? 'Removing…' : 'Remove'}
               </button>
             </div>
           </div>
+        )}
+
+        {/* clearWholeHouseMVHR flips the project to 'natural' before saving, so
+            the panel switches straight away and the Remove button (with its
+            "Removing…" label) is gone; this line keeps the progress visible. */}
+        {removing && (
+          <p role="status" className="mt-2 text-xs font-medium text-center text-gray-600">
+            Removing whole-house MVHR…
+          </p>
         )}
 
         {status && (

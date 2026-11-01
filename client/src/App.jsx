@@ -687,7 +687,7 @@ const deleteProject = async (id) => {
   // Whole-house MVHR — distribute system rate to all rooms by volume
   // ---------------------------------------------------------------------------
 
-  // Whole-house MVHR apply/clear both return { ok, failedRooms, designParamsFailed },
+  // Whole-house MVHR apply/clear both return { ok, failedRooms, totalRooms, designParamsFailed },
   // or { ok: false, error } when nothing was attempted. api.js resolves (not
   // rejects) on HTTP errors with { error } in the body, so each response is
   // checked; a rejection counts as a failure too. No rollback: a partial
@@ -764,7 +764,7 @@ const deleteProject = async (id) => {
       console.error('applyWholeHouseMVHR: reload failed —', error);
     }
 
-    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, designParamsFailed };
+    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, totalRooms: rooms.length, designParamsFailed };
   };
 
   const clearWholeHouseMVHR = async () => {
@@ -806,7 +806,7 @@ const deleteProject = async (id) => {
       console.error('clearWholeHouseMVHR: reload failed —', error);
     }
 
-    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, designParamsFailed };
+    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, totalRooms: rooms.length, designParamsFailed };
   };
 
   const handleUpdateClientAddress = async (addressId, data, clientId) => {
