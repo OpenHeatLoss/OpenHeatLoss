@@ -63,9 +63,15 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   // disabled until the value is valid.
   const effParse = parseEfficiencyPercentInput(mvhrEff);
 
+  // A blank field shows no red message (the placeholder prompts instead) but
+  // still keeps Apply/Re-apply disabled via effParse.ok. Any non-blank invalid
+  // entry shows its error live.
+  const effBlank     = String(mvhrEff ?? '').trim() === '';
+  const effShowError = !effParse.ok && !effBlank;
+
   const effMessage = effParse.ok
     ? (effParse.warning && <p className="text-xs text-amber-600 mt-1">⚠ {effParse.warning}</p>)
-    : <p className="text-xs text-red-600 mt-1">{effParse.error}</p>;
+    : (effShowError && <p className="text-xs text-red-600 mt-1">{effParse.error}</p>);
 
   const showSuccess = (text) => {
     const shown = { ok: true, text };
@@ -280,8 +286,8 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
                     type="number" step="0.1" min="0" max="100"
                     value={mvhrEff}
                     onChange={e => setMvhrEff(e.target.value)}
-                    aria-invalid={effParse.ok ? undefined : true}
-                    className={inputClass + ' flex-1' + (effParse.ok ? '' : ' border-red-500')}
+                    aria-invalid={effShowError ? true : undefined}
+                    className={inputClass + ' flex-1' + (effShowError ? ' border-red-500' : '')}
                     placeholder="e.g. 82"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap">%</span>
@@ -335,8 +341,8 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
                     type="number" step="0.1" min="0" max="100"
                     value={mvhrEff}
                     onChange={e => setMvhrEff(e.target.value)}
-                    aria-invalid={effParse.ok ? undefined : true}
-                    className={inputClass + ' flex-1' + (effParse.ok ? '' : ' border-red-500')}
+                    aria-invalid={effShowError ? true : undefined}
+                    className={inputClass + ' flex-1' + (effShowError ? ' border-red-500' : '')}
                     placeholder="e.g. 82"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap">%</span>
