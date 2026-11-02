@@ -92,9 +92,17 @@ export default function VentilationEditor({ room, project, onUpdate }) {
   // The warning belongs to the STORED value, so it is derived at render: a
   // stored unusual value warns as soon as the room is opened, a successful
   // save updates it through the reload, and an invalid draft shows only its error.
-  const effWarning = effError
+  const storedEffText  = fractionToPercentText(room.mvhrEfficiency ?? 0);
+  const storedEffParse = parseEfficiencyPercentInput(storedEffText);
+  const effWarning = effError ? null : storedEffParse.warning ?? null;
+
+  // A stored value that fails its own check (e.g. a B26 row holding 85, shown
+  // as "8500") says so. Derived, so it clears once a valid value is saved;
+  // nothing is saved automatically. A draft error takes priority.
+  const effStoredError = storedEffParse.ok
     ? null
-    : parseEfficiencyPercentInput(fractionToPercentText(room.mvhrEfficiency ?? 0)).warning ?? null;
+    : `The saved value (${storedEffText} %) is not valid. Enter the efficiency as a percentage, e.g. 85.`;
+  const effShownError = effError ?? effStoredError;
 
   // Re-sync efficiency when the room or its stored value changes from outside
   // (room switch, reload after save, whole-house settings write).
@@ -408,13 +416,13 @@ export default function VentilationEditor({ room, project, onUpdate }) {
                                 value={effText}
                                 onChange={e => setEffText(e.target.value)}
                                 onBlur={handleEfficiencyBlur}
-                                aria-invalid={effError ? true : undefined}
-                                className={inputClass + ' flex-1' + (effError ? ' border-red-500' : '')}
+                                aria-invalid={effShownError ? true : undefined}
+                                className={inputClass + ' flex-1' + (effShownError ? ' border-red-500' : '')}
                               />
                               <span className="text-sm text-gray-500">%</span>
                             </div>
-                            {effError && (
-                              <p className="text-xs text-red-600 mt-1">{effError}</p>
+                            {effShownError && (
+                              <p className="text-xs text-red-600 mt-1">{effShownError}</p>
                             )}
                             {effWarning && (
                               <p className="text-xs text-amber-600 mt-1">⚠ {effWarning}</p>

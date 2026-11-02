@@ -67,11 +67,27 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
   // still keeps Apply/Re-apply disabled via effParse.ok. Any non-blank invalid
   // entry shows its error live.
   const effBlank     = String(mvhrEff ?? '').trim() === '';
-  const effShowError = !effParse.ok && !effBlank;
 
-  const effMessage = effParse.ok
-    ? (effParse.warning && <p className="text-xs text-amber-600 mt-1">⚠ {effParse.warning}</p>)
-    : (effShowError && <p className="text-xs text-red-600 mt-1">{effParse.error}</p>);
+  // Active panel only: a STORED efficiency that fails its own check (e.g. a
+  // B26 value of 85, shown as "8500") says so. Nothing is saved automatically,
+  // and Apply stays disabled while the field still holds that value.
+  const savedEffText   = storedEffText();   // '' when not active
+  const effStoredError = isWHMVHR && !parseEfficiencyPercentInput(savedEffText).ok
+    ? `The saved value (${savedEffText} %) is not valid. Enter the efficiency as a percentage, e.g. 85.`
+    : null;
+  // The field starts out showing the stored text, so it is only a draft once
+  // the engineer changes it. A draft error takes priority over the stored one.
+  const effIsDraft    = String(mvhrEff ?? '').trim() !== savedEffText;
+  const effDraftError = !effParse.ok && !effBlank && (effIsDraft || !effStoredError) ? effParse.error : null;
+  const effShownError = effDraftError ?? effStoredError;
+  const effShowError  = !!effShownError;
+
+  const effMessage = (
+    <>
+      {effShownError && <p className="text-xs text-red-600 mt-1">{effShownError}</p>}
+      {effParse.ok && effParse.warning && <p className="text-xs text-amber-600 mt-1">⚠ {effParse.warning}</p>}
+    </>
+  );
 
   const showSuccess = (text) => {
     const shown = { ok: true, text };
