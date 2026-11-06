@@ -992,11 +992,13 @@ const deleteProject = async (id) => {
   };
 
   // Returns { ok: true } or { ok: false, error } on every path. Most callers
-  // ignore the result; VentilationEditor uses it to tell the engineer a value
-  // wasn't saved.
+  // ignore the result; VentilationEditor shows `error` as-is, so every error
+  // returned here must read as a complete sentence on its own (no prefix is
+  // added). A server error with no usable text is returned without `error`,
+  // and the caller supplies its own fallback.
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
-    if (!room) return { ok: false, error: 'Room not found.' };
+    if (!room) return { ok: false, error: 'Not saved: room not found.' };
 
     // Block efficiency override at room level when whole-house MVHR is active —
     // efficiency is governed by the central unit and must be changed in Ventilation Settings.
@@ -1031,7 +1033,8 @@ const deleteProject = async (id) => {
     // api.js resolves (not rejects) on HTTP errors, with { error } in the body.
     if (response && typeof response === 'object' && 'error' in response) {
       console.error('Error updating room:', response.error);
-      return { ok: false, error: String(response.error) };
+      const text = typeof response.error === 'string' ? response.error.trim() : '';
+      return text ? { ok: false, error: text } : { ok: false };
     }
     return { ok: true };
   };

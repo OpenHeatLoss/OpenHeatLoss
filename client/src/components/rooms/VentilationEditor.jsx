@@ -136,9 +136,10 @@ export default function VentilationEditor({ room, project, onUpdate }) {
 
     const result = await onUpdate('mvhrEfficiency', parsed.fraction);
 
-    // Anything other than an explicit success is a failure.
+    // Anything other than an explicit success is a failure. updateRoom's
+    // errors are complete sentences, so they are shown as-is with no prefix.
     if (result?.ok !== true) {
-      setEffError('Not saved: ' + (result?.error ?? 'the save did not report success.'));
+      setEffError(result?.error || 'Not saved: the save did not report success.');
       setEffText(fractionToPercentText(stored));
       setLocal(prev => ({ ...prev, mvhrEfficiency: stored }));
     }
