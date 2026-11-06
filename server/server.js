@@ -53,6 +53,7 @@ const {
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
 const pdfRoutes = require('./pdf-routes');
+const { mvhrEfficiencyError } = require('./validation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -867,6 +868,14 @@ app.put('/api/projects/:id/design-params', requireAuthOrAnon, async (req, res) =
   try {
     const project = await projects.getById(req.params.id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    // B26 backstop: efficiency is stored as a fraction 0..1. Detail goes to
+    // the log; the client gets a message phrased for engineers.
+    const effError = mvhrEfficiencyError(req.body);
+    if (effError) {
+      console.warn(`Rejected design-params save for project ${req.params.id}: invalid mvhrEfficiency`,
+        JSON.stringify(req.body.mvhrEfficiency), `(${typeof req.body.mvhrEfficiency})`);
+      return res.status(400).json({ error: effError });
+    }
     await designParams.update(req.params.id, req.body);
     const updated = await designParams.getByProjectId(req.params.id);
     res.json(updated);
@@ -896,6 +905,12 @@ app.post('/api/rooms', requireAuthOrAnon, async (req, res) => {
   try {
     const project = await projects.getById(req.body.projectId);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const effError = mvhrEfficiencyError(req.body);   // B26 backstop, see design-params
+    if (effError) {
+      console.warn(`Rejected room create in project ${req.body.projectId}: invalid mvhrEfficiency`,
+        JSON.stringify(req.body.mvhrEfficiency), `(${typeof req.body.mvhrEfficiency})`);
+      return res.status(400).json({ error: effError });
+    }
     const result = await rooms.create(req.body);
     const newRoom = await rooms.getById(result.id);
     res.status(201).json(newRoom);
@@ -909,6 +924,12 @@ app.put('/api/rooms/:id', requireAuthOrAnon, async (req, res) => {
   try {
     const project = await getProjectForRoom(req.params.id);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+    const effError = mvhrEfficiencyError(req.body);   // B26 backstop, see design-params
+    if (effError) {
+      console.warn(`Rejected update of room ${req.params.id}: invalid mvhrEfficiency`,
+        JSON.stringify(req.body.mvhrEfficiency), `(${typeof req.body.mvhrEfficiency})`);
+      return res.status(400).json({ error: effError });
+    }
     await rooms.update(req.params.id, req.body);
     const updatedRoom = await rooms.getById(req.params.id);
     res.json(updatedRoom);

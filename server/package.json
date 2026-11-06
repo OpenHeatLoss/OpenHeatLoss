@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "migrate": "node migrate.js",
-    "deploy": "node migrate.js && node server.js"
+    "deploy": "node migrate.js && node server.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
