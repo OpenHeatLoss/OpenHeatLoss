@@ -5,13 +5,15 @@
 // checks keep working), including a non-JSON error page. fetch is stubbed;
 // nothing touches the network. Run with `npm test` in client/.
 
-import { test, afterEach } from 'node:test';
+import { test, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { api } from '../src/utils/api.js';
 
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+let warn;
+beforeEach(() => { warn = mock.method(console, 'warn', () => {}); });   // keep test output quiet
+afterEach(() => { globalThis.fetch = realFetch; mock.restoreAll(); });
 
 const stub = (status, body, { json = true } = {}) => {
   globalThis.fetch = async () => new Response(
@@ -49,6 +51,20 @@ test('api.updateRoom: an error body without usable error text still gets one', a
   assert.deepEqual(await api.updateRoom(7, {}), { message: 'boom', error: 'Request failed (HTTP 500).', status: 500 });
   stub(400, { error: '   ' });
   assert.deepEqual(await api.updateRoom(7, {}), { error: 'Request failed (HTTP 400).', status: 400 });
+});
+
+test('api.updateRoom: a non-OK response logs method, url, status and error text, not the body', async () => {
+  stub(403, { error: 'Not authorised' });
+  await api.updateRoom(7, { name: 'secret-ish payload' });
+  assert.equal(warn.mock.callCount(), 1);
+  assert.deepEqual(warn.mock.calls[0].arguments, ['PUT /api/rooms/7 failed: HTTP 403:', 'Not authorised']);
+  assert.doesNotMatch(JSON.stringify(warn.mock.calls[0].arguments), /secret-ish payload/);
+});
+
+test('api.updateRoom: success logs nothing', async () => {
+  stub(200, { id: 7 });
+  await api.updateRoom(7, {});
+  assert.equal(warn.mock.callCount(), 0);
 });
 
 test('api.updateRoom: a network failure still rejects', async () => {

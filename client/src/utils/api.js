@@ -161,7 +161,10 @@ export const api = {
       try { body = await r.json(); } catch { /* not JSON */ }
       const fields = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
       const text   = typeof fields.error === 'string' && fields.error.trim() ? fields.error : null;
-      return { ...fields, error: text ?? `Request failed (HTTP ${r.status}).`, status: r.status };
+      const error  = text ?? `Request failed (HTTP ${r.status}).`;
+      // A trace for callers that ignore the result. No request body is logged.
+      console.warn(`PUT ${API_BASE}/rooms/${id} failed: HTTP ${r.status}:`, error);
+      return { ...fields, error, status: r.status };
     }),
 
   deleteRoom: (id) =>
