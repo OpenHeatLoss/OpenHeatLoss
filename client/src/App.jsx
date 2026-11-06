@@ -994,8 +994,21 @@ const deleteProject = async (id) => {
   // Returns { ok: true } or { ok: false, error } on every path. Most callers
   // ignore the result; VentilationEditor shows `error` as-is, so every error
   // returned here must read as a complete sentence on its own (no prefix is
-  // added). A server error with no usable text is returned without `error`,
-  // and the caller supplies its own fallback.
+  // added). Server responses are mapped by HTTP status (api.updateRoom sets
+  // `status`); only a 400, whose text the server writes for engineers, is
+  // shown as the server sent it.
+  const roomSaveErrorText = (response) => {
+    switch (response.status) {
+      case 400: {
+        const text = typeof response.error === 'string' ? response.error.trim() : '';
+        return text || 'Not saved: the server could not save this room. Try again.';
+      }
+      case 401: return 'Not saved: your session has expired. Log in again and retry.';
+      case 403: return "Not saved: you don't have permission to change this room.";
+      default:  return 'Not saved: the server could not save this room. Try again.';
+    }
+  };
+
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
     if (!room) return { ok: false, error: 'Not saved: room not found.' };
@@ -1030,11 +1043,10 @@ const deleteProject = async (id) => {
       console.error('Error reloading project after room update:', error);
     }
 
-    // api.js resolves (not rejects) on HTTP errors, with { error } in the body.
+    // api.updateRoom resolves (not rejects) on HTTP errors, with { error, status }.
     if (response && typeof response === 'object' && 'error' in response) {
-      console.error('Error updating room:', response.error);
-      const text = typeof response.error === 'string' ? response.error.trim() : '';
-      return text ? { ok: false, error: text } : { ok: false };
+      console.error(`Error updating room (HTTP ${response.status ?? '?'}):`, response.error);
+      return { ok: false, error: roomSaveErrorText(response) };
     }
     return { ok: true };
   };
