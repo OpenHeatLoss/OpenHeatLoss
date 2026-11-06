@@ -145,12 +145,27 @@ export const api = {
       body: JSON.stringify(data),
     }).then(r => r.json()),
 
+  // Success: the parsed body, exactly as before. Any non-OK status resolves
+  // (never rejects) with an object that always has `error` (the server's text,
+  // or a generic one when the body isn't JSON, e.g. a 502 page) plus `status`,
+  // so callers that check `'error' in response` keep working. A network
+  // failure still rejects, as before.
   updateRoom: (id, data) =>
     fetch(`${API_BASE}/rooms/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }).then(r => r.json()),
+    }).then(async r => {
+      if (r.ok) return r.json();
+      let body = null;
+      try { body = await r.json(); } catch { /* not JSON */ }
+      const fields = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+      const text   = typeof fields.error === 'string' && fields.error.trim() ? fields.error : null;
+      const error  = text ?? `Request failed (HTTP ${r.status}).`;
+      // A trace for callers that ignore the result. No request body is logged.
+      console.warn(`PUT ${API_BASE}/rooms/${id} failed: HTTP ${r.status}:`, error);
+      return { ...fields, error, status: r.status };
+    }),
 
   deleteRoom: (id) =>
     fetch(`${API_BASE}/rooms/${id}`, {

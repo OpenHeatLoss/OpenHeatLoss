@@ -687,15 +687,40 @@ const deleteProject = async (id) => {
   // Whole-house MVHR — distribute system rate to all rooms by volume
   // ---------------------------------------------------------------------------
 
+  // Whole-house MVHR apply/clear both return { ok, failedRooms, totalRooms, designParamsFailed },
+  // or { ok: false, error } when nothing was attempted. api.js resolves (not
+  // rejects) on HTTP errors with { error } in the body, so each response is
+  // checked; a rejection counts as a failure too. No rollback: a partial
+  // failure is reported, and the reload shows what the database holds.
+  const responseFailed = (settled) =>
+    settled.status === 'rejected'
+    || (settled.value && typeof settled.value === 'object' && 'error' in settled.value);
+
+  // Saves design params; resolves true when the save FAILED.
+  const saveDesignParamsFailed = async (fields) => {
+    try {
+      const res = await saveDesignParams(fields);
+      return !!(res && typeof res === 'object' && 'error' in res);
+    } catch {
+      return true;   // saveDesignParams has already logged it
+    }
+  };
+
   const applyWholeHouseMVHR = async (rate, efficiency) => {
-    if (!currentProject?.rooms?.length) return;
+    // Defensive: the UI parses the percentage, but never save a bad fraction.
+    if (typeof efficiency !== 'number' || !Number.isFinite(efficiency) || efficiency < 0 || efficiency > 1) {
+      console.error('applyWholeHouseMVHR: invalid efficiency', efficiency);
+      return { ok: false, error: 'Invalid efficiency' };
+    }
+
+    if (!currentProject?.rooms?.length) return { ok: false, error: 'This project has no rooms.' };
 
     const rooms = currentProject.rooms;
     const totalVolume = rooms.reduce((sum, r) => sum + (r.volume ?? 0), 0);
 
     if (totalVolume <= 0) {
       console.warn('applyWholeHouseMVHR: total room volume is zero — cannot distribute');
-      return;
+      return { ok: false, error: 'Total room volume is zero, so the rate cannot be distributed.' };
     }
 
     // Update project-level markers immediately so VentilationSettings re-renders
@@ -709,38 +734,45 @@ const deleteProject = async (id) => {
     // Build the standard room payload (mirrors existing updateRoom handler exactly)
     // then override the three MVHR fields.
     // Fire one api.updateRoom per room in parallel with the three MVHR fields
-    try {
-      await Promise.all(rooms.map(room => {
-        const roomShare = parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1));
-        return api.updateRoom(room.id, buildRoomPayload(room, {
-          continuousVentType:    'mvhr',
-          continuousVentRateM3h: roomShare,
-          mvhrEfficiency:        efficiency,
-        }));
+    const roomResults = await Promise.allSettled(rooms.map(room => {
+      const roomShare = parseFloat(((room.volume ?? 0) / totalVolume * rate).toFixed(1));
+      return api.updateRoom(room.id, buildRoomPayload(room, {
+        continuousVentType:    'mvhr',
+        continuousVentRateM3h: roomShare,
+        mvhrEfficiency:        efficiency,
       }));
-    } catch (roomErr) {
-      console.error('applyWholeHouseMVHR: room update failed —', roomErr);
+    }));
+    const failedRooms = roomResults.filter(responseFailed).length;
+    if (failedRooms > 0) {
+      console.error(`applyWholeHouseMVHR: ${failedRooms} of ${rooms.length} room update(s) failed`, roomResults);
     }
 
     // Persist the project-level MVHR markers. saveDesignParams uses
     // buildDesignParamsPayload with overrides, which is the proven save path.
     // We pass overrides explicitly because setCurrentProject above is async
     // and currentProject won't reflect the new values yet.
-    console.log('applyWholeHouseMVHR: saving design params with', { ventilationSystemType: 'mvhr', mvhrEfficiency: efficiency, mvhrWholeHouseRate: rate });
-    await saveDesignParams({
+    const designParamsFailed = await saveDesignParamsFailed({
       ventilationSystemType: 'mvhr',
       mvhrEfficiency:        efficiency,
       mvhrWholeHouseRate:    rate,
     });
-    console.log('applyWholeHouseMVHR: design params saved, reloading project');
+    if (designParamsFailed) console.error('applyWholeHouseMVHR: design params save failed');
 
-    await loadProject(currentProject.id, true);
+    try {
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('applyWholeHouseMVHR: reload failed —', error);
+    }
+
+    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, totalRooms: rooms.length, designParamsFailed };
   };
 
   const clearWholeHouseMVHR = async () => {
-    if (!currentProject?.rooms?.length) return;
+    if (!currentProject) return { ok: false, error: 'No project is loaded.' };
 
-    const rooms = currentProject.rooms;
+    // No early return for zero rooms: whole-house MVHR must always be
+    // removable, so the design params reset and reload still happen.
+    const rooms = currentProject.rooms ?? [];
 
     setCurrentProject(prev => ({
       ...prev,
@@ -749,25 +781,32 @@ const deleteProject = async (id) => {
       mvhrWholeHouseRate:    0,
     }));
 
-    try {
-      await Promise.all(rooms.map(room =>
-        api.updateRoom(room.id, buildRoomPayload(room, {
-          continuousVentType:    'none',
-          continuousVentRateM3h: 0,
-          mvhrEfficiency:        0,
-        }))
-      ));
-    } catch (roomErr) {
-      console.error('clearWholeHouseMVHR: room update failed —', roomErr);
+    const roomResults = await Promise.allSettled(rooms.map(room =>
+      api.updateRoom(room.id, buildRoomPayload(room, {
+        continuousVentType:    'none',
+        continuousVentRateM3h: 0,
+        mvhrEfficiency:        0,
+      }))
+    ));
+    const failedRooms = roomResults.filter(responseFailed).length;
+    if (failedRooms > 0) {
+      console.error(`clearWholeHouseMVHR: ${failedRooms} of ${rooms.length} room update(s) failed`, roomResults);
     }
 
-    await saveDesignParams({
+    const designParamsFailed = await saveDesignParamsFailed({
       ventilationSystemType: 'natural',
       mvhrEfficiency:        0,
       mvhrWholeHouseRate:    0,
     });
+    if (designParamsFailed) console.error('clearWholeHouseMVHR: design params save failed');
 
-    await loadProject(currentProject.id, true);
+    try {
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('clearWholeHouseMVHR: reload failed —', error);
+    }
+
+    return { ok: failedRooms === 0 && !designParamsFailed, failedRooms, totalRooms: rooms.length, designParamsFailed };
   };
 
   const handleUpdateClientAddress = async (addressId, data, clientId) => {
@@ -952,15 +991,33 @@ const deleteProject = async (id) => {
     }
   };
 
+  // Returns { ok: true } or { ok: false, error } on every path. Most callers
+  // ignore the result; VentilationEditor shows `error` as-is, so every error
+  // returned here must read as a complete sentence on its own (no prefix is
+  // added). Server responses are mapped by HTTP status (api.updateRoom sets
+  // `status`); only a 400, whose text the server writes for engineers, is
+  // shown as the server sent it.
+  const roomSaveErrorText = (response) => {
+    switch (response.status) {
+      case 400: {
+        const text = typeof response.error === 'string' ? response.error.trim() : '';
+        return text || 'Not saved: the server could not save this room. Try again.';
+      }
+      case 401: return 'Not saved: your session has expired. Log in again and retry.';
+      case 403: return "Not saved: you don't have permission to change this room.";
+      default:  return 'Not saved: the server could not save this room. Try again.';
+    }
+  };
+
   const updateRoom = async (roomId, field, value) => {
     const room = currentProject.rooms.find(r => r.id === roomId);
-    if (!room) return;
+    if (!room) return { ok: false, error: 'Not saved: room not found.' };
 
     // Block efficiency override at room level when whole-house MVHR is active —
     // efficiency is governed by the central unit and must be changed in Ventilation Settings.
     if (field === 'mvhrEfficiency' && currentProject.ventilationSystemType === 'mvhr') {
       console.warn('mvhrEfficiency is controlled by whole-house MVHR — change in Ventilation Settings');
-      return;
+      return { ok: false, error: 'Efficiency is set in Ventilation Settings while whole-house MVHR is active.' };
     }
 
     let updates = { [field]: value };
@@ -970,12 +1027,28 @@ const deleteProject = async (id) => {
     // roomHeight are no longer used for geometry — those fields are kept in the DB
     // for backward compat but not recalculated here.
 
+    let response;
     try {
-      await api.updateRoom(roomId, buildRoomPayload(room, updates));
-      await loadProject(currentProject.id, true);
+      response = await api.updateRoom(roomId, buildRoomPayload(room, updates));
     } catch (error) {
       console.error('Error updating room:', error);
+      return { ok: false, error: 'Could not save. Check your connection and try again.' };
     }
+
+    // Reload after any server response, success or failure, so the screen
+    // shows what the database actually holds.
+    try {
+      await loadProject(currentProject.id, true);
+    } catch (error) {
+      console.error('Error reloading project after room update:', error);
+    }
+
+    // api.updateRoom resolves (not rejects) on HTTP errors, with { error, status }.
+    if (response && typeof response === 'object' && 'error' in response) {
+      console.error(`Error updating room (HTTP ${response.status ?? '?'}):`, response.error);
+      return { ok: false, error: roomSaveErrorText(response) };
+    }
+    return { ok: true };
   };
 
   const deleteRoom = async (roomId) => {

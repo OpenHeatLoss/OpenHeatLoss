@@ -870,6 +870,93 @@ async function freezeLegacySapQ50() {
 }
 
 // ---------------------------------------------------------------------------
+// B26 data fix (migration 026) — MVHR efficiency stored as a percentage.
+//
+// Named, not inline in the migration, so a contingency migration can call it
+// again (as 025 re-ran 023's freeze). Re-running changes nothing: only values
+// > 1 are selected, and none remain after a successful run.
+//
+// One transaction, rolled back on any failure:
+//   1. Lock every rooms / design_params row with mvhr_efficiency > 1.
+//   2. Validate EVERY selected value before writing ANY: a finite number,
+//      > 1 and <= 100 (a percentage). Anything else aborts with its ids.
+//   3. new = old / 100 at full float precision, no rounding. Each UPDATE is
+//      guarded on the old value; the total rowCount must equal the selection.
+//   4. Assert zero rows with mvhr_efficiency > 1 remain in either table.
+// Only mvhr_efficiency is written; updated_at and every other column are
+// untouched. Logs ids and numbers only — no names or addresses.
+// ---------------------------------------------------------------------------
+async function fixMvhrPercentages(label = '026') {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const rooms = (await client.query(`
+      SELECT id, project_id, mvhr_efficiency
+        FROM rooms
+       WHERE mvhr_efficiency > 1
+       ORDER BY id
+         FOR UPDATE`)).rows;
+    const dps = (await client.query(`
+      SELECT project_id, mvhr_efficiency
+        FROM design_params
+       WHERE mvhr_efficiency > 1
+       ORDER BY project_id
+         FOR UPDATE`)).rows;
+
+    // Table and key column are fixed strings here, never input.
+    const changes = [
+      ...rooms.map(r => ({ table: 'rooms',         key: 'id',         id: r.id,         projectId: r.project_id, old: r.mvhr_efficiency })),
+      ...dps.map(d   => ({ table: 'design_params', key: 'project_id', id: d.project_id, projectId: d.project_id, old: d.mvhr_efficiency })),
+    ];
+
+    // Validate EVERY value before writing ANY. (In Postgres NaN > 1 is true,
+    // so a NaN or Infinity would be selected above and is refused here.)
+    const bad = changes.filter(c => typeof c.old !== 'number' || !Number.isFinite(c.old) || !(c.old > 1) || c.old > 100);
+    if (bad.length) {
+      throw new Error(
+        `${label} aborted, nothing written: ${bad.length} mvhr_efficiency value(s) are not a percentage (finite, > 1, <= 100): ` +
+        bad.map(c => `${c.table} ${c.id} (project ${c.projectId}) = ${c.old}`).join(', ')
+      );
+    }
+
+    let updated = 0;
+    for (const c of changes) {
+      c.new = c.old / 100;   // full float precision — no rounding
+      const res = await client.query(
+        `UPDATE ${c.table} SET mvhr_efficiency = $1 WHERE ${c.key} = $2 AND mvhr_efficiency = $3`,
+        [c.new, c.id, c.old]
+      );
+      updated += res.rowCount;
+    }
+    if (updated !== changes.length) {
+      throw new Error(`${label} aborted, rolled back: selected ${changes.length} row(s) but updated ${updated}`);
+    }
+
+    const { rows: [left] } = await client.query(`
+      SELECT (SELECT COUNT(*)::int FROM rooms         WHERE mvhr_efficiency > 1) AS rooms,
+             (SELECT COUNT(*)::int FROM design_params WHERE mvhr_efficiency > 1) AS design_params`);
+    if (left.rooms !== 0 || left.design_params !== 0) {
+      throw new Error(`${label} aborted, rolled back: after the update ${left.rooms} rooms row(s) and ` +
+                      `${left.design_params} design_params row(s) still have mvhr_efficiency > 1`);
+    }
+
+    await client.query('COMMIT');
+
+    for (const c of changes) {
+      console.log(`  ${label}: ${c.table} ${c.key} ${c.id} (project ${c.projectId}): mvhr_efficiency ${c.old} -> ${c.new}`);
+    }
+    console.log(`  ${label}: converted ${rooms.length} rooms row(s) and ${dps.length} design_params row(s); ` +
+                `0 rows with mvhr_efficiency > 1 remain`);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Each entry is { version, description, run: async fn }.
 // New migrations go at the bottom. Migrations already recorded in
 // schema_migrations are skipped automatically.
@@ -2491,6 +2578,28 @@ const MIGRATIONS = [
       console.log(`  025: 0 'estimated' rows remain`);
 
       console.log('  Migration 025 complete: default_table default, late estimates frozen');
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Migration 026 — B26: MVHR efficiency stored as a percentage
+  //
+  // A few rooms held e.g. 85 instead of 0.85 (entered with no range check),
+  // giving negative ventilation loads. fixMvhrPercentages() (above) converts
+  // every rooms / design_params value > 1 to value / 100 in one transaction,
+  // validating all values first. Deploys together with B26 commit 5 (the
+  // server rejects efficiency outside 0–1), which would otherwise refuse any
+  // save of those rooms. Rehearse on a production restore first:
+  // scripts/b26_REHEARSAL.md. pg_dump production before deploying.
+  //
+  // Idempotent: a second run selects nothing and writes nothing.
+  // ---------------------------------------------------------------------------
+  {
+    version: '026',
+    description: 'B26: convert MVHR efficiency stored as a percentage to a fraction',
+    run: async () => {
+      await fixMvhrPercentages('026');
+      console.log('  Migration 026 complete: percentage MVHR efficiencies converted to fractions');
     },
   },
 ];
