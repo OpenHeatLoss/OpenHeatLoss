@@ -76,10 +76,13 @@ export default function VentilationSettings({ project, onUpdate, onUpdateBatch, 
     ? `The saved value (${savedEffText} %) is not valid. Enter the efficiency as a percentage, e.g. 85.`
     : null;
   // The field starts out showing the stored text, so it is only a draft once
-  // the engineer changes it. A draft error takes priority over the stored one.
+  // the engineer changes it. A draft error takes priority over the stored one,
+  // and a VALID draft supersedes the stored error entirely (no red while
+  // Re-apply is enabled; the reload after Re-apply clears the stored problem).
   const effIsDraft    = String(mvhrEff ?? '').trim() !== savedEffText;
   const effDraftError = !effParse.ok && !effBlank && (effIsDraft || !effStoredError) ? effParse.error : null;
-  const effShownError = effDraftError ?? effStoredError;
+  const effValidDraft = effIsDraft && effParse.ok;
+  const effShownError = effDraftError ?? (effValidDraft ? null : effStoredError);
   const effShowError  = !!effShownError;
 
   const effMessage = (
