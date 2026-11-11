@@ -25,6 +25,10 @@
 //                    Source: calculateTransmissionLoss(room, referenceTemp) + ventGeneratorTypical
 //                            from calculateRoomVentilationEN12831()
 //
+//   MINIMUM MODULATION CHECK uses GENERATOR + TYPICAL loads together —
+//                    see calculateMinModulationTemp() below. Summary.jsx and
+//                    buildHeatLossPayload.js both call it; do not reimplement inline.
+//
 // See CALCULATIONS.md for the full reference including which function to call for
 // each purpose and the critical field naming requirements.
 //
@@ -190,6 +194,70 @@ export const calculateRoomTotal = (room, project) =>
 export const calculateBuildingTotal = (rooms, project) => {
   if (!rooms) return 0;
   return rooms.reduce((sum, room) => sum + calculateRoomTotal(room, project), 0);
+};
+
+// ---------------------------------------------------------------------------
+// MINIMUM MODULATION CHECK
+// CIBSE DHDG 2026 section 5.7.2
+// ---------------------------------------------------------------------------
+
+/**
+ * Outdoor temperature at which building heat demand falls to the heat pump's
+ * minimum modulating output. Above this temperature the heat pump cannot turn
+ * down far enough and will cycle. A result BELOW Te,ref means the heat pump
+ * cycles through most of the heating season.
+ *
+ * Single source of truth for Summary.jsx (screen) and buildHeatLossPayload.js (PDF).
+ *
+ * EN 12831 / CIBSE 2026 path (used whenever typicalLoadKw > 0):
+ *   Straight line through the two calculated points
+ *     (Te,design, Q_generator) and (Te,ref, Q_typical)
+ *   T_min = Te,ref + (Q_typical − P_min) × (Te,ref − Te,design) / (Q_generator − Q_typical)
+ *
+ *   This keeps load that does not scale with (Ti − Te): slab floors at Te,ref
+ *   in both columns, fixed customDeltaT boundaries, and per-room internal
+ *   temperatures. The original W/K line through zero load ignored these and
+ *   placed T_min too low (reported case 2026-11: 7.7 °C shown when the typical
+ *   load at 9.9 °C was already 2.33 kW, above the 1.85 kW minimum; correct
+ *   answer ≈ 15 °C).
+ *
+ * Legacy path (no typical load available):
+ *   T_min = Ti_avg − P_min / HLC   (W/K line through zero load at Ti_avg)
+ *
+ * @param {Object} p
+ * @param {number} p.minModKw            - heat pump minimum output, kW
+ * @param {number} p.generatorLoadKw     - generator load at Te,design, kW (EN 12831 path)
+ * @param {number} p.typicalLoadKw       - typical load at Te,ref, kW (EN 12831 path; 0 → legacy)
+ * @param {number} p.designTemp          - Te,design, °C
+ * @param {number} p.refTemp             - Te,ref, °C
+ * @param {number} p.heatLossCoefficient - building W/K (legacy path)
+ * @param {number} p.avgInternalTemp     - mean room temperature, °C (legacy path)
+ * @returns {number|null} Outdoor temperature in °C, or null if not calculable
+ */
+export const calculateMinModulationTemp = ({
+  minModKw,
+  generatorLoadKw,
+  typicalLoadKw,
+  designTemp,
+  refTemp,
+  heatLossCoefficient,
+  avgInternalTemp,
+}) => {
+  if (!(minModKw > 0)) return null;
+
+  // Two-point method
+  if (typicalLoadKw > 0) {
+    if (!(generatorLoadKw > typicalLoadKw) || !(refTemp > designTemp)) return null;
+    const slopeKwPerK = (generatorLoadKw - typicalLoadKw) / (refTemp - designTemp);
+    return refTemp + (typicalLoadKw - minModKw) / slopeKwPerK;
+  }
+
+  // Legacy W/K method
+  if (heatLossCoefficient > 0 && avgInternalTemp != null) {
+    return avgInternalTemp - (minModKw * 1000) / heatLossCoefficient;
+  }
+
+  return null;
 };
 
 // ---------------------------------------------------------------------------

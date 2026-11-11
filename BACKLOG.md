@@ -1,29 +1,62 @@
 # OpenHeatLoss — Backlog & Development Notes
 
-Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR efficiency opened, follow-ups from B25 and the pipe library fix, smoke test anchors updated, session log for 2026-10)
+Last updated: 2026-11-11 (B27 minimum modulation temperature fix running on local dev, awaiting deploy; reference project re-baselined to 5.17 kW; SCOP W/K follow-up added)
 
 ---
 
 ## Bug tracker
 
 ### Active
-- B26 — MVHR efficiency stored as a percentage instead of a fraction.
-  OPEN — priority: next, customer-facing.
-  Three rooms across two customer projects (868 and 25) have MVHR efficiency
-  stored as e.g. 85 instead of 0.85. The heat recovery term then removes far
-  more heat than the room loses, giving negative ventilation loads; one of the
-  projects totals -160.74 kW.
-
-  Needs:
-  - Input validation: accept 0-1 or 0-100 % consistently, in one place, and
-    reject anything outside the chosen range before it is saved.
-  - A data fix for the 3 rooms, rehearsed on a production restore first
-    (see "DB snapshots before migrations" in Priority 3).
-  - A decision on whether and how to tell the two project owners.
-  - Checked: migration 017 changed design_params.mvhr_efficiency to DOUBLE
-    PRECISION, so the column type is not the cause; the percentages got in
-    through input with no range check. Confirm which table holds the three
-    bad values (rooms or design_params) before designing the data fix.
+- B27 — Minimum modulation temperature inconsistent with the typical load —
+  FIX WRITTEN AND RUNNING ON LOCAL DEV 2026-11-11, NOT YET DEPLOYED. Reported
+  by a user by email with a Summary screenshot: typical load at Te,ref
+  (9.9 °C) 2.33 kW, heat pump minimum modulation 1.85 kW, yet "minimum
+  modulation will be reached at approximately 7.7 °C" with the amber
+  short-cycling warning. Impossible: 1.85 kW is below the load at 9.9 °C, so
+  minimum modulation must be reached ABOVE 9.9 °C.
+  Cause: the modulation temperature was still the original W/K method
+  (T = Ti_avg − P_min / HLC, a straight line through zero load at the
+  unweighted mean room temperature). The CIBSE 2026 typical-load check was
+  added later beside it and the two were never reconciled. The W/K line
+  assumes every watt scales with (Ti − Te); the CIBSE typical load correctly
+  keeps load that does not (slab floors at Te,ref in both columns, fixed
+  customDeltaT boundaries, per-room Ti). Old formula reproduces 7.7 °C
+  exactly with Ti 20 / Te,design −4.5 (or 21 / −5.5); the corrected figure
+  is about 14.5–15.3 °C for any plausible design temperature, so the warning
+  should not have shown. The same formula was duplicated inline in
+  Summary.jsx and buildHeatLossPayload.js, so the PDF report was wrong too.
+  Fix: new calculateMinModulationTemp() in client/src/utils/calculations.js,
+  the single source for screen and PDF. EN 12831 path draws the line
+  through the two calculated points (Te,design, Q_generator) and
+  (Te,ref, Q_typical):
+    T_min = Te,ref + (Q_typical − P_min) × (Te,ref − Te,design)
+                     / (Q_generator − Q_typical)
+  Legacy (non-EN 12831) projects keep the W/K formula, as they have no
+  typical load. Returns null if P_min is 0, Q_generator ≤ Q_typical or
+  Te,ref ≤ Te,design. Summary.jsx's backwards comment ("Te_minMod > Te,ref is
+  the risk") removed; the UI logic was already right (below Te,ref = cycles
+  through most of the season). calculations.js header now points to the
+  function. Tested in Node against the screenshot figures and edge cases;
+  running on local dev against the reference project (9.9 °C, amber —
+  correct, as 2.2 kW minimum > 2.06 kW typical load).
+  Note: on the reference project the old and new formulas differ by only
+  ~0.1 °C, so it cannot detect this bug. Keep a test case with slab floors
+  or fixed-ΔT boundaries (like the reporting user's project) for B27
+  regression checks.
+  Before deploy:
+  - Check the server-side heat loss PDF template: it receives only
+    minModulationTemp; if it has its own wording or threshold logic, make it
+    match the screen.
+  - ~~Record the reference project's modulation figure in SMOKE_TEST.md~~ —
+    done 2026-11-11 (9.9 °C, amber; section 2 and 7).
+  - Add calculateMinModulationTemp() to CALCULATIONS.md (load types section)
+    — finding the formula took a grep this time.
+  - Reply to the reporting user once deployed.
+  BUG CLASS: a method added beside an older one for the same quantity
+  without reconciling them, plus the formula duplicated inline in two files.
+  Signal: two figures on one panel that contradict each other. When a new
+  standard method arrives, find every existing calculation of the same
+  quantity and retire or route it through one function.
 
 ### Closed (June 2026 security session)
 - B22 — Unauthenticated access to project data via GET /api/projects/:id —
@@ -99,6 +132,42 @@ Last updated: 2026-10-26 (B25 air permeability deployed and closed, B26 MVHR eff
   74 window records and 6 door records added to construction_library.json.
   RdSAPUValuePicker reads from bundled JSON not DB — data was in DB (140 rows)
   but never merged into the JSON bundle.
+- B26 — MVHR heat recovery efficiency stored as a percentage instead of a
+  fraction — resolved, deployed 2026-11-06.
+  Scope (from the data, not the UI): three rooms, one in each of three
+  projects in three companies, not two. Rooms 15 (project 25) = 80 and 278
+  (project 868) = 90 were live: rate > 0, MVHR term about -132 kW and
+  -163 kW, so both projects showed negative totals. Room 132 (project 370) =
+  90 was latent: rate 0, so the efficiency was ignored and nothing looked
+  wrong, which is why the original count was "two projects". No
+  design_params row was affected (project-level values all 0, null or a
+  fraction), no pipe sections on any of the three, and project 25's MCS 031
+  snapshot is built from EPC inputs, not the room calculation, so no stored
+  output was wrong. 99 rooms held a correct fraction: both inputs were
+  labelled "fraction", but manufacturers quote percent and nothing enforced
+  the range (`max="0.95"` only limits the spinner arrows).
+  Fix: engineers now type a PERCENTAGE; storage and the calculation stay a
+  FRACTION. The only conversion is client/src/utils/mvhrEfficiency.js
+  (parseEfficiencyPercentInput, fractionToPercentText, shouldSaveEfficiency;
+  0 or 1-100 accepted, 0-1 exclusive rejected as "looks like a fraction",
+  outside 50-95 warns). Invalid values stay a draft and are never saved; an
+  invalid STORED value says so. Server backstop (server/validation.js):
+  rooms and design-params routes reject mvhrEfficiency that is not a real
+  number in 0..1, after the ownership check. updateRoom, whole-house apply
+  and clear now return explicit results, check every save (Promise.allSettled)
+  and name what failed; api.updateRoom resolves { error, status } on any
+  non-OK status (including non-JSON 502 pages) and logs it. Dead SAP
+  ventilation files deleted (sapVentilationCalculations.js treated the same
+  field name as a percentage). Data fix: migration 026
+  (fixMvhrPercentages, divides by 100, all-or-nothing, guarded per row,
+  aborts on any value not in (1, 100]); rehearsed on a fresh production
+  restore with scripts/b26_gate.mjs (21/21, every column of every row
+  compared exactly), second run and re-run of 026 changed nothing, abort
+  path tested. Production: 80 -> 0.8, 90 -> 0.9, 90 -> 0.9; straggler query
+  0/0, contingency 027 (branch b26-contingency-027) not needed; smoke test
+  passed. Owners of projects 25 and 868 to be told (draft email written).
+  BUG CLASS: one quantity, two unit conventions, nothing enforcing which.
+  A label is not validation; convert in exactly one place.
 - B25 — Air permeability estimation pathway invalid (CIBSE DHDG 2026-01
   error, corrigendum DHDG-2026-1-COR-001) — resolved, deployed 2026-10-26.
   Existing 'estimated' projects frozen as legacy_sap with their q50 kept
@@ -490,6 +559,17 @@ how-it-works). Hosting options: Cloudflare Pages or shared hosting.
 A render error in one tab currently blanks the whole app (the blank-screen
 failures in SMOKE_TEST.md section 8A). An error boundary around each tab
 would contain the failure to that tab and show a message instead.
+Concrete case (B26 testing, 2026-11-01): one anonymous project with no
+design_params row crashed AirPermeabilitySettings on load, and because the
+login button lives in the anonymous banner, the user could not even log in
+until the project was deleted.
+
+**Anonymous project creation is not one transaction** (found B26)
+POST /api/anonymous/project creates the project row and then the
+design_params row separately. If the second insert fails (it did on a
+pre-migration local DB), a half-created project is left behind and keeps
+crashing the browser that holds its anon_token. Wrap both inserts in one
+transaction.
 
 **/api/health and an uptime monitor** (unmerged item from handover_pipe_library_fix_2026-09-30.md)
 Add a cheap /api/health endpoint and point an external uptime monitor at it,
@@ -592,6 +672,39 @@ DEVELOPMENT_PRINCIPLES.md sections 9 and 11.
 Most calls in api.js do fetch().then(r => r.json()) without checking
 r.ok, so a 4xx/5xx response is treated as data and failures pass silently.
 See the request helper item below; fixing it there covers every call.
+B26 fixed api.updateRoom only (resolves { error, status } on any non-OK
+status, logs it, tested in client/test/apiUpdateRoom.test.mjs); the rest,
+including updateDesignParams, still do not check.
+
+**Room and design-params updates replace the whole record** (found B26)
+PUT /api/rooms/:id (and design-params) write every column from the body, so a
+partial body silently resets the missing fields to defaults. Every current
+client sends the full payload (buildRoomPayload / buildDesignParamsPayload),
+so nothing is broken today, but any new caller (import, public API, a quick
+console test) would blank data. Consider COALESCE-on-missing or a strict
+"full payload required" check.
+
+**Segment recalculation ignores whether the room save worked** (found B26)
+_recalcRoomFromSegments (and the radiator connection-type handler) call
+api.updateRoom without checking the result. If saving a recalculated volume
+fails, the room keeps its old volume with no message, and volume feeds the
+ventilation and minimum air-change figures: a silent wrong heat loss. Same
+bug class as B26. Check the result and report it, as updateRoom now does.
+
+**Whole-house MVHR apply has no rollback** (B26, accepted)
+applyWholeHouseMVHR saves each room and then design_params. If some saves
+fail, it reports exactly what failed but leaves rooms partly switched. If the
+design_params save fails, the reload also blanks the values the engineer
+typed. Rare (only after a failed save); a single transaction route would fix
+both.
+
+**Retire design_params.pipe_sections and circuits JSONB columns**
+Both still exist (seen in the B26 schema check, 2026-11-01), contrary to the
+Architecture note below. Confirm nothing reads them, then drop in a migration.
+
+**One design_params row has a null mvhr_efficiency** (seen B26, minor)
+Probably an old row from before a default was set. Check the create paths
+set it, then backfill 0.
 
 **api.js request helper** (unmerged item from handover_pipe_library_fix_2026-09-30.md)
 One shared request function in api.js (status check, JSON parsing, error
@@ -614,6 +727,22 @@ Take a snapshot first (above), apply it at a quiet time, then run
 SMOKE_TEST.md.
 
 ### Priority 4 — Calculation / standards extensions
+
+**SCOP estimator uses the W/K line through zero load** (found B27, 2026-11-11)
+calculateSpaceHeatingScop() is fed heatLossCoefficient = generator load /
+(Ti_avg − Te,design), i.e. the same through-zero line that B27 removed from
+the modulation check. On CIBSE 2026 projects the real load line is flatter
+(slab floors at Te,ref, fixed customDeltaT boundaries), so demand in mild
+weather — where most heating hours fall — is understated, and the flow
+temperature from weather compensation with it. Likely effect: SCOP and annual
+kWh slightly off; direction and size to be checked on the reference project
+before changing anything. Options: give the SCOP bins the same two-point
+load line (Q_generator at Te,design, Q_typical at Te,ref) via a shared
+"building load at Te" helper next to calculateMinModulationTemp(), or
+document the simplification. Also: avgInternalTemp is an unweighted mean
+across rooms (a small 22 °C bathroom counts the same as the lounge); weight
+by load or area if the W/K figure is kept. Upload scopCalculations.js to
+start. Note SCOP feeds the customer pack and quote pack PDFs.
 
 **Re-check help text against any later DHDG corrigendum (B25)**
 Several screens now cite DHDG-2026-1-COR-001 and the renumbered Tables
@@ -681,17 +810,36 @@ customer project share feature.
 ## Testing
 
 **SMOKE_TEST.md** — created June 2026. Lives in project root. Run after every
-meaningful deploy. Anchored to a 15-room reference project with known outputs
-(as in SMOKE_TEST.md, last verified 2026-10-26):
-- Effective q50: 16.6 m3/h.m2
-- Generator heat loss: 5.32 kW
-- Emitter heat load: 7.13 kW
-- Index circuit: 24.32 kPa, 0.335 l/s
-- System volume: 191.5 l
-- Heat pump: Panasonic L Series 7 kW, min modulation 2.2 kW
-- Design flow/return: 40/35 °C
+meaningful deploy. Anchored to a 15-room reference project. SMOKE_TEST.md
+section 2 is the single source for the expected figures — do not copy them
+here (this list drifted out of date once already). Headline figures as of
+the 2026-11-11 re-baseline:
+- Generator heat loss: 5.17 kW (was 5.32 kW before the Master Bedroom
+  thermal bridging change)
+- Emitter heat load: 6.98 kW (was 7.13 kW)
+- Minimum modulation temperature: 9.9 °C, amber (B27)
+- Index circuit and system volume: not re-checked since the load change —
+  see SMOKE_TEST.md section 2 † rows
+
+**Reference project drifted silently** (found 2026-11-11)
+Testing edits had changed the reference project in both copies: whole-house
+MVHR left on from B26 testing (local) and a different Master Bedroom thermal
+bridging addition (live). Each produced plausible figures, so nothing flagged
+it. Rule now in SMOKE_TEST.md: experiment on a copy, never on the reference
+project, and a reference-state check (MVHR off, Master Bedroom bridging
+value) added to section 5. Worth considering: a read-only / locked flag on
+the reference project, or exporting it as a fixture that the Playwright
+suite restores before each run.
 
 ---
+
+**Automate the pre-deploy smoke test** (idea, 2026-11-06)
+Extend the B25 Playwright suite (scripts/e2e, scratch DB only) to cover the
+reference figures (section 2), save/reload (3), U-value picker (4), pipe
+sizing (8, 8A) and the MVHR checks, run before every merge. The post-deploy
+check on production then shrinks to reading the section 2 figures plus the
+sign-in and security checks done by hand. Reason: after many runs a person
+reads what they expect to see; a script does not.
 
 ## Storage architecture note
 
@@ -754,6 +902,26 @@ Note this is deliberately DIFFERENT from the per-item markup precedent
 figure where the old value remained correct. This is a calculation that is
 now known to be wrong, so the tool must actively surface it rather than leave
 it silently in place — but must still not change it without consent.
+
+**Minimum modulation temperature — two-point line, not W/K (B27)**
+The outdoor temperature at which the heat pump reaches minimum output is
+taken from the straight line through the two loads the app already
+calculates: generator load at Te,design and typical load at Te,ref. This is
+consistent by construction with the typical-load figure shown beside it
+(if P_min < Q_typical, T_min is always above Te,ref, and vice versa). It is
+a display-only check: no stored value or issued document depends on it, so
+unlike B25 there is nothing to freeze or offer — the corrected figure simply
+replaces the old one. The function lives in calculations.js and is the only
+place this is computed.
+
+**Units: one storage unit, convert in exactly one place (B26)**
+MVHR efficiency is entered as a percentage (how datasheets quote it) and
+stored and calculated as a fraction. The conversion lives only in
+client/src/utils/mvhrEfficiency.js; no other code multiplies or divides
+efficiency by 100, and the server checks the stored unit (0..1). The reverse
+error (typing 0.85 meaning 85 %) is blocked by rejecting 0 < x < 1. Apply the
+same rule to any future quantity with a display unit different from its
+storage unit.
 
 **Per-item markup, not per-category or blanket — quote pricing model redesign (planned)**
 The original quote pricing model (migration 011) used a single blanket
@@ -879,6 +1047,11 @@ is a recurring source of bugs. See CALCULATIONS.md for full reference.
   TYPICAL LOAD   = fabric (Te,ref) + ventGeneratorTypical
                    Used for modulation check (MCS 5.7.2)
 
+  MIN MODULATION TEMPERATURE = calculateMinModulationTemp() in calculations.js
+                   Uses GENERATOR and TYPICAL loads together (two-point line).
+                   Summary.jsx and buildHeatLossPayload.js both call it — never
+                   recompute inline (B27).
+
 calculateRoomTotal() returns EMITTER load. Do not use for heat pump sizing.
 
 ### camelCase requirement for calculation functions
@@ -900,9 +1073,10 @@ Unsafe: raw fetch() responses before loadProject() mapping.
 
 ### Pipe sections data model (migration 010)
 Pipe sections are stored in the normalised pipe_sections table, not in a JSON
-blob on design_params. The old pipe_sections JSONB column no longer exists.
-Any code or PDF generator referencing dp.pipe_sections or similar will return
-null/empty. The pipe sizing PDF needs rewriting to use the pipe_sections table.
+blob on design_params. The old design_params.pipe_sections JSONB column is
+no longer used, but it still exists (as does circuits; see Priority 3,
+"Retire design_params.pipe_sections and circuits"). Any code or PDF
+generator reading dp.pipe_sections gets stale or empty data. The pipe sizing PDF needs rewriting to use the pipe_sections table.
 
 ### normalisePipeSectionBody — snake_case priority rule
 In server.js, normalisePipeSectionBody gives snake_case fields priority over
@@ -928,6 +1102,40 @@ Snapshots capture the full state at a point in time.
 ---
 
 ## Session log
+
+### 2026-11-11 — B27 minimum modulation temperature
+
+- User email + screenshot: modulation temperature 7.7 °C shown below Te,ref
+  9.9 °C although P_min 1.85 kW < typical load 2.33 kW.
+- Cause: original W/K through-zero formula never reconciled with the later
+  CIBSE typical-load check; formula duplicated inline in Summary.jsx and
+  buildHeatLossPayload.js (screen and PDF both wrong). Took a grep to find —
+  not documented anywhere.
+- Fix written: calculateMinModulationTemp() in calculations.js (two-point
+  line, legacy W/K fallback), both callers switched to it, backwards comment
+  removed, calculations.js header updated. Old formula reproduces 7.7 °C;
+  new gives ~15 °C. Node-tested, syntax-checked, running on local dev; not
+  yet deployed. Deploy checklist under B27.
+- Local vs live reference project differed (5.64 vs 5.17 kW, recorded
+  5.32 kW). Not code: local had whole-house MVHR left on from B26 testing
+  and an older Master Bedroom thermal bridging value; live's Master Bedroom
+  bridging had changed since 26 Oct (−155 W fabric). Local corrected to
+  match live; SMOKE_TEST.md re-baselined to 5.17 / 6.98 kW, modulation
+  9.9 °C amber; reference-state check and "test on a copy" rule added.
+- Follow-up logged: SCOP estimator uses the same through-zero W/K line
+  (Priority 4).
+
+### 2026-11 — B26 MVHR efficiency deployed
+
+- Scoped from the data on a fresh restore: 3 rooms in 3 projects (25, 370,
+  868); 370 latent. No design_params, pipe section or MCS snapshot affected.
+- Percent entry with fraction storage; one helper; server backstop; save
+  failures reported; dead SAP ventilation files removed.
+- Migration 026 rehearsed (gate 21/21, re-runs change nothing, abort path
+  tested) and deployed 2026-11-06 evening; stragglers 0/0; 027 unused;
+  smoke test passed.
+- Claude Code safety: .claude/settings.local.json deny rules for .env and for
+  running server.js / migrate.js (see DEVELOPMENT_PRINCIPLES.md section 10).
 
 ### 2026-10 — Railway incident, pipe library fix, B25 deployed
 
