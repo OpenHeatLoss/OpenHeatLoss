@@ -11,7 +11,7 @@ import {
   calculateRoomVentilationEN12831,
   calculateBuildingVentilationEN12831,
 } from '../../utils/en12831Calculations';
-import { calculateTransmissionLoss } from '../../utils/calculations';
+import { calculateTransmissionLoss, calculateMinModulationTemp } from '../../utils/calculations';
 import { api } from '../../utils/api';
 import { buildDesignParamsPayload } from '../../utils/projectPayloads';
 import { buildHeatLossPayload } from '../../utils/buildHeatLossPayload';
@@ -225,14 +225,18 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const heatLossCoefficient = deltaT > 0 ? ((sizingBase * 1000) / deltaT) : 0;
 
   // Outdoor temperature at which the heat pump reaches minimum modulation.
-  // Derived by inverting the building heat demand line:
-  //   Q(Te) = HLC × (Ti_avg − Te)  =>  Te = Ti_avg − (Q_min / HLC)
-  // When Te_minMod > Te,ref the heat pump will reach minimum modulation above
-  // the mean annual temperature — short-cycling risk is higher.
+  // See calculateMinModulationTemp() in utils/calculations.js for the method. A result below Te,ref means
+  // the heat pump cycles through most of the heating season.
   const minModKw = project.heatPumpMinModulation || 0;
-  const minModulationTemp = (heatLossCoefficient > 0 && minModKw > 0)
-    ? avgInternalTemp - ((minModKw * 1000) / heatLossCoefficient)
-    : null;
+  const minModulationTemp = calculateMinModulationTemp({
+    minModKw,
+    generatorLoadKw:     isEN12831 ? totalGeneratorLoad : 0,
+    typicalLoadKw:       isEN12831 ? totalTypicalLoad   : 0,
+    designTemp:          project.externalTemp ?? -3,
+    refTemp,
+    heatLossCoefficient,
+    avgInternalTemp,
+  });
 
   // Warnings from EN 12831 calc
   const ventWarnings = buildingVent?.warnings || [];

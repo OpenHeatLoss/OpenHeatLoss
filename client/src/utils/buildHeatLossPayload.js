@@ -24,7 +24,7 @@ import {
   calculateRoomVentilationEN12831,
   calculateBuildingVentilationEN12831,
 } from './en12831Calculations';
-import { calculateTransmissionLoss } from './calculations';
+import { calculateTransmissionLoss, calculateMinModulationTemp } from './calculations';
 import {
   fitEta,
   calculateSpaceHeatingScop,
@@ -78,10 +78,17 @@ export function buildHeatLossPayload(project, opts = {}) {
   const deltaT = avgInternalTemp - externalTemp;
   const heatLossCoefficient = deltaT > 0 ? ((sizingBase * 1000) / deltaT) : 0;
 
+  // Must match Summary.jsx — both call the shared helper.
   const minModKw = project.heatPumpMinModulation || 0;
-  const minModulationTemp = (heatLossCoefficient > 0 && minModKw > 0)
-    ? avgInternalTemp - ((minModKw * 1000) / heatLossCoefficient)
-    : null;
+  const minModulationTemp = calculateMinModulationTemp({
+    minModKw,
+    generatorLoadKw:     isEN12831 ? totalGeneratorLoad : 0,
+    typicalLoadKw:       isEN12831 ? totalTypicalLoad   : 0,
+    designTemp:          externalTemp,
+    refTemp:             referenceTemp,
+    heatLossCoefficient,
+    avgInternalTemp,
+  });
 
   const heatPumpSizingMargin = sizingBase > 0
     ? ((project.heatPumpRatedOutput || 0) / sizingBase) : 0;
