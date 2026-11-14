@@ -915,8 +915,14 @@ const rooms = {
       exposed_envelope_m2 = $19, has_suspended_floor = $20, is_top_storey = $21,
       bg_vent_count = $22, bg_fan_count = $23,
       bg_flue_small_count = $24, bg_flue_large_count = $25, bg_open_fire_count = $26,
-      continuous_vent_type = $27, continuous_vent_rate_m3h = $28, mvhr_efficiency = $29
-    WHERE id = $30`,
+      continuous_vent_type = $27, continuous_vent_rate_m3h = $28, mvhr_efficiency = $29,
+      -- Migration 027. COALESCE so a payload without these fields (a stale
+      -- browser tab running pre-027 JS) keeps the stored values instead of
+      -- silently clearing an accepted shortfall. Same pattern as the B25 q50
+      -- columns on design_params.
+      emitter_shortfall_accepted = COALESCE($30::smallint, emitter_shortfall_accepted),
+      emitter_shortfall_reason   = COALESCE($31::text,     emitter_shortfall_reason)
+    WHERE id = $32`,
     [data.name, data.internalTemp, data.volume, data.floorArea,
      data.roomLength, data.roomWidth, data.roomHeight,
      data.roomType || 'living_room',
@@ -937,6 +943,9 @@ const rooms = {
      data.continuousVentType     || 'none',
      data.continuousVentRateM3h  ?? 0,
      data.mvhrEfficiency         ?? 0,
+     // $30 / $31 — undefined or null → keep stored value (see SQL)
+     data.emitterShortfallAccepted == null ? null : (data.emitterShortfallAccepted ? 1 : 0),
+     data.emitterShortfallReason   ?? null,
      id]
   ),
 

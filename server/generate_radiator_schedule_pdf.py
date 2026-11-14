@@ -14,6 +14,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 import json
 import sys
 from datetime import datetime
+from xml.sax.saxutils import escape
 
 BLUE_DARK    = colors.HexColor('#1e3a8a')
 BLUE_MID     = colors.HexColor('#1e40af')
@@ -26,6 +27,18 @@ RED          = colors.HexColor('#dc2626')
 RED_LIGHT    = colors.HexColor('#fee2e2')
 PURPLE       = colors.HexColor('#7c3aed')
 PURPLE_LIGHT = colors.HexColor('#ede9fe')
+AMBER        = colors.HexColor('#b45309')
+AMBER_LIGHT  = colors.HexColor('#fef3c7')
+
+
+def room_is_sufficient(r):
+    return r.get('totalOutput', 0) >= r.get('heatLoss', 0)
+
+
+def room_is_accepted_short(r):
+    # Only meaningful while the room is actually short. Payloads from before
+    # migration 027 have no shortfallAccepted key → treated as not accepted.
+    return (not room_is_sufficient(r)) and bool(r.get('shortfallAccepted', False))
 
 
 class PageNumCanvas(rl_canvas.Canvas):
@@ -173,10 +186,15 @@ def create_radiator_schedule_pdf(data, output_filename):
     story.append(Paragraph("Overall Schedule Summary", heading_style))
     rooms                   = data.get('rooms', [])
     total_rooms             = len(rooms)
-    sufficient_rooms        = sum(1 for r in rooms if r.get('totalOutput', 0) >= r.get('heatLoss', 0))
+    sufficient_rooms        = sum(1 for r in rooms if room_is_sufficient(r))
+    accepted_rooms          = [r for r in rooms if room_is_accepted_short(r)]
+    unresolved_rooms        = [r for r in rooms if not room_is_sufficient(r) and not room_is_accepted_short(r)]
     total_scheduled_output  = sum(r.get('totalOutput', 0) for r in rooms)
     total_heat_loss_w       = data.get('totalHeatLoss', 0) * 1000
     all_ok                  = sufficient_rooms == total_rooms
+    house_covered           = total_scheduled_output >= total_heat_loss_w
+    # Same three states as the app's System Emitter Summary badge
+    accepted_ok             = (not all_ok) and (not unresolved_rooms) and house_covered
     output_diff             = total_scheduled_output - total_heat_loss_w
     output_pct              = (total_scheduled_output / total_heat_loss_w * 100) if total_heat_loss_w > 0 else 0
 
@@ -187,14 +205,27 @@ def create_radiator_schedule_pdf(data, output_filename):
         out_bg, out_tc = RED_LIGHT, RED
 
     # Overall status cell — Paragraph so it wraps
+    if all_ok:
+        status_tc, status_bg = GREEN, GREEN_LIGHT
+    elif accepted_ok:
+        status_tc, status_bg = AMBER, AMBER_LIGHT
+    else:
+        status_tc, status_bg = RED, RED_LIGHT
     status_para_style = ParagraphStyle('SP', parent=styles['Normal'],
         fontSize=10, fontName='Helvetica-Bold', alignment=TA_CENTER,
-        textColor=GREEN if all_ok else RED)
+        textColor=status_tc, leading=12)
     if all_ok:
-        status_cell = Paragraph("\u2714 All rooms\nscheduled", status_para_style)
-    else:
+        status_cell = Paragraph("\u2714 All rooms<br/>scheduled", status_para_style)
+    elif accepted_ok:
         status_cell = Paragraph(
-            f"\u2717 {total_rooms - sufficient_rooms} room(s)\nwith shortfall", status_para_style)
+            f"\u2714 Whole house covered<br/>"
+            f"<font size='8'>{len(accepted_rooms)} room(s) shortfall accepted</font>",
+            status_para_style)
+    elif unresolved_rooms:
+        status_cell = Paragraph(
+            f"\u2717 {len(unresolved_rooms)} room(s)<br/>with shortfall", status_para_style)
+    else:
+        status_cell = Paragraph("\u2717 Whole-house output<br/>below load", status_para_style)
 
     summary_rows = [
         ['Total Rooms', 'Total Scheduled Output', 'Total Emitter Sizing', 'Overall Status'],
@@ -212,12 +243,42 @@ def create_radiator_schedule_pdf(data, output_filename):
         ('FONTSIZE',     (0, 1), (-1, 1),  10),
         ('BACKGROUND',   (1, 1), (1, 1),   out_bg),
         ('TEXTCOLOR',    (1, 1), (1, 1),   out_tc),
-        ('BACKGROUND',   (3, 1), (3, 1),   GREEN_LIGHT if all_ok else RED_LIGHT),
+        ('BACKGROUND',   (3, 1), (3, 1),   status_bg),
         ('TOPPADDING',   (0, 1), (-1, 1),  8),
         ('BOTTOMPADDING',(0, 1), (-1, 1),  8),
     ]))
     story.append(sum_table)
     story.append(Spacer(1, 0.2*cm))
+
+    # ── Accepted room shortfalls  17.4cm: [4.0, 2.4, 11.0] ────────────────
+    # A single place to find every accepted shortfall and why, so the decision
+    # is on record for the customer and for later reference.
+    if accepted_rooms:
+        story.append(Paragraph("Accepted Room Shortfalls", heading_style))
+        story.append(Paragraph(
+            "The rooms below have emitter output below their design heat loss. "
+            "A larger or additional emitter was not feasible; the shortfall is "
+            "accepted and the whole-house emitter output covers the total design load.",
+            note_style))
+        story.append(Spacer(1, 0.15*cm))
+        cell_style = ParagraphStyle('acc', parent=styles['Normal'], fontSize=8, leading=10)
+        acc_rows = [['Room', 'Shortfall', 'Reason']]
+        for r in accepted_rooms:
+            short_w = r.get('shortfallW', r.get('heatLoss', 0) - r.get('totalOutput', 0))
+            reason = (r.get('shortfallReason') or '').strip() or 'No reason recorded.'
+            acc_rows.append([
+                Paragraph(escape(str(r.get('name', 'Room'))), cell_style),
+                f"{short_w:.0f} W",
+                Paragraph(escape(reason), cell_style),
+            ])
+        acc_table = Table(acc_rows, colWidths=[4.0*cm, 2.4*cm, 11.0*cm], repeatRows=1)
+        acc_table.setStyle(TableStyle(make_style(header_bg=AMBER) + [
+            ('BACKGROUND', (0, 1), (-1, -1), AMBER_LIGHT),
+            ('ALIGN',      (1, 0), (1, -1),  'CENTER'),
+            ('VALIGN',     (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(acc_table)
+        story.append(Spacer(1, 0.2*cm))
 
     # Legend  17.4cm: [5.8, 5.8, 5.8] ─────────────────────────────────────
     legend_rows = [[
@@ -271,17 +332,25 @@ def create_radiator_schedule_pdf(data, output_filename):
 
         # Room header bar  17.4cm: [3.8, 8.0, 5.6] ────────────────────────
         pct = (total_output / heat_loss * 100) if heat_loss > 0 else 0
+        accepted     = room_is_accepted_short(room)
         if sufficient:
             excess = total_output - heat_loss
             status_sym = '\u2713 SUFFICIENT'
             status_detail = f"{total_output:.0f} W scheduled  (<b>+{excess:.0f} W, +{pct - 100:.0f}%</b>)"
         else:
-            status_sym = '\u2717 SHORTFALL'
+            status_sym = 'SHORTFALL ACCEPTED' if accepted else '\u2717 SHORTFALL'
             status_detail = f"{total_output:.0f} W scheduled  (<b>shortfall: {shortfall:.0f} W, \u2212{100 - pct:.0f}%</b>)"
+
+        if sufficient:
+            bar_bg, bar_fg = GREEN_LIGHT, GREEN
+        elif accepted:
+            bar_bg, bar_fg = AMBER_LIGHT, AMBER
+        else:
+            bar_bg, bar_fg = RED_LIGHT, RED
 
         header_data = [[
             Paragraph(
-                f"<b>{room.get('name', 'Room')}</b>",
+                f"<b>{escape(str(room.get('name', 'Room')))}</b>",
                 ParagraphStyle('rn', parent=styles['Normal'], fontSize=10, textColor=BLUE_DARK)
             ),
             Paragraph(
@@ -294,20 +363,36 @@ def create_radiator_schedule_pdf(data, output_filename):
             Paragraph(
                 f"<b>{status_sym}</b><br/>{status_detail}",
                 ParagraphStyle('rs', parent=styles['Normal'], fontSize=9,
-                               textColor=GREEN if sufficient else RED, alignment=TA_RIGHT)
+                               textColor=bar_fg, alignment=TA_RIGHT)
             ),
         ]]
         header_table = Table(header_data, colWidths=[3.8*cm, 8.0*cm, 5.6*cm])
         header_table.setStyle(TableStyle([
-            ('BACKGROUND',   (0, 0), (-1, -1), GREEN_LIGHT if sufficient else RED_LIGHT),
+            ('BACKGROUND',   (0, 0), (-1, -1), bar_bg),
             ('VALIGN',       (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING',   (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING',(0, 0), (-1, -1), 6),
             ('LEFTPADDING',  (0, 0), (-1, -1), 8),
-            ('BOX',          (0, 0), (-1, -1), 1, GREEN if sufficient else RED),
-            ('LINEBELOW',    (0, 0), (-1, -1), 1, GREEN if sufficient else RED),
+            ('BOX',          (0, 0), (-1, -1), 1, bar_fg),
+            ('LINEBELOW',    (0, 0), (-1, -1), 1, bar_fg),
         ]))
         story.append(header_table)
+
+        # Reason for an accepted shortfall, directly under the room bar
+        if accepted:
+            reason = (room.get('shortfallReason') or '').strip() or 'No reason recorded.'
+            reason_table = Table([[Paragraph(
+                f"<b>Shortfall accepted:</b> {escape(reason)}",
+                ParagraphStyle('rr', parent=styles['Normal'], fontSize=8, leading=10, textColor=AMBER)
+            )]], colWidths=[17.4*cm])
+            reason_table.setStyle(TableStyle([
+                ('BACKGROUND',   (0, 0), (-1, -1), AMBER_LIGHT),
+                ('LEFTPADDING',  (0, 0), (-1, -1), 8),
+                ('TOPPADDING',   (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING',(0, 0), (-1, -1), 4),
+                ('BOX',          (0, 0), (-1, -1), 0.5, AMBER),
+            ]))
+            story.append(reason_table)
 
         if schedule:
             # Schedule table  17.4cm: [1.5, 9.1, 1.5, 0.9, 2.2, 2.2] ─────

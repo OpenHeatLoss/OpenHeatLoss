@@ -1,7 +1,7 @@
 // client/src/components/calculations/RadiatorSizing.jsx
 import { useState, useEffect } from 'react';
 import { calculateRoomTotal } from '../../utils/calculations';
-import { RADIATOR_CONNECTION_TYPES, CONNECTION_TYPE_CORRECTIONS } from '../../utils/constants';
+import { RADIATOR_CONNECTION_TYPES } from '../../utils/constants';
 import { PlusIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, XIcon } from '../common/Icons';
 import { api } from '../../utils/api';
 import { buildHeatLossPayload } from '../../utils/buildHeatLossPayload';
@@ -146,39 +146,42 @@ const PIPE_SPACINGS = [100, 150, 200, 300];
 // Minimum Flow Temp Functions
 //----------------------------------------------------------------------------
 
-function calcMinRoomFlowTemp(room, radiatorSpecs, returnTemp, heatLoss, connectionType) {
+// Minimum flow temp at which this room's radiators meet `heatLoss`, holding the
+// system flow/return ΔT constant (the design ΔT the user has set).
+//
+// Why ΔT is held constant: the flow temp you'd actually run at is "required MWT
+// + ΔT/2". The previous version held the *return* temp fixed and searched on
+// flow, which (a) silently changed ΔT, so the answer shifted 1:1 with whatever
+// return temp was typed in, and (b) clamped at return + 0.5°C, so every
+// comfortably-covered room tied at the clamp and the first room in the list
+// was reported as "setting" the flow temp.
+//
+// All radiators use n = 1.3, so required MWAT has a closed form — no search,
+// no clamp:  Q = ΣΔT50_eff × conn × (MWAT/50)^1.3
+//        →  MWAT = 50 × (Q / (ΣΔT50_eff × conn))^(1/1.3)
+//
+// Connection factor is applied here to match checkRoomSufficiency and
+// RoomRadiatorSchedule (it was previously computed but unused, making this
+// figure ~3% optimistic for BOE vs the per-room display).
+function calcMinRoomFlowTemp(room, radiatorSpecs, flowReturnDelta, heatLoss, connectionType) {
   const retainedItems = (room.radiatorSchedule || []).filter(
     item => item.emitter_status !== 'existing_replace' && item.radiator_spec_id
   );
   if (retainedItems.length === 0) return null;
+  if (!(heatLoss > 0)) return null; // nothing for radiators to do (e.g. UFH covers it)
 
-  const connFactor = CONNECTION_TYPE_FACTORS[connectionType] || 1.00;
-  const roomTemp = room.internalTemp || 21;
+  const connFactor = CONNECTION_TYPE_FACTORS[connectionType] || 0.96;
+  const roomTemp = room.internalTemp ?? 21;
 
-  let lo = returnTemp + 0.5;
-  let hi = 85;
+  const totalEffDt50 = retainedItems.reduce((sum, item) => {
+    const spec = radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
+    if (!spec) return sum;
+    return sum + effectiveDt50(spec.output_dt50, item.enclosure_factor, item.finish_factor) * (item.quantity || 1);
+  }, 0);
+  if (totalEffDt50 <= 0) return null;
 
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    const mwat = ((mid + returnTemp) / 2) - roomTemp;
-    if (mwat <= 0) { lo = mid; continue; }
-
-    const combinedOutput = retainedItems.reduce((sum, item) => {
-      const spec = radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
-      if (!spec) return sum;
-      const ef = item.enclosure_factor ?? 1.00;
-      const ff = item.finish_factor   ?? 1.00;
-      const effDt50 = spec.output_dt50 * ef * ff * (item.quantity || 1);
-      return sum + (effDt50 * Math.pow(mwat / 50, 1.3));
-    }, 0);
-
-    // Target: combined output must meet heat loss
-    // Connection factor already baked into required ΔT50 at design time
-    // Here we just need combined output >= heat loss
-    if (combinedOutput < heatLoss) lo = mid; else hi = mid;
-  }
-
-  return hi;
+  const requiredMWAT = 50 * Math.pow(heatLoss / (totalEffDt50 * connFactor), 1 / 1.3);
+  return roomTemp + requiredMWAT + (flowReturnDelta / 2);
 }
 
 //----------------------------------------------------------------------------
@@ -325,6 +328,7 @@ export default function RadiatorSizing({
   onAddUFHEmitter,
   onRemoveUFH,
   onSaveFlowTemps,
+  onUpdateRoom,
   currentCompany,
   currentUser,
 }) {
@@ -340,26 +344,73 @@ export default function RadiatorSizing({
   const canGeneratePack = currentUser?.plan === 'pro' || currentUser?.plan === 'beta';
 
 
-  // Local state for flow/return temp inputs — initialised once from project on
-  // mount. No useEffect sync: loadProject in other tabs must not overwrite what
-  // the user just typed. Values are saved to the server on every change so that
-  // when loadProject does fire it gets the current value back.
-  const [localFlowTemp,   setLocalFlowTemp]   = useState(project.designFlowTemp   ?? 50);
-  const [localReturnTemp, setLocalReturnTemp] = useState(project.designReturnTemp ?? 40);
+  // Flow + ΔT are the inputs; the return is derived (flow − ΔT). This matches
+  // how a system is designed (pick a ΔT, then adjust the flow) and makes a
+  // zero/negative ΔT hard to enter by accident — production had 18 projects
+  // with a lowered flow left against the default 40 °C return.
+  //
+  // STORAGE IS UNCHANGED: design_flow_temp and design_return_temp are still
+  // what's saved and what every other consumer reads (Summary SCOP, PDFs,
+  // pipe sizing, MCS). ΔT is never stored; it's derived from the pair on load.
+  const round1 = (x) => Math.round(x * 10) / 10;   // avoids 35.199999 returns
+  const initFlow = project.designFlowTemp   ?? 50;
+  const initRet  = project.designReturnTemp ?? 40;
+  const [localFlowTemp, setLocalFlowTemp] = useState(initFlow);
+  const [localDeltaT,   setLocalDeltaT]   = useState(round1(initFlow - initRet));
+  const localReturnTemp = round1(localFlowTemp - localDeltaT);
 
-  // Sync local state when project prop updates (e.g. after DB save reloads project,
-  // or when switching between projects). Guards against resetting mid-edit by only
-  // syncing when the value actually differs from what's in the DB.
+  // Sync from the project when it changes (save reload, project switch). An
+  // existing bad pair (e.g. 35/40) loads as ΔT −5 and shows the red error —
+  // deliberately not replaced with a default, so the engineer corrects it.
   useEffect(() => {
-    if (project.designFlowTemp   != null) setLocalFlowTemp(project.designFlowTemp);
-    if (project.designReturnTemp != null) setLocalReturnTemp(project.designReturnTemp);
+    const f = project.designFlowTemp;
+    const r = project.designReturnTemp;
+    if (f != null) setLocalFlowTemp(f);
+    if (f != null && r != null) setLocalDeltaT(round1(f - r));
   }, [project.designFlowTemp, project.designReturnTemp]);
 
-  const systemSettings = {
-    flowTemp:   localFlowTemp,
-    returnTemp: localReturnTemp,
+  // ── Flow/return validation ────────────────────────────────────────────────
+  // ΔT ≤ 0 is physically impossible for a heating circuit (zero or negative
+  // heat transfer per kg of water = infinite flow rate), yet the maths still
+  // returns numbers: equal temps give MWT = flow, so outputs rise and the min
+  // flow temp collapses to the required MWT. Hard error below MIN_DT.
+  // Outside the usual heat pump range it's a soft warning only.
+  const MIN_DT = 1;          // K — hard limit
+  const TYPICAL_DT = [3, 10]; // K — soft warning outside this
+  const flowReturnStatus = (flow, ret) => {
+    const dt = flow - ret;
+    if (!(dt >= MIN_DT)) {
+      return { error: `Flow/return ΔT must be at least ${MIN_DT} K.` };
+    }
+    if (dt < TYPICAL_DT[0] || dt > TYPICAL_DT[1]) {
+      return { warning: `A ${dt.toFixed(1)} K flow/return ΔT is outside the usual ${TYPICAL_DT[0]}–${TYPICAL_DT[1]} K for heat pump systems — check this is intended.` };
+    }
+    return {};
   };
+  const localStatus  = flowReturnStatus(localFlowTemp, localReturnTemp);
+  const savedPairOk  = project.designFlowTemp != null && project.designReturnTemp != null
+    && !flowReturnStatus(project.designFlowTemp, project.designReturnTemp).error;
+
+  // Calculations use the typed pair when it's valid; otherwise the last valid
+  // pair (only valid pairs are ever pushed to the project — see the inputs).
+  const systemSettings = (!localStatus.error || !savedPairOk)
+    ? { flowTemp: localFlowTemp,          returnTemp: localReturnTemp }
+    : { flowTemp: project.designFlowTemp, returnTemp: project.designReturnTemp };
   const flowReturnDelta = systemSettings.flowTemp - systemSettings.returnTemp;
+
+  // Push a typed pair up to the project only if it's valid. Both fields are
+  // sent because the other one may have been held back while the pair was
+  // invalid (e.g. 45/40 → 35/40 → 35/30). updateProject is a functional
+  // setState, so two calls in a row are safe.
+  const pushIfValid = (flow, ret) => {
+    if (flowReturnStatus(flow, ret).error) return;
+    onUpdateProject('designFlowTemp', flow);
+    onUpdateProject('designReturnTemp', ret);
+  };
+  const saveIfValid = (flow, ret) => {
+    if (flowReturnStatus(flow, ret).error) return;
+    onSaveFlowTemps?.(flow, ret);
+  };
 
   const toggleRoom = (roomId) => {
     const next = new Set(expandedRooms);
@@ -369,13 +420,6 @@ export default function RadiatorSizing({
   const collapseAll = () => setExpandedRooms(new Set());
   const expandAll   = () => {
     if (project.rooms) setExpandedRooms(new Set(project.rooms.map(r => r.id)));
-  };
-
-  const calculateRequiredFlowTemp = (outputDt50, requiredOutput, roomTemp, connectionType = 'BOE') => {
-    const n = 1.3;
-    const cf = CONNECTION_TYPE_CORRECTIONS[connectionType] || 1.0;
-    const reqMWAT = 50 * Math.pow(requiredOutput / (outputDt50 * cf), 1 / n);
-    return reqMWAT + (flowReturnDelta / 2) + roomTemp;
   };
 
   const getRoomUFHOutput = (room) =>
@@ -409,26 +453,42 @@ export default function RadiatorSizing({
     let maxFloorTemp = null, floorTempWarning = false;
     let ufhRoomCount = 0, radRoomCount = 0;
     let drivingRadRoom = null; // room whose radiators require the highest flow temp
+    // Room-level shortfalls, split by whether the designer has accepted them
+    // (MCS allows a room below its heat loss where more emitter isn't feasible,
+    // provided the whole house is still covered).
+    const acceptedShortRooms = [];   // [{ name, shortfallW }]
+    const unresolvedShortRooms = []; // [{ name, shortfallW }]
 
     for (const room of project.rooms) {
       const heatLoss = calculateRoomTotal(room, project);
       totalHeatLoss += heatLoss;
-      const { totalOutput: ro } = checkRoomSufficiency(room);
+      const { totalOutput: ro, sufficient } = checkRoomSufficiency(room);
       totalOutput += ro;
+
+      // A flag on a room that is now covered is ignored — it only means
+      // something while the room is actually short.
+      const isAcceptedShort = !sufficient && !!room.emitterShortfallAccepted;
+      if (!sufficient) {
+        const entry = { name: room.name || 'Unknown room', shortfallW: heatLoss - ro };
+        (isAcceptedShort ? acceptedShortRooms : unresolvedShortRooms).push(entry);
+      }
 
       const hasUFH = room.emitters?.some(e => e.emitterType === 'UFH');
       const hasRad = (room.radiatorSchedule || []).some(
         i => i.emitter_status !== 'existing_replace' && i.radiator_spec_id
       );
 
-      if (hasRad) {
+      // Accepted-shortfall rooms are excluded from the min flow temp: their
+      // emitter can't be enlarged, so letting them set the system temperature
+      // would stall the iterative selection workflow permanently.
+      if (hasRad && !isAcceptedShort) {
         radRoomCount++;
         const ufhOutputForRoom = getRoomUFHOutputPure(room, systemSettings.flowTemp);
         const residualHeatLoss = Math.max(0, heatLoss - ufhOutputForRoom);
         const roomMinFlow = calcMinRoomFlowTemp(
           room,
           project.radiatorSpecs,
-          systemSettings.returnTemp,
+          systemSettings.flowTemp - systemSettings.returnTemp,
           residualHeatLoss,
           room.designConnectionType || 'BOE'
         );
@@ -476,6 +536,7 @@ export default function RadiatorSizing({
       totalHeatLoss, totalOutput, minRadFlowTemp, minUFHFlowTemp,
       maxFloorTemp, floorTempWarning, isMixed, blendingNeeded,
       ufhRoomCount, radRoomCount, drivingRadRoom,
+      acceptedShortRooms, unresolvedShortRooms,
     };
   };
 
@@ -491,58 +552,73 @@ export default function RadiatorSizing({
     });
   };
 
+  // Room data for the schedule PDF and customer pack — one builder for both
+  // export paths (they were duplicated and had drifted).
+  //   outputAtDesign = ONE radiator's output at design conditions
+  //   totalOutput    = outputAtDesign × quantity
+  // Both include the room's connection factor, so rows add up to the room
+  // total used by checkRoomSufficiency. Previously the connection factor was
+  // missing, and effDt50 already included quantity before totalOutput
+  // multiplied by quantity again (qty 2 showed 4× one radiator).
+  const buildPdfRoomData = () => (project.rooms || []).map(room => {
+    const { heatLoss, totalOutput, sufficient } = checkRoomSufficiency(room);
+    const mwat = calculateMWAT(systemSettings.flowTemp, systemSettings.returnTemp, room.internalTemp);
+    const connFactor = CONNECTION_TYPE_FACTORS[room.designConnectionType || 'BOE'] || 0.96;
+    const schedule = (room.radiatorSchedule || []).map(item => {
+      const spec = project.radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
+      const qty  = item.quantity || 1;
+      const unitEffDt50 = spec ? effectiveDt50(spec.output_dt50, item.enclosure_factor, item.finish_factor) : 0;
+      const unitOutput  = calculateOutputAtMWAT(unitEffDt50, mwat) * connFactor;
+      return {
+        isExisting:     item.is_existing    || false,
+        emitterStatus:  item.emitter_status || 'new',
+        spec:           spec ? `${spec.manufacturer} ${spec.model} - ${spec.type} ${spec.height}x${spec.length}mm` : 'Unknown',
+        connectionType: room.designConnectionType || item.connection_type || 'BOE',
+        quantity:       qty,
+        outputDt50:     spec ? spec.output_dt50 : 0,
+        outputAtDesign: unitOutput,
+        totalOutput:    unitOutput * qty,
+        requiredFlowTemp: null, // kept for the PDF generator; was always null
+        notes:          item.notes || '',
+      };
+    });
+
+    // Append UFH row if the room has a UFH emitter with specs
+    const hasUFHEmitter = room.emitters?.some(e => e.emitterType === 'UFH');
+    if (hasUFHEmitter && room.ufhSpecs) {
+      const ufh = room.ufhSpecs;
+      const ufhOutput = getRoomUFHOutputPure(room, systemSettings.flowTemp);
+      const ufhFlow   = ufh.ufhFlowTemp   ?? systemSettings.flowTemp;
+      const ufhReturn = ufh.ufhReturnTemp ?? (ufhFlow - 5);
+      const activeArea = (room.floorArea || 0) * (ufh.activeAreaFactor || 1.0);
+      const constructionLabel = ufh.floorConstruction === 'screed' ? 'Screed' : 'Timber';
+      const coveringLabel = ufh.floorCovering
+        ? ufh.floorCovering.charAt(0).toUpperCase() + ufh.floorCovering.slice(1).replace(/_/g, ' ')
+        : 'N/A';
+      schedule.push({
+        isUFH: true,
+        spec: `UFH — ${constructionLabel}, ${ufh.pipeSpacingMm || 150}mm spacing, ${coveringLabel} covering, ${activeArea.toFixed(1)}m² active area, flow ${ufhFlow}°C / return ${ufhReturn}°C`,
+        connectionType: 'UFH', quantity: 1, outputDt50: null,
+        outputAtDesign: ufhOutput, totalOutput: ufhOutput, notes: '',
+      });
+    }
+
+    // Accepted shortfall — only reported while the room is actually short
+    const shortfallAccepted = !sufficient && !!room.emitterShortfallAccepted;
+    return {
+      name: room.name, internalTemp: room.internalTemp,
+      floorArea: room.floorArea || 0, heatLoss, totalOutput, mwat, schedule,
+      sufficient,
+      shortfallW:        sufficient ? 0 : heatLoss - totalOutput,
+      shortfallAccepted,
+      shortfallReason:   shortfallAccepted ? (room.emitterShortfallReason || '') : '',
+    };
+  });
+
   const handleExportPDF = async () => {
     setExporting(true);
     try {
-      const roomData = (project.rooms || []).map(room => {
-        const { heatLoss, totalOutput } = checkRoomSufficiency(room);
-        const mwat = calculateMWAT(systemSettings.flowTemp, systemSettings.returnTemp, room.internalTemp);
-        const schedule = (room.radiatorSchedule || []).map(item => {
-          const spec = project.radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
-          const ef = item.enclosure_factor ?? 1.00;
-          const ff = item.finish_factor   ?? 1.00;
-          const effDt50 = spec ? effectiveDt50(spec.output_dt50, ef, ff) * (item.quantity || 1) : 0;
-          const output = calculateOutputAtMWAT(effDt50, mwat);
-          const reqFlow = null;
-          return {
-            isExisting: item.is_existing || false,
-            emitterStatus: item.emitter_status || 'new',
-            spec: spec ? `${spec.manufacturer} ${spec.model} - ${spec.type} ${spec.height}x${spec.length}mm` : 'Unknown',
-            connectionType: item.connection_type || 'BOE',
-            quantity: item.quantity || 1,
-            outputDt50: spec ? spec.output_dt50 : 0,
-            outputAtDesign: output,
-            totalOutput: output * (item.quantity || 1),
-            requiredFlowTemp: reqFlow,
-            notes: item.notes || '',
-          };
-        });
-
-        // Append UFH row if the room has a UFH emitter with specs
-        const hasUFHEmitter = room.emitters?.some(e => e.emitterType === 'UFH');
-        if (hasUFHEmitter && room.ufhSpecs) {
-          const ufh = room.ufhSpecs;
-          const ufhOutput = getRoomUFHOutputPure(room, systemSettings.flowTemp);
-          const ufhFlow   = ufh.ufhFlowTemp   ?? systemSettings.flowTemp;
-          const ufhReturn = ufh.ufhReturnTemp ?? (ufhFlow - 5);
-          const activeArea = (room.floorArea || 0) * (ufh.activeAreaFactor || 1.0);
-          const constructionLabel = ufh.floorConstruction === 'screed' ? 'Screed' : 'Timber';
-          const coveringLabel = ufh.floorCovering
-            ? ufh.floorCovering.charAt(0).toUpperCase() + ufh.floorCovering.slice(1).replace(/_/g, ' ')
-            : 'N/A';
-          schedule.push({
-            isUFH: true,
-            spec: `UFH — ${constructionLabel}, ${ufh.pipeSpacingMm || 150}mm spacing, ${coveringLabel} covering, ${activeArea.toFixed(1)}m² active area, flow ${ufhFlow}°C / return ${ufhReturn}°C`,
-            connectionType: 'UFH',
-            quantity: 1,
-            outputDt50: null,
-            outputAtDesign: ufhOutput,
-            totalOutput: ufhOutput,
-            notes: '',
-          });
-        }
-        return { name: room.name, internalTemp: room.internalTemp, floorArea: room.floorArea || 0, heatLoss, totalOutput, mwat, schedule };
-      });
+      const roomData = buildPdfRoomData();
       const pdfData = buildRadiatorSchedulePayload(project, systemSettings, roomData);
       const response = await fetch('/api/generate-pdf/radiator-schedule', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pdfData),
@@ -565,50 +641,7 @@ export default function RadiatorSizing({
     setGeneratingPack(true);
     try {
       // ── Radiator schedule payload (same logic as handleExportPDF) ────────
-      const roomData = (project.rooms || []).map(room => {
-        const { heatLoss, totalOutput } = checkRoomSufficiency(room);
-        const mwat = calculateMWAT(systemSettings.flowTemp, systemSettings.returnTemp, room.internalTemp);
-        const schedule = (room.radiatorSchedule || []).map(item => {
-          const spec = project.radiatorSpecs?.find(s => s.id === item.radiator_spec_id);
-          const ef = item.enclosure_factor ?? 1.00;
-          const ff = item.finish_factor   ?? 1.00;
-          const effDt50 = spec ? effectiveDt50(spec.output_dt50, ef, ff) * (item.quantity || 1) : 0;
-          const output = calculateOutputAtMWAT(effDt50, mwat);
-          return {
-            isExisting:     item.is_existing    || false,
-            emitterStatus:  item.emitter_status || 'new',
-            spec:           spec ? `${spec.manufacturer} ${spec.model} - ${spec.type} ${spec.height}x${spec.length}mm` : 'Unknown',
-            connectionType: item.connection_type || 'BOE',
-            quantity:       item.quantity || 1,
-            outputDt50:     spec ? spec.output_dt50 : 0,
-            outputAtDesign: output,
-            totalOutput:    output * (item.quantity || 1),
-            notes:          item.notes || '',
-          };
-        });
-        const hasUFHEmitter = room.emitters?.some(e => e.emitterType === 'UFH');
-        if (hasUFHEmitter && room.ufhSpecs) {
-          const ufh = room.ufhSpecs;
-          const ufhOutput = getRoomUFHOutputPure(room, systemSettings.flowTemp);
-          const ufhFlow   = ufh.ufhFlowTemp   ?? systemSettings.flowTemp;
-          const ufhReturn = ufh.ufhReturnTemp ?? (ufhFlow - 5);
-          const activeArea = (room.floorArea || 0) * (ufh.activeAreaFactor || 1.0);
-          const constructionLabel = ufh.floorConstruction === 'screed' ? 'Screed' : 'Timber';
-          const coveringLabel = ufh.floorCovering
-            ? ufh.floorCovering.charAt(0).toUpperCase() + ufh.floorCovering.slice(1).replace(/_/g, ' ')
-            : 'N/A';
-          schedule.push({
-            isUFH: true,
-            spec: `UFH — ${constructionLabel}, ${ufh.pipeSpacingMm || 150}mm spacing, ${coveringLabel} covering, ${activeArea.toFixed(1)}m² active area, flow ${ufhFlow}°C / return ${ufhReturn}°C`,
-            connectionType: 'UFH', quantity: 1, outputDt50: null,
-            outputAtDesign: ufhOutput, totalOutput: ufhOutput, notes: '',
-          });
-        }
-        return {
-          name: room.name, internalTemp: room.internalTemp,
-          floorArea: room.floorArea || 0, heatLoss, totalOutput, mwat, schedule,
-        };
-      });
+      const roomData = buildPdfRoomData();
 
       const radiatorScheduleData = buildRadiatorSchedulePayload(project, systemSettings, roomData);
 
@@ -791,38 +824,60 @@ export default function RadiatorSizing({
                 const v = parseFloat(e.target.value);
                 if (isNaN(v)) return;
                 setLocalFlowTemp(v);
-                onUpdateProject('designFlowTemp', v);
+                // ΔT is kept; the return moves with the flow
+                pushIfValid(v, round1(v - localDeltaT));
               }}
               onBlur={e => {
                 const v = parseFloat(e.target.value);
-                if (!isNaN(v)) onSaveFlowTemps?.(v, localReturnTemp);
+                if (!isNaN(v)) saveIfValid(v, round1(v - localDeltaT));
               }}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1">Return Temperature (°C)</label>
-            <input type="number" step="0.1" value={localReturnTemp}
-              onChange={e => {
-                const v = parseFloat(e.target.value);
-                if (isNaN(v)) return;
-                setLocalReturnTemp(v);
-                onUpdateProject('designReturnTemp', v);
-              }}
-              onBlur={e => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v)) onSaveFlowTemps?.(localFlowTemp, v);
-              }}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+              className={`w-full border rounded px-3 py-2 focus:ring-2 ${
+                localStatus.error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+              }`} />
           </div>
           <div>
             <label className="block text-sm font-semibold mb-1">Flow/Return ΔT (K)</label>
-            <input type="number" value={flowReturnDelta.toFixed(1)} disabled
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-100" />
+            <input type="number" step="0.5" min={MIN_DT} value={localDeltaT}
+              onChange={e => {
+                const v = parseFloat(e.target.value);
+                if (isNaN(v)) return;
+                setLocalDeltaT(v);
+                // Flow is kept; the return is recalculated
+                pushIfValid(localFlowTemp, round1(localFlowTemp - v));
+              }}
+              onBlur={e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) saveIfValid(localFlowTemp, round1(localFlowTemp - v));
+              }}
+              className={`w-full border rounded px-3 py-2 focus:ring-2 ${
+                localStatus.error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+              }`} />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1">Return Temperature (°C)</label>
+            <input type="number" value={localReturnTemp.toFixed(1)} disabled
+              title="Calculated: flow temperature minus ΔT"
+              className={`w-full border rounded px-3 py-2 ${
+                localStatus.error ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 bg-gray-100'
+              }`} />
           </div>
         </div>
+        {localStatus.error && (
+          <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+            <span className="font-semibold">{localStatus.error}</span>{' '}
+            {savedPairOk
+              ? `Not saved. Results below still use the last valid temperatures (${project.designFlowTemp}/${project.designReturnTemp}°C).`
+              : 'Not saved. Results below are not valid until this is corrected.'}
+          </div>
+        )}
+        {!localStatus.error && localStatus.warning && (
+          <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            {localStatus.warning}
+          </div>
+        )}
         <div className="mt-3 text-xs text-gray-500">
-          Flow and return temperatures drive emitter output calculations throughout this tab.
-          Set them to your design system temperatures — typically 45/40°C for heat pump systems.
+          Set the design flow temperature and ΔT; the return is calculated. These drive emitter
+          output calculations throughout this tab — typically 45°C flow with a 5 K ΔT for heat pump systems.
         </div>
       </div>
 
@@ -937,8 +992,16 @@ export default function RadiatorSizing({
                 <div className="flex items-center gap-4 flex-1 text-left">
                   <div className="flex items-center gap-2">
                     {isExpanded ? <ChevronUpIcon className="w-5 h-5 text-gray-500" /> : <ChevronDownIcon className="w-5 h-5 text-gray-500" />}
-                    {sufficient ? <CheckIcon className="w-6 h-6 text-green-600" /> : <XIcon className="w-6 h-6 text-red-600" />}
+                    {sufficient
+                      ? <CheckIcon className="w-6 h-6 text-green-600" />
+                      : <XIcon className={`w-6 h-6 ${room.emitterShortfallAccepted ? 'text-amber-500' : 'text-red-600'}`} />}
                     <span className="font-bold text-lg">{room.name}</span>
+                    {!sufficient && room.emitterShortfallAccepted && (
+                      <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium"
+                        title={room.emitterShortfallReason || 'Shortfall accepted'}>
+                        Shortfall accepted
+                      </span>
+                    )}
                     {hasUFH && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium">UFH</span>}
                     {hasRad && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">Radiator</span>}
                   </div>
@@ -1001,6 +1064,7 @@ export default function RadiatorSizing({
                     onUpdateRadiatorSchedule={onUpdateRadiatorSchedule}
                     onAddUFHEmitter={onAddUFHEmitter}
                     onAddRadiatorSpec={onAddRadiatorSpec}
+                    onUpdateRoom={onUpdateRoom}
                   />
                 </div>
               )}
@@ -1018,16 +1082,42 @@ export default function RadiatorSizing({
 function SystemSummaryPanel({ analysis, systemSettings }) {
   const { totalHeatLoss, totalOutput, minRadFlowTemp, minUFHFlowTemp,
     maxFloorTemp, floorTempWarning, isMixed, blendingNeeded, ufhRoomCount, radRoomCount,
-    drivingRadRoom } = analysis;
+    drivingRadRoom, acceptedShortRooms = [], unresolvedShortRooms = [] } = analysis;
   const overallSufficient = totalOutput >= totalHeatLoss;
   const [mixedOpen, setMixedOpen] = useState(false);
 
+  // Three states:
+  //   green — every room covered
+  //   amber — some rooms short, all accepted, and whole-house output ≥ load
+  //   red   — any unaccepted short room, or whole house short
+  const acceptedShortfallW = acceptedShortRooms.reduce((s, r) => s + r.shortfallW, 0);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  let badge;
+  if (unresolvedShortRooms.length === 0 && acceptedShortRooms.length === 0 && overallSufficient) {
+    badge = { cls: 'bg-green-500', text: 'All rooms covered' };
+  } else if (unresolvedShortRooms.length === 0 && overallSufficient) {
+    badge = {
+      cls: 'bg-amber-500',
+      text: `Whole house covered — ${plural(acceptedShortRooms.length, 'room')} accepted below heat loss (−${acceptedShortfallW.toFixed(0)} W)`,
+    };
+  } else if (unresolvedShortRooms.length > 0) {
+    badge = { cls: 'bg-red-500', text: `Shortfall — ${plural(unresolvedShortRooms.length, 'room')} not resolved` };
+  } else {
+    badge = { cls: 'bg-red-500', text: 'Shortfall — whole-house output below load' };
+  }
+
   return (
     <div className="border-2 border-blue-300 rounded-lg overflow-hidden mb-4">
-      <div className="bg-blue-600 text-white px-5 py-3 flex items-center justify-between">
+      <div className="bg-blue-600 text-white px-5 py-3 flex items-center justify-between gap-3">
         <span className="font-bold">System Emitter Summary</span>
-        <span className={`text-sm px-3 py-0.5 rounded font-medium ${overallSufficient ? 'bg-green-500' : 'bg-red-500'}`}>
-          {overallSufficient ? 'All rooms covered' : 'Shortfall — action needed'}
+        <span
+          className={`text-sm px-3 py-0.5 rounded font-medium ${badge.cls}`}
+          title={[
+            unresolvedShortRooms.length ? `Not resolved: ${unresolvedShortRooms.map(r => r.name).join(', ')}` : '',
+            acceptedShortRooms.length ? `Accepted: ${acceptedShortRooms.map(r => r.name).join(', ')}` : '',
+          ].filter(Boolean).join(' · ') || undefined}
+        >
+          {badge.text}
         </span>
       </div>
       <div className="p-5 bg-white">
@@ -1061,6 +1151,11 @@ function SystemSummaryPanel({ analysis, systemSettings }) {
                   ? ` Increasing the radiator in ${drivingRadRoom} would allow a lower system flow temp.`
                   : ' All radiator rooms are covered at the design flow temp.'}
               </div>
+              {acceptedShortRooms.length > 0 && (
+                <div className="text-xs text-amber-700 mt-1 leading-tight">
+                  Rooms with an accepted shortfall are excluded.
+                </div>
+              )}
             </div>
           )}
           {minUFHFlowTemp !== null && (
@@ -1630,8 +1725,24 @@ function RoomRadiatorSchedule({
   onUpdateRadiatorSchedule,
   onAddUFHEmitter,
   onAddRadiatorSpec,
+  onUpdateRoom,
 }) {
   const schedule = room.radiatorSchedule || [];
+
+  // Accepted-shortfall reason — local buffer, saved on blur (same pattern as
+  // the flow/return inputs) so typing isn't interrupted by the reload.
+  const [shortfallReason, setShortfallReason] = useState(room.emitterShortfallReason || '');
+  const [shortfallError, setShortfallError] = useState('');
+  useEffect(() => {
+    setShortfallReason(room.emitterShortfallReason || '');
+  }, [room.emitterShortfallReason]);
+
+  const saveRoomField = async (field, value) => {
+    if (!onUpdateRoom) return;
+    setShortfallError('');
+    const res = await onUpdateRoom(room.id, field, value);
+    if (res && res.ok === false) setShortfallError(res.error || 'Not saved.');
+  };
   const connectionType = room.designConnectionType || 'BOE';
   const connectionFactor = CONNECTION_TYPE_FACTORS[connectionType] || 0.96;
 
@@ -2395,6 +2506,58 @@ function RoomRadiatorSchedule({
           )}
         </div>
       </div>
+
+      {/* Accepted shortfall — shown while the room is short, or if a flag is
+          left over from before (so it can be cleared) */}
+      {onUpdateRoom && (!isSufficient || room.emitterShortfallAccepted) && (
+        <div className={`mt-3 p-3 rounded border ${
+          room.emitterShortfallAccepted ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-gray-800">
+            <input
+              type="checkbox"
+              checked={!!room.emitterShortfallAccepted}
+              onChange={e => saveRoomField('emitterShortfallAccepted', e.target.checked)}
+              className="w-4 h-4 accent-amber-600"
+            />
+            Accept shortfall for this room
+          </label>
+          <p className="text-xs text-gray-500 mt-1 ml-6">
+            Use where a larger or additional emitter is not feasible. The room is excluded from the
+            min system flow temp, and the reason is printed on the emitter schedule and customer pack.
+            The whole house must still be covered.
+          </p>
+          {room.emitterShortfallAccepted && (
+            <div className="mt-2 ml-6">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Reason (shown to the customer)</label>
+              <textarea
+                rows={2}
+                maxLength={500}
+                value={shortfallReason}
+                onChange={e => setShortfallReason(e.target.value)}
+                onBlur={() => {
+                  if (shortfallReason !== (room.emitterShortfallReason || '')) {
+                    saveRoomField('emitterShortfallReason', shortfallReason);
+                  }
+                }}
+                placeholder="e.g. No wall space for a larger radiator; shortfall made up by the adjacent living room and landing."
+                className={`w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 ${
+                  shortfallReason.trim() ? 'border-gray-300' : 'border-amber-400'
+                }`}
+              />
+              {!shortfallReason.trim() && (
+                <p className="text-xs text-amber-700 mt-0.5">Add a reason so the decision is on record.</p>
+              )}
+              {isSufficient && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  This room is now covered, so the flag has no effect. Untick it to clear.
+                </p>
+              )}
+            </div>
+          )}
+          {shortfallError && <p className="text-xs text-red-600 mt-1 ml-6">{shortfallError}</p>}
+        </div>
+      )}
     </div>
   );
 }

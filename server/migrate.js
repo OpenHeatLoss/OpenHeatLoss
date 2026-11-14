@@ -2602,6 +2602,30 @@ const MIGRATIONS = [
       console.log('  Migration 026 complete: percentage MVHR efficiencies converted to fractions');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Migration 027 — Accepted emitter shortfall per room
+  //
+  // MCS allows a room's emitter output to fall below its heat loss where a
+  // larger or additional emitter is not feasible, provided the whole house is
+  // covered. The designer records that decision and a reason; the reason is
+  // printed on the radiator schedule and customer pack.
+  //
+  //   rooms.emitter_shortfall_accepted — SMALLINT 0/1 (house convention)
+  //   rooms.emitter_shortfall_reason   — free text, shown to the customer
+  //
+  // Schema only: no existing row is changed (both default to "not accepted",
+  // which is what every room is today). Idempotent via addColumnIfMissing.
+  // ---------------------------------------------------------------------------
+  {
+    version: '027',
+    description: 'Accepted emitter shortfall per room (flag + customer-facing reason)',
+    run: async () => {
+      await addColumnIfMissing('rooms', 'emitter_shortfall_accepted', 'SMALLINT NOT NULL DEFAULT 0');
+      await addColumnIfMissing('rooms', 'emitter_shortfall_reason',   'TEXT');
+      console.log('  Migration 027 complete: rooms.emitter_shortfall_accepted / emitter_shortfall_reason');
+    },
+  },
 ];
 
 async function runMigrations() {

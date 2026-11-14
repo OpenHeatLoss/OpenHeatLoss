@@ -30,6 +30,9 @@ export const buildRoomPayload = (room, overrides = {}) => ({
   continuousVentType:   room.continuousVentType    || 'none',
   continuousVentRateM3h:room.continuousVentRateM3h ?? 0,
   mvhrEfficiency:       room.mvhrEfficiency        ?? 0,
+  // Migration 027 — accepted emitter shortfall
+  emitterShortfallAccepted: room.emitterShortfallAccepted ?? false,
+  emitterShortfallReason:   room.emitterShortfallReason   ?? '',
   ...overrides,
 });
 

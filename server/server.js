@@ -53,7 +53,7 @@ const {
 
 const radiatorScheduleRoutes = require('./routes/radiatorSchedule');
 const pdfRoutes = require('./pdf-routes');
-const { mvhrEfficiencyError } = require('./validation');
+const { mvhrEfficiencyError, flowReturnError } = require('./validation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -875,6 +875,16 @@ app.put('/api/projects/:id/design-params', requireAuthOrAnon, async (req, res) =
       console.warn(`Rejected design-params save for project ${req.params.id}: invalid mvhrEfficiency`,
         JSON.stringify(req.body.mvhrEfficiency), `(${typeof req.body.mvhrEfficiency})`);
       return res.status(400).json({ error: effError });
+    }
+    // Flow/return backstop: rejects a NEW invalid pair only; an existing bad
+    // pair is let through so the project can still save other fields.
+    const storedDp = await designParams.getByProjectId(req.params.id);
+    const frError = flowReturnError(req.body, storedDp);
+    if (frError) {
+      console.warn(`Rejected design-params save for project ${req.params.id}: invalid flow/return`,
+        JSON.stringify(req.body.designFlowTemp), JSON.stringify(req.body.designReturnTemp),
+        `(stored ${storedDp?.design_flow_temp}/${storedDp?.design_return_temp})`);
+      return res.status(400).json({ error: frError });
     }
     await designParams.update(req.params.id, req.body);
     const updated = await designParams.getByProjectId(req.params.id);

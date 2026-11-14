@@ -416,6 +416,11 @@ function App() {
         hasOpenFire:              room.has_open_fire              || false,
         radiatorScheduleComplete: room.radiator_schedule_complete || false,
 
+        // Accepted emitter shortfall (migration 027) — room below its heat loss
+        // where more emitter isn't feasible; printed on the emitter schedule.
+        emitterShortfallAccepted: !!room.emitter_shortfall_accepted,
+        emitterShortfallReason:   room.emitter_shortfall_reason   || '',
+
         // Thermal bridging addition (CIBSE DHDG 2026 Table 2-9, migration 011)
         thermalBridgingAddition:  room.thermal_bridging_addition  ?? 0.10,
 
@@ -1893,6 +1898,7 @@ const deleteProject = async (id) => {
                   await saveDesignParams();
                 }}
                 onAddRadiatorSpec={addRadiatorSpec}
+                onUpdateRoom={updateRoom}
                 onUpdateRadiatorSchedule={updateRadiatorSchedule}
                 onUpdateUFHSpecs={updateUFHSpecs}
                 onAddUFHEmitter={addUFHEmitter}
