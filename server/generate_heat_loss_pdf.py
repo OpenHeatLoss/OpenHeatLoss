@@ -530,11 +530,20 @@ def create_heat_loss_pdf(data, output_filename):
         ws_scop  = scop.get('wholeScop')
 
         sh_sub  = f"Without defrost: {scop.get('shScopNoDefrost', '—')}"
-        dhw_sub = (
-            f"{scop.get('occupants')} occupants · {scop.get('cylinderLitres')}L · "
-            f"Pasteurisation COP: {scop.get('dhwCopPast', '—')}"
-            if dhw_scop else "Enter occupants & cylinder volume in MCS031 to enable"
-        )
+        # dailyLitres is absent in payloads from clients built before the
+        # shared demand function; fall back to the old occupants wording.
+        if dhw_scop and scop.get('dailyLitres'):
+            dhw_sub = (
+                f"{scop.get('dailyLitres')} L/day demand · {scop.get('cylinderLitres')}L cylinder · "
+                f"Pasteurisation COP: {scop.get('dhwCopPast', '—')}"
+            )
+        elif dhw_scop:
+            dhw_sub = (
+                f"{scop.get('occupants')} occupants · {scop.get('cylinderLitres')}L · "
+                f"Pasteurisation COP: {scop.get('dhwCopPast', '—')}"
+            )
+        else:
+            dhw_sub = "Enter bedrooms or occupants, and cylinder volume, in MCS031 to enable"
         ws_sub = (
             f"{scop.get('wholeTotalHeatKwh', 0):,.0f} kWh heat · "
             f"{scop.get('wholeTotalElecKwh', 0):,.0f} kWh electricity"

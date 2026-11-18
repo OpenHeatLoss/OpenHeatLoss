@@ -816,8 +816,21 @@ const designParams = {
       q50_wall_construction = COALESCE($67::text, q50_wall_construction),
       q50_selection_basis   = COALESCE($68::text, q50_selection_basis),
       q50_statistic         = COALESCE($69::text, q50_statistic),
+      -- Migration 028: DHW cylinder design. Written only when the payload
+      -- carries the DHW fields ($79). Old browser tabs omit them, so stored
+      -- values are kept; current clients always send them (nulls included),
+      -- so a field can be cleared — which COALESCE would not allow.
+      dhw_cylinder_manufacturer  = CASE WHEN $79::boolean THEN $70::text             ELSE dhw_cylinder_manufacturer  END,
+      dhw_cylinder_model         = CASE WHEN $79::boolean THEN $71::text             ELSE dhw_cylinder_model         END,
+      dhw_cylinder_is_new        = CASE WHEN $79::boolean THEN $72::smallint         ELSE dhw_cylinder_is_new        END,
+      dhw_coil_area_m2           = CASE WHEN $79::boolean THEN $73::double precision ELSE dhw_coil_area_m2           END,
+      dhw_heatup_time_min        = CASE WHEN $79::boolean THEN $74::double precision ELSE dhw_heatup_time_min        END,
+      dhw_heatup_conditions      = CASE WHEN $79::boolean THEN $75::text             ELSE dhw_heatup_conditions      END,
+      dhw_hp_output_kw           = CASE WHEN $79::boolean THEN $76::double precision ELSE dhw_hp_output_kw           END,
+      dhw_reheat_agreed          = CASE WHEN $79::boolean THEN $77::smallint         ELSE dhw_reheat_agreed          END,
+      dhw_reheat_time_agreed_min = CASE WHEN $79::boolean THEN $78::double precision ELSE dhw_reheat_time_agreed_min END,
       updated_at = NOW()
-    WHERE project_id = $70`,
+    WHERE project_id = $80`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
@@ -865,10 +878,40 @@ const designParams = {
       data.q50WallConstruction   ?? null,   // $67
       data.q50SelectionBasis     ?? null,   // $68
       data.q50Statistic          ?? null,   // $69
-      projectId,                            // $70
+      // Migration 028 — DHW cylinder design ($70–$78, gated by $79)
+      textOrNull(data.dhwCylinderManufacturer),                 // $70
+      textOrNull(data.dhwCylinderModel),                        // $71
+      data.dhwCylinderIsNew == null ? null : (data.dhwCylinderIsNew ? 1 : 0), // $72
+      positiveOrNull(data.dhwCoilAreaM2),                       // $73
+      positiveOrNull(data.dhwHeatupTimeMin),                    // $74
+      textOrNull(data.dhwHeatupConditions),                     // $75
+      positiveOrNull(data.dhwHpOutputKw),                       // $76
+      data.dhwReheatAgreed ? 1 : 0,                             // $77
+      positiveOrNull(data.dhwReheatTimeAgreedMin),              // $78
+      hasDhwFields(data),                                       // $79
+      projectId,                                                // $80
     ]
   ),
 };
+
+// Migration 028 helpers. The DHW block is present when the client sent the
+// dhwReheatAgreed key — current payloads always include it (0/1), payloads
+// from pre-028 browser tabs never do.
+function hasDhwFields(data) {
+  return !!data && Object.prototype.hasOwnProperty.call(data, 'dhwReheatAgreed');
+}
+// Empty or non-positive numbers mean "not entered" — stored as NULL, never 0,
+// so a blank field can't later read as a real zero-minute heat-up time.
+function positiveOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function textOrNull(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
 
 // ---------------------------------------------------------------------------
 // ROOMS
@@ -1294,8 +1337,11 @@ async function getCompleteProject(projectId, { companyId = null, sessionToken = 
   //   Closes post-logout exposure — after logout the anon_token cookie persists
   //   but must not grant access to the formerly-logged-in user's data.
   if (companyId === null && project.company_id !== null) return null;
-  // - Anonymous user owning an anonymous project: session_token must match.
-  if (companyId === null && project.session_token !== null && project.session_token !== sessionToken) return null;
+  // - Anonymous caller: the project's session_token must match theirs. This
+  //   used to be skipped when the project had NO session token, so a project
+  //   with neither company nor token (e.g. created anonymously via
+  //   POST /api/projects) was readable by every anonymous visitor.
+  if (companyId === null && (project.session_token === null || project.session_token !== sessionToken)) return null;
 
   const roomIds = projectRooms.map(r => r.id);
 

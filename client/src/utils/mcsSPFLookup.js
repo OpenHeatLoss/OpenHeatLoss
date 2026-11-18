@@ -59,15 +59,18 @@ export const MCS_SPF_TABLE = {
   }
 };
 
-// Get heat loss band from specific heat loss value
-export function getHeatLossBand(specificHeatLoss) {
-  if (specificHeatLoss < 30) return '0-30';
-  if (specificHeatLoss < 50) return '30-50';
-  if (specificHeatLoss < 80) return '50-80';
-  if (specificHeatLoss < 100) return '80-100';
-  if (specificHeatLoss < 120) return '100-120';
-  if (specificHeatLoss < 150) return '120-150';
-  return '120-150'; // For values >= 150
+// Heat loss band from W/m2 (MCS 031 2.1(g): total heat loss / floorspace).
+// The official calculator (MCS031-HPSPE v4.02, Input E27 -> E28) bands on
+// W/m2, not on the W/K specific heat loss. Above 150 W/m2 the spreadsheet
+// returns "Error"; this clamps to 120-150 (SPF and stars are the same in every
+// band, so only the warning notes depend on it).
+export function getHeatLossBand(wattsPerM2) {
+  if (wattsPerM2 < 30) return '0-30';
+  if (wattsPerM2 < 50) return '30-50';
+  if (wattsPerM2 < 80) return '50-80';
+  if (wattsPerM2 < 100) return '80-100';
+  if (wattsPerM2 < 120) return '100-120';
+  return '120-150';
 }
 
 // Get flow temperature band
@@ -81,9 +84,10 @@ export function getFlowTempBand(flowTemp) {
   return '61-65';
 }
 
-// Get SPF and star rating
-export function getSPFAndStars(specificHeatLoss, flowTemp, heatPumpType) {
-  const heatLossBand = getHeatLossBand(specificHeatLoss);
+// Get SPF and star rating. wattsPerM2 only selects the band; in v4.02 the SPF
+// and stars are identical across bands (they depend on flow band and type).
+export function getSPFAndStars(wattsPerM2, flowTemp, heatPumpType) {
+  const heatLossBand = getHeatLossBand(wattsPerM2);
   const flowTempBand = getFlowTempBand(flowTemp);
   
   const data = MCS_SPF_TABLE[heatLossBand]?.[flowTempBand];

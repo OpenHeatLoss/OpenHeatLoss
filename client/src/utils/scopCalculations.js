@@ -10,6 +10,7 @@
 //   4. Weight by bin hours (UK typical distribution, EN 14825 extended climate)
 //   5. Apply defrost penalty (scaled by outdoor temp — more frosting below 5°C)
 //   6. DHW SCOP: daily reheat at annual average outdoor temp + weekly pasteurisation
+//      (daily demand per MIS 3005-D 5.6.2 — see dhwCalculations.js)
 
 // ---------------------------------------------------------------------------
 // UK TEMPERATURE BIN DATA
@@ -184,24 +185,28 @@ export function calculateSpaceHeatingScop({
 // DHW SCOP
 // ---------------------------------------------------------------------------
 
+// dailyLitres: from dailyHotWaterDemand() in dhwCalculations.js (MIS 3005-D
+// 5.6.2) — not recalculated here, so every caller uses the same figure.
+// cylinderLitres: the selected cylinder. No default — a missing cylinder
+// returns null rather than silently assuming a size.
 export function calculateDHWScop({
   eta,
-  occupants,
+  dailyLitres,
   cylinderLitres,
   storeTemp     = 55,
   annualAvgTemp = T_ANNUAL_AVG_UK,
 }) {
-  if (!eta || eta <= 0 || !occupants || occupants <= 0) return null;
+  if (!eta || eta <= 0) return null;
+  if (!dailyLitres || dailyLitres <= 0) return null;
+  if (!cylinderLitres || cylinderLitres <= 0) return null;
 
   const RHO_CP = 0.00116; // kWh/(L·K)
 
-  const dailyLitres     = occupants * 45;
   const deltaReheat     = storeTemp - T_COLD_FEED;
   const annualReheatKwh = dailyLitres * deltaReheat * RHO_CP * 365;
 
-  const cylL      = cylinderLitres || 200;
   const deltaPast = 60 - storeTemp;
-  const pastKwh   = deltaPast > 0 ? cylL * deltaPast * RHO_CP * 52 : 0;
+  const pastKwh   = deltaPast > 0 ? cylinderLitres * deltaPast * RHO_CP * 52 : 0;
 
   const totalDHWHeatKwh = annualReheatKwh + pastKwh;
 
@@ -216,6 +221,8 @@ export function calculateDHWScop({
 
   return {
     dhwScop:         +(totalDHWHeatKwh / totalElecKwh).toFixed(2),
+    dailyLitres,
+    cylinderLitres,
     annualReheatKwh: +annualReheatKwh.toFixed(0),
     pastKwh:         +pastKwh.toFixed(0),
     totalDHWHeatKwh: +totalDHWHeatKwh.toFixed(0),

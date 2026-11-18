@@ -32,6 +32,7 @@ import {
   calculateWholeSystemScop,
   EMITTER_EXPONENTS,
 } from './scopCalculations';
+import { dailyHotWaterDemand } from './dhwCalculations';
 
 export function buildHeatLossPayload(project, opts = {}) {
   const flowTemp   = opts.flowTemp   ?? project.designFlowTemp   ?? 50;
@@ -163,11 +164,16 @@ export function buildHeatLossPayload(project, opts = {}) {
       })
     : null;
 
-  const dhwScop = eta > 0 && (project.mcsOccupants || 0) > 0
+  // Must match Summary.jsx — both use the shared 5.6.2 demand function.
+  const dhwDemand = dailyHotWaterDemand({
+    bedrooms:  project.mcsBedrooms,
+    occupants: project.mcsOccupants,
+  });
+  const dhwScop = eta > 0 && dhwDemand
     ? calculateDHWScop({
         eta,
-        occupants:      project.mcsOccupants     || 0,
-        cylinderLitres: project.mcsCylinderVolume || 200,
+        dailyLitres:    dhwDemand.litres,
+        cylinderLitres: project.mcsCylinderVolume || 0,
         storeTemp:      55,
       })
     : null;
@@ -184,6 +190,7 @@ export function buildHeatLossPayload(project, opts = {}) {
     dhwHeatKwh:        dhwScop ? dhwScop.totalDHWHeatKwh  : null,
     dhwElecKwh:        dhwScop ? dhwScop.totalElecKwh     : null,
     occupants:         project.mcsOccupants      || null,
+    dailyLitres:       dhwDemand ? dhwDemand.litres : null,
     cylinderLitres:    project.mcsCylinderVolume  || null,
     wholeScop:         wholeScop ? wholeScop.wholeSystemScop : null,
     wholeTotalHeatKwh: wholeScop ? wholeScop.totalHeatKwh    : null,

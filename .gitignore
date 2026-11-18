@@ -194,3 +194,6 @@ client/src/App(a).jsx
 client/src/utils/projectPayloads(a).js
 server/generate_radiator_schedule_pdf(a).py
 client/src/App(a).jsx
+handover_security_ownership_2026-11-18.md
+handover_mcs_design_info_2026-11-18.md
+server/generate_heat_loss_pdf(a).py

@@ -22,6 +22,7 @@ import {
   calculateWholeSystemScop,
   EMITTER_EXPONENTS,
 } from '../../utils/scopCalculations';
+import { dailyHotWaterDemand } from '../../utils/dhwCalculations';
 
 export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const [editingHeatPump, setEditingHeatPump] = useState(false);
@@ -301,11 +302,15 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
         balancePoint,
       })
     : null;
-  const dhwScop = eta > 0 && (project.mcsOccupants || 0) > 0
+  const dhwDemand = dailyHotWaterDemand({
+    bedrooms:  project.mcsBedrooms,
+    occupants: project.mcsOccupants,
+  });
+  const dhwScop = eta > 0 && dhwDemand
     ? calculateDHWScop({
         eta,
-        occupants:      project.mcsOccupants  || 0,
-        cylinderLitres: project.mcsCylinderVolume || 200,
+        dailyLitres:    dhwDemand.litres,
+        cylinderLitres: project.mcsCylinderVolume || 0,
         storeTemp:      55,
       })
     : null;
@@ -917,7 +922,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
                   <>
                     <div className="text-4xl font-bold text-blue-700">{dhwScop.dhwScop}</div>
                     <div className="text-xs text-gray-400 mt-1">
-                      {project.mcsOccupants} occupants · {project.mcsCylinderVolume || 200}L cylinder
+                      {dhwScop.dailyLitres} L/day demand · {dhwScop.cylinderLitres}L cylinder
                     </div>
                     <div className="text-xs text-blue-600 mt-0.5">
                       Pasteurisation COP: {dhwScop.copPast}
@@ -925,7 +930,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
                   </>
                 ) : (
                   <div className="text-sm text-gray-400 mt-4">
-                    Enter occupants &amp; cylinder volume in MCS031 to enable
+                    Enter bedrooms or occupants, and the selected cylinder volume, in MCS031 to enable
                   </div>
                 )}
               </div>

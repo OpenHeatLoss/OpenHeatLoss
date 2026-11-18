@@ -676,6 +676,10 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
 // Add a new address and link it to a client
 app.post('/api/clients/:clientId/addresses', requireAuth, async (req, res) => {
   try {
+    const client = await clients.getById(req.params.clientId);
+    if (!client || client.company_id !== req.user.companyId) {
+      return res.status(403).json({ error: 'Not authorised' });
+    }
     const { addressType = 'contact', isPrimary = false, ...addressData } = req.body;
     const addrResult = await addresses.create({ ...addressData, companyId: req.user.companyId });
     await addresses.linkToClient(
@@ -734,6 +738,12 @@ app.post('/api/projects/:projectId/addresses/link', requireAuthOrAnon, async (re
     const project = await projects.getById(req.params.projectId);
     if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const { addressId, addressType = 'installation', isPrimary = true } = req.body;
+    // The address must belong to the caller's company — otherwise any address
+    // id could be linked and then read back through the project.
+    const addr = await addresses.getById(addressId);
+    if (!addr || !req.user || addr.company_id !== req.user.companyId) {
+      return res.status(403).json({ error: 'Not authorised to use this address' });
+    }
     await addresses.linkToProject(
       req.params.projectId, addressId, addressType, isPrimary
     );
@@ -779,12 +789,32 @@ app.get('/api/projects/:id', requireAuthOrAnon, async (req, res) => {
 // Expected body: { clientId, name, status, designer, installationAddressId? }
 // installationAddressId: pass the client's address id to reuse it,
 // or omit and add an address separately afterwards.
-app.post('/api/projects', requireAuthOrAnon, async (req, res) => {
+//
+// Registered users only. Anonymous visitors get their single project from
+// POST /api/anonymous/project, which sets a session token; a project created
+// here by an anonymous caller had neither company nor session token, so any
+// anonymous visitor could read it — and the body's companyId / clientId were
+// trusted, letting a caller file a project under another company or attach
+// another company's client (whose details then came back in the response).
+app.post('/api/projects', requireAuth, async (req, res) => {
   try {
     const { installationAddressId, ...projectData } = req.body;
 
-    // 1. Create the project row — always scope companyId from server context
-    if (req.user) projectData.companyId = req.user.companyId;
+    // 1. Create the project row — company always from server context, and any
+    //    client / address must belong to that company.
+    projectData.companyId = req.user.companyId;
+    if (projectData.clientId) {
+      const client = await clients.getById(projectData.clientId);
+      if (!client || client.company_id !== req.user.companyId) {
+        return res.status(403).json({ error: 'Not authorised to use this client' });
+      }
+    }
+    if (installationAddressId) {
+      const addr = await addresses.getById(installationAddressId);
+      if (!addr || addr.company_id !== req.user.companyId) {
+        return res.status(403).json({ error: 'Not authorised to use this address' });
+      }
+    }
     const result = await projects.create(projectData);
     const projectId = result.id;
 
@@ -796,9 +826,7 @@ app.post('/api/projects', requireAuthOrAnon, async (req, res) => {
       await addresses.linkToProject(projectId, installationAddressId, 'installation', 1);
     }
 
-    const companyId2    = req.user?.companyId || null;
-    const sessionToken2 = req.user ? null : req.anonToken;
-    const newProject = await getCompleteProject(projectId, { companyId: companyId2, sessionToken: sessionToken2 });
+    const newProject = await getCompleteProject(projectId, { companyId: req.user.companyId });
     res.status(201).json(newProject);
   } catch (error) {
     console.error('Error creating project:', error);
@@ -1088,6 +1116,8 @@ app.delete('/api/elements/:id', requireAuthOrAnon, async (req, res) => {
 
 app.get('/api/projects/:projectId/u-values', requireAuthOrAnon, async (req, res) => {
   try {
+    const project = await projects.getById(req.params.projectId);
+    if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
     const library = await uValueLibrary.getByProjectId(req.params.projectId);
     res.json(library);
   } catch (error) {
@@ -1135,6 +1165,25 @@ app.delete('/api/u-values/:id', requireAuthOrAnon, async (req, res) => {
 // ============================================================
 // RADIATOR SPECS
 // ============================================================
+
+// Who may edit or delete a radiator spec. Deny by default: only a company's
+// own users (company scope) or the creating anonymous session (anonymous
+// scope). Shared rows — 'global' and the seeded 'library' — belong to no one.
+//
+// Replaces checks that only ran when the caller's type matched the spec's
+// scope: an anonymous caller skipped the company check entirely, a registered
+// caller skipped the anonymous check, and 'library' rows (shown to every
+// user) matched no check at all — so anyone could edit them.
+function ownsRadiatorSpec(spec, req) {
+  if (spec.scope === 'company')   return !!req.user && spec.company_id === req.user.companyId;
+  if (spec.scope === 'anonymous') return !req.user && !!req.anonToken && spec.session_token === req.anonToken;
+  return false;
+}
+function radiatorSpecDeniedMessage(spec, verb) {
+  return (spec.scope === 'global' || spec.scope === 'library')
+    ? `Library radiator specs cannot be ${verb}`
+    : `Not authorised — this spec can only be ${verb} by the account that created it`;
+}
 
 // GET /api/radiator-specs
 // Returns global specs + caller's own (company or anonymous).
@@ -1184,23 +1233,8 @@ app.put('/api/radiator-specs/:id', requireAuthOrAnon, async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    // Block editing global specs entirely
-    if (spec.scope === 'global') {
-      return res.status(403).json({ error: 'Global radiator specs cannot be edited' });
-    }
-
-    // Registered user can only edit their own company's specs
-    if (spec.scope === 'company' && req.user) {
-      if (spec.company_id !== req.user.companyId) {
-        return res.status(403).json({ error: 'Not authorised to edit this spec' });
-      }
-    }
-
-    // Anonymous user can only edit specs from their own session
-    if (spec.scope === 'anonymous' && !req.user) {
-      if (spec.session_token !== req.anonToken) {
-        return res.status(403).json({ error: 'Not authorised to edit this spec' });
-      }
+    if (!ownsRadiatorSpec(spec, req)) {
+      return res.status(403).json({ error: radiatorSpecDeniedMessage(spec, 'edited') });
     }
 
     await radiatorSpecs.update(req.params.id, {
@@ -1224,20 +1258,8 @@ app.delete('/api/radiator-specs/:id', requireAuthOrAnon, async (req, res) => {
     const spec = await radiatorSpecs.getById(req.params.id);
     if (!spec) return res.status(404).json({ error: 'Spec not found' });
 
-    if (spec.scope === 'global') {
-      return res.status(403).json({ error: 'Global radiator specs cannot be deleted' });
-    }
-
-    if (spec.scope === 'company' && req.user) {
-      if (spec.company_id !== req.user.companyId) {
-        return res.status(403).json({ error: 'Not authorised to delete this spec' });
-      }
-    }
-
-    if (spec.scope === 'anonymous' && !req.user) {
-      if (spec.session_token !== req.anonToken) {
-        return res.status(403).json({ error: 'Not authorised to delete this spec' });
-      }
+    if (!ownsRadiatorSpec(spec, req)) {
+      return res.status(403).json({ error: radiatorSpecDeniedMessage(spec, 'deleted') });
     }
 
     await radiatorSpecs.delete(req.params.id);

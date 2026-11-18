@@ -2,10 +2,67 @@
 import { useState } from 'react';
 import { getMCSDataFromPostcode } from '../../utils/mcsData';
 import { getSPFAndStars, renderStars, getFlowTempRanges } from '../../utils/mcsSPFLookup';
-import { getWarningNotes } from '../../utils/mcsWarningNotes';
+import { getWarningNotes, MCS031_NOTES_VERSION } from '../../utils/mcsWarningNotes';
+import { dailyHotWaterDemand } from '../../utils/dhwCalculations';
+
+// Smallest valid flow − return difference. Must match MIN_DT in
+// RadiatorSizing.jsx and FLOW_RETURN_MIN_DT in server validation.js.
+// TODO: move all three to one shared constant.
+const MIN_DT = 1;
 
 export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   const [showGraph, setShowGraph] = useState(false);
+
+  // Design flow temperature is shared with Emitter Sizing, which stores
+  // flow + return and treats ΔT as the input. This field edits flow only,
+  // so it keeps the current ΔT and moves return with it — writing flow alone
+  // is what produced the production rows with return above flow.
+  // Local state so partial keystrokes are never pushed to the project.
+  // (The tab unmounts on switch, so it re-initialises from the project.)
+  const [flowInput, setFlowInput] = useState(
+    project.designFlowTemp != null ? String(project.designFlowTemp) : ''
+  );
+  const [flowError, setFlowError] = useState('');
+  const savedFlow   = Number(project.designFlowTemp);
+  const savedReturn = Number(project.designReturnTemp);
+  const currentDt   = savedFlow - savedReturn;
+  const dtValid     = Number.isFinite(currentDt) && currentDt >= MIN_DT;
+
+  const handleFlowBlur = async () => {
+    const flow = parseFloat(flowInput);
+    if (!Number.isFinite(flow)) {
+      setFlowError('Enter a flow temperature.');
+      return;
+    }
+    if (flow === savedFlow) { setFlowError(''); return; }
+    if (!dtValid) {
+      setFlowError(
+        `The saved flow/return pair (${project.designFlowTemp}/${project.designReturnTemp}°C) is invalid. ` +
+        'Correct it in Emitter Sizing first.'
+      );
+      return;
+    }
+    const ret = Math.round((flow - currentDt) * 10) / 10;
+    onUpdate('designFlowTemp', flow);
+    onUpdate('designReturnTemp', ret);
+    let res;
+    try {
+      res = await onSave?.({ designFlowTemp: flow, designReturnTemp: ret });
+    } catch {
+      res = { error: 'network' };
+    }
+    if (res && typeof res === 'object' && 'error' in res) {
+      setFlowError('Not saved: the server rejected this flow temperature. Check it in Emitter Sizing.');
+    } else {
+      setFlowError('');
+    }
+  };
+
+  // Daily hot water demand — MIS 3005-D 5.6.2, shared with the SCOP estimator
+  const dhwDemand = dailyHotWaterDemand({
+    bedrooms:  project.mcsBedrooms,
+    occupants: project.mcsOccupants,
+  });
 
   // Snapshot stored on project — persists across sessions
   const snapshot = project.mcsCalculationSnapshot || null;
@@ -25,6 +82,10 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
     customerPostcode: project.customerPostcode,
   });
   const inputsChangedSinceSnapshot = snapshot && snapshot.inputFingerprint !== inputFingerprint;
+  // Snapshots saved before the notes table was regenerated from the official
+  // calculator carry no notesVersion — their warning notes may be wrong.
+  const snapshotOutdated = snapshot && snapshot.notesVersion !== MCS031_NOTES_VERSION;
+  const needsRecalc = inputsChangedSinceSnapshot || snapshotOutdated;
 
   // Extract postcode data
   const mcsData = getMCSDataFromPostcode(project.customerPostcode);
@@ -54,12 +115,13 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   // Get SPF and stars using accurate lookup
   const flowTemp = project.designFlowTemp || 50;
   const heatPumpType = project.mcsHeatPumpType || 'ASHP';
-  const { spf, stars, heatLossBand, flowTempBand } = getSPFAndStars(specificHeatLoss, flowTemp, heatPumpType);
+  // Band is looked up from W/m2, as in the official calculator (Input E27->E28)
+  const { spf, stars, heatLossBand, flowTempBand } = getSPFAndStars(wattsPerM2, flowTemp, heatPumpType);
 
   // Get warning notes
   const emitterType = project.mcsEmitterType || 'existing_radiators';
   const ufhType = project.mcsUFHType || 'screed';
-  const warningNotes = getWarningNotes(specificHeatLoss, flowTemp, emitterType, ufhType);
+  const warningNotes = getWarningNotes(wattsPerM2, flowTemp, emitterType, ufhType, heatPumpType);
 
   // Annual electricity consumption calculations
   const annualElecSpace = spaceHeatingDemand / spf;
@@ -79,7 +141,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   const getGraphData = () => {
     const ranges = getFlowTempRanges();
     return ranges.map(range => {
-      const { spf: rangeSPF } = getSPFAndStars(specificHeatLoss, range.value, heatPumpType);
+      const { spf: rangeSPF } = getSPFAndStars(wattsPerM2, range.value, heatPumpType);
       const elecSpace = spaceHeatingDemand / rangeSPF;
       const elecWater = hotWaterDemand / 1.7;
       const elecTotal = elecSpace + elecWater + annualElecImmersion;
@@ -109,6 +171,8 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
       highEstimate,
       warningNotes,
       specificHeatLoss,
+      heatLossBand,
+      notesVersion: MCS031_NOTES_VERSION,
     };
     onUpdate('mcsCalculationSnapshot', newSnapshot);
     onSave?.({ mcsCalculationSnapshot: newSnapshot });
@@ -300,14 +364,23 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
             </label>
             <input
               type="number"
-              value={project.designFlowTemp || 50}
-              onChange={(e) => onUpdate('designFlowTemp', parseFloat(e.target.value))}
-              onBlur={(e) => onSave?.({ designFlowTemp: parseFloat(e.target.value) })}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              value={flowInput}
+              onChange={(e) => { setFlowInput(e.target.value); setFlowError(''); }}
+              onBlur={handleFlowBlur}
+              className={`w-full border rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 ${
+                flowError ? 'border-red-500' : 'border-gray-300'
+              }`}
             />
-            <div className="text-xs text-gray-500 mt-1">
-              Default 60°C if using existing radiators
-            </div>
+            {flowError ? (
+              <div className="text-xs text-red-600 mt-1">{flowError}</div>
+            ) : (
+              <div className="text-xs text-gray-500 mt-1">
+                Shared with Emitter Sizing.
+                {dtValid && ` Return follows at ΔT ${currentDt.toFixed(1)} K (currently ${project.designReturnTemp}°C).`}
+                {' '}MCS 031 2.3(j): use 60°C with existing radiators unless the room-by-room
+                calculation justifies lower.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -318,9 +391,10 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
         
         {/* Cylinder Size Calculator */}
         <div className="bg-blue-50 border border-blue-300 rounded-lg p-4 mb-4">
-          <h4 className="font-semibold mb-3 text-blue-900">Cylinder Size Calculator</h4>
+          <h4 className="font-semibold mb-3 text-blue-900">Daily Hot Water Demand (MIS 3005-D 5.6.2)</h4>
           <p className="text-sm text-blue-800 mb-3">
-            Formula: Volume = 45 × N, where N = the greater of (bedrooms + 1) or (number of occupants)
+            V<sub>d,average</sub> = 45 × N, where N = the greater of (bedrooms + 1) or (number of known occupants).
+            Select the cylinder from this demand and the heat pump capacity (5.6.3, MGD 007).
           </p>
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -346,15 +420,15 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
               />
             </div>
             <div className="bg-green-50 border border-green-300 rounded px-3 py-2">
-              <label className="block text-sm font-semibold mb-1 text-green-800">Calculated Hot Water Demand</label>
+              <label className="block text-sm font-semibold mb-1 text-green-800">Daily Hot Water Demand</label>
               <div className="text-2xl font-bold text-green-700">
-                {(() => {
-                  const bedrooms = project.mcsBedrooms || 0;
-                  const occupants = project.mcsOccupants || 0;
-                  const n = Math.max(bedrooms + 1, occupants);
-                  return (45 * n).toFixed(0);
-                })()}L
+                {dhwDemand ? `${dhwDemand.litres} L/day` : '—'}
               </div>
+              {dhwDemand && (
+                <div className="text-xs text-green-700">
+                  N = {dhwDemand.n} (from {dhwDemand.basis === 'occupants' ? 'occupants' : 'bedrooms + 1'})
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -391,12 +465,24 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
       </div>
 
       {/* Inputs changed warning */}
-      {inputsChangedSinceSnapshot && (
+      {needsRecalc && (
         <div className="bg-amber-50 border-l-4 border-amber-500 rounded p-4 flex items-center gap-3">
           <span className="text-amber-700 text-xl">⚠</span>
           <div>
-            <p className="font-semibold text-amber-800">Inputs have changed since the last calculation</p>
-            <p className="text-sm text-amber-700">The saved results below may no longer reflect the current inputs. Click Recalculate to update.</p>
+            {inputsChangedSinceSnapshot ? (
+              <>
+                <p className="font-semibold text-amber-800">Inputs have changed since the last calculation</p>
+                <p className="text-sm text-amber-700">The saved results below may no longer reflect the current inputs. Click Recalculate to update.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-amber-800">Calculated with an earlier warning notes table</p>
+                <p className="text-sm text-amber-700">
+                  The warning notes now follow the official MCS 031 calculator ({MCS031_NOTES_VERSION}).
+                  Recalculate to update them; re-issue the estimate if it has gone to the customer.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -407,13 +493,13 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
           onClick={handleCalculate}
           disabled={!spaceHeatingDemand || !totalFloorArea}
           className={`text-white px-6 py-3 rounded font-semibold transition disabled:bg-gray-400 disabled:cursor-not-allowed ${
-            inputsChangedSinceSnapshot
+            needsRecalc
               ? 'bg-amber-600 hover:bg-amber-700'
               : 'bg-blue-600 hover:bg-blue-700'
           }`}
         >
           {snapshot
-            ? inputsChangedSinceSnapshot ? '⟳ Recalculate & Save' : '⟳ Recalculate & Save'
+            ? '⟳ Recalculate & Save'
             : 'Calculate & Save Performance Estimate'}
         </button>
 
@@ -445,7 +531,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
 
       {/* Results Section */}
       {snapshot && (
-        <div className={`border-2 rounded-lg p-6 bg-white ${inputsChangedSinceSnapshot ? 'border-amber-400 opacity-75' : 'border-blue-600'}`}>
+        <div className={`border-2 rounded-lg p-6 bg-white ${needsRecalc ? 'border-amber-400 opacity-75' : 'border-blue-600'}`}>
           <div className="flex justify-between items-start mb-6">
             <h3 className="text-2xl font-bold text-blue-900">
               Heat Pump System Performance Estimate
