@@ -13,17 +13,27 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
+const crypto = require('crypto');
+
+// Temp file names must be unique per request. They used to be
+// `${prefix}_${Date.now()}`, so two requests for the same report in the same
+// millisecond shared one JSON/PDF pair — one user could be sent another
+// user's report. A random UUID removes the collision.
+function tempPath(prefix, ext) {
+  return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${ext}`);
+}
+
+// A generator that hangs would otherwise hold the request open for ever.
+const PYTHON_TIMEOUT_MS = 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Shared helper — spawn a Python script with a JSON temp file, return the
 // path to the generated PDF, and clean up the JSON file afterwards.
-// Rejects if the script exits with a non-zero code.
+// Rejects if the script exits with a non-zero code or times out.
 // ---------------------------------------------------------------------------
 async function runPythonScript(scriptName, data, outputPrefix) {
-  const tempDir   = os.tmpdir();
-  const timestamp = Date.now();
-  const jsonFile  = path.join(tempDir, `${outputPrefix}_${timestamp}.json`);
-  const pdfFile   = path.join(tempDir, `${outputPrefix}_${timestamp}.pdf`);
+  const jsonFile  = tempPath(outputPrefix, 'json');
+  const pdfFile   = tempPath(outputPrefix, 'pdf');
 
   await fs.writeFile(jsonFile, JSON.stringify(data, null, 2));
 
@@ -32,9 +42,16 @@ async function runPythonScript(scriptName, data, outputPrefix) {
   return new Promise((resolve, reject) => {
     const python = spawn('python3', [scriptPath, jsonFile, pdfFile]);
     let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; python.kill('SIGKILL'); }, PYTHON_TIMEOUT_MS);
     python.stderr.on('data', (d) => { stderr += d.toString(); });
     python.on('close', async (code) => {
+      clearTimeout(timer);
       await fs.unlink(jsonFile).catch(() => {});
+      if (timedOut) {
+        await fs.unlink(pdfFile).catch(() => {});
+        return reject(new Error(`${scriptName} timed out after ${PYTHON_TIMEOUT_MS / 1000}s`));
+      }
       if (code !== 0) {
         await fs.unlink(pdfFile).catch(() => {});
         return reject(new Error(`${scriptName} exited ${code}: ${stderr}`));
@@ -52,10 +69,8 @@ async function mergePdfs(pdfPaths, outputPrefix) {
   const valid = pdfPaths.filter(Boolean);
   if (valid.length === 0) throw new Error('No PDFs to merge');
 
-  const tempDir   = os.tmpdir();
-  const timestamp = Date.now();
-  const pathsFile = path.join(tempDir, `${outputPrefix}_paths_${timestamp}.json`);
-  const outFile   = path.join(tempDir, `${outputPrefix}_merged_${timestamp}.pdf`);
+  const pathsFile = tempPath(`${outputPrefix}_paths`, 'json');
+  const outFile   = tempPath(`${outputPrefix}_merged`, 'pdf');
 
   await fs.writeFile(pathsFile, JSON.stringify(valid));
 
@@ -79,12 +94,36 @@ async function mergePdfs(pdfPaths, outputPrefix) {
 // ---------------------------------------------------------------------------
 // Sends a PDF file to the client and deletes the temp file afterwards.
 // ---------------------------------------------------------------------------
+// Content-Disposition for a filename built from customer names. Node throws
+// on characters outside Latin-1 (e.g. "Łukasz"), which failed the whole
+// customer pack after every PDF had been generated; quotes or semicolons
+// would also break the header. So: an ASCII fallback (accents stripped,
+// anything else → "_") plus the full UTF-8 name in RFC 5987 filename*.
+function contentDisposition(filename) {
+  const ascii = filename
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9._-]/g, '_') || 'report.pdf';
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
 async function sendPdf(res, pdfPath, filename) {
   const buffer = await fs.readFile(pdfPath);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Disposition', contentDisposition(filename));
   res.send(buffer);
   await fs.unlink(pdfPath).catch(() => {});
+}
+
+// Customer design summary payload — present when it carries the item list.
+function hasDesignSummary(d) {
+  return !!(d && typeof d === 'object' && Array.isArray(d.items) && d.items.length > 0);
+}
+
+// Cover letter contents line, citing the standard the payload was built to.
+function designSummaryContentsLine(d) {
+  const label  = typeof d.standard?.label  === 'string' ? d.standard.label  : 'MIS 3005-D';
+  const clause = typeof d.standard?.clause === 'string' ? d.standard.clause : '';
+  return `Your Heating System Design (design information to ${label}${clause ? ` clause ${clause}` : ''})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +197,22 @@ module.exports = function pdfRoutes(requireAuth, companies) {
     }
   });
 
+  // ── Customer Design Summary (MIS 3005-D 5.9.2 a–g) ───────────────────────
+  // Payload: buildCustomerDesignSummaryPayload (client). Also included in the
+  // customer pack and the quote pack when the client sends customerDesignData.
+  router.post('/generate-pdf/customer-design-summary', requireAuth, async (req, res) => {
+    let pdfFile = null;
+    try {
+      if (!hasDesignSummary(req.body)) return res.status(400).json({ error: 'Design summary data is required' });
+      pdfFile = await runPythonScript('generate_customer_design_summary_pdf.py', req.body, 'design_summary');
+      await sendPdf(res, pdfFile, 'Heating_System_Design.pdf');
+    } catch (err) {
+      console.error('Error generating design summary PDF:', err.message);
+      if (pdfFile) await fs.unlink(pdfFile).catch(() => {});
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to generate PDF' });
+    }
+  });
+
   // ── Customer Pack (combined PDF) ─────────────────────────────────────────
   //
   // POST /api/generate-pdf/customer-pack
@@ -169,6 +224,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   //   radiatorScheduleData:{ ...same payload as /generate-pdf/radiator-schedule },
   //   mcsPerformanceData:  { ...same payload as /generate-pdf/performance } | null,
   //   mcsSoundData:        { ...same payload as /generate-pdf/sound } | null,
+  //   customerDesignData:  { ...same payload as /generate-pdf/customer-design-summary } | null,
   //   clientData: {
   //     title, firstName, surname,
   //     propertyAddress,        // assembled address string
@@ -198,6 +254,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
         radiatorScheduleData,
         mcsPerformanceData,
         mcsSoundData,
+        customerDesignData,
         clientData = {},
       } = req.body;
 
@@ -209,11 +266,14 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       // Determine which documents are being included so we can list them
       const includeMcsPerf  = mcsPerformanceData && Object.keys(mcsPerformanceData).length > 0;
       const includeMcsSound = mcsSoundData        && Object.keys(mcsSoundData).length > 0;
+      const includeDesign   = hasDesignSummary(customerDesignData);
 
-      const packContents = [
+      const packContents = [];
+      if (includeDesign) packContents.push(designSummaryContentsLine(customerDesignData));
+      packContents.push(
         'Heat Loss Calculation Report (BS EN 12831-1 / CIBSE DHDG 2026)',
         'Emitter Schedule',
-      ];
+      );
       if (includeMcsPerf)  packContents.push('MCS 031 Heat Pump System Performance Estimate');
       if (includeMcsSound) packContents.push('MCS 020a) Sound Level Assessment');
 
@@ -249,7 +309,15 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       ]);
       tempFiles.push(coverPdf, heatLossPdf, radSchedPdf);
 
-      // ── Optional MCS documents ───────────────────────────────────────────
+      // ── Optional documents ───────────────────────────────────────────────
+      let designPdf = null;
+      if (includeDesign) {
+        designPdf = await runPythonScript(
+          'generate_customer_design_summary_pdf.py', customerDesignData, 'design_summary'
+        );
+        tempFiles.push(designPdf);
+      }
+
       let mcsPerformancePdf = null;
       let mcsSoundPdf       = null;
 
@@ -269,7 +337,9 @@ module.exports = function pdfRoutes(requireAuth, companies) {
 
       // ── Merge in document order ──────────────────────────────────────────
       const mergedPdf = await mergePdfs(
-        [coverPdf, heatLossPdf, radSchedPdf, mcsPerformancePdf, mcsSoundPdf],
+        // Design summary straight after the cover letter: it is the
+        // customer-facing digest; the reports behind it follow.
+        [coverPdf, designPdf, heatLossPdf, radSchedPdf, mcsPerformancePdf, mcsSoundPdf],
         'customer_pack'
       );
       tempFiles.push(mergedPdf);
@@ -314,6 +384,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
   //   },
   //   clientData: { title, firstName, surname, propertyAddress, quoteRef },
   //   mcsPerformanceData: { ... } | null,
+  //   customerDesignData: { ...same payload as /generate-pdf/customer-design-summary } | null,
   // }
   router.post('/generate-pdf/quote-pack', requireAuth, async (req, res) => {
     const tempFiles = [];
@@ -322,7 +393,7 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       const company = await companies.getById(companyId);
       if (!company) return res.status(404).json({ error: 'Company not found' });
 
-      const { quoteData, clientData = {}, mcsPerformanceData } = req.body;
+      const { quoteData, clientData = {}, mcsPerformanceData, customerDesignData } = req.body;
       if (!quoteData) return res.status(400).json({ error: 'quoteData is required' });
 
       const includeMcsPerf = mcsPerformanceData && Object.keys(mcsPerformanceData).length > 0;
@@ -365,6 +436,12 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       ]);
       tempFiles.push(coverPdf, importantInfoPdf, expressRequestPdf, quotePdf);
 
+      let designPdf = null;
+      if (hasDesignSummary(customerDesignData)) {
+        designPdf = await runPythonScript('generate_customer_design_summary_pdf.py', customerDesignData, 'design_summary');
+        tempFiles.push(designPdf);
+      }
+
       let mcsPerformancePdf = null;
       if (includeMcsPerf) {
         mcsPerformancePdf = await runPythonScript('generate_mcs_performance_pdf.py', mcsPerformanceData, 'mcs_perf');
@@ -386,12 +463,13 @@ module.exports = function pdfRoutes(requireAuth, companies) {
       tempFiles.push(contractPdf, cancellationPdf, warrantyPdf);
 
       // ── Merge in document order ───────────────────────────────────────────
-      // Cover letter → important information → express request → quote →
-      // MCS performance estimate (if present) → contract → cancellation →
-      // warranty. RECC leaflet/membership content, if ever added, would go
+      // Cover letter → important information → quote → express request →
+      // design summary (if present) → MCS performance estimate (if present)
+      // → contract → cancellation → warranty. The design summary and the
+      // MCS 031 estimate sit together as the design documents. RECC leaflet/membership content, if ever added, would go
       // last and only if isReccMember.
       const mergedPdf = await mergePdfs(
-        [coverPdf, importantInfoPdf, quotePdf, expressRequestPdf, mcsPerformancePdf, contractPdf, cancellationPdf, warrantyPdf],
+        [coverPdf, importantInfoPdf, quotePdf, expressRequestPdf, designPdf, mcsPerformancePdf, contractPdf, cancellationPdf, warrantyPdf],
         'quote_pack'
       );
       tempFiles.push(mergedPdf);

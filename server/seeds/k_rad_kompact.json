@@ -1,12 +1,12 @@
 {
   "_meta": {
     "source": "K-Rad Kompact Panel Radiators brochure (Kartell UK, December 2021)",
-    "standard": "EN442, tested at \u0394T50 (75/65/20\u00b0C)",
+    "standard": "EN442, tested at ΔT50 (75/65/20°C)",
     "notes": [
       "water_volume is litres per metre of radiator length.",
-      "K-Rad brochure quotes water content as total litres per size \u2014 divided by width in metres to give l/m.",
-      "Type 33 water content not published \u2014 estimated at 1.5\u00d7 Type 22 values, consistent with Stelrad K3/K2 ratio.",
-      "Type 21 height 700mm: limited size range (400\u20131000mm only).",
+      "K-Rad brochure quotes water content as total litres per size — divided by width in metres to give l/m.",
+      "Type 33 water content not published — estimated at 1.5× Type 22 values, consistent with Stelrad K3/K2 ratio.",
+      "Type 21 height 700mm: limited size range (400–1000mm only).",
       "750mm height is K-Rad specific (not in Stelrad range)."
     ]
   },
@@ -53,7 +53,7 @@
       "output_dt50": 366,
       "water_volume": 1.7,
       "source": "K-Rad Kompact Panel Radiators brochure (December 2021)",
-      "notes": null
+      "notes": "Catalogue value, kept as published (conservative). The rest of this type/height series suggests about 418 W"
     },
     {
       "manufacturer": "K-Rad (Kartell)",
@@ -1604,7 +1604,7 @@
       "output_dt50": 908,
       "water_volume": 7.6,
       "source": "K-Rad Kompact Panel Radiators brochure (December 2021)",
-      "notes": null
+      "notes": "Catalogue value, kept as published (conservative). The rest of this type/height series suggests about 980 W"
     },
     {
       "manufacturer": "K-Rad (Kartell)",

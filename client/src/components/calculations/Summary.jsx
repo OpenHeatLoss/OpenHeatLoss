@@ -23,6 +23,8 @@ import {
   EMITTER_EXPONENTS,
 } from '../../utils/scopCalculations';
 import { dailyHotWaterDemand } from '../../utils/dhwCalculations';
+import HotWaterDesign from './HotWaterDesign';
+import CustomerDesignInfo from './CustomerDesignInfo';
 
 export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
   const [editingHeatPump, setEditingHeatPump] = useState(false);
@@ -780,6 +782,12 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
         )}
       </div>
 
+      {/* ── Hot Water Design (MIS 3005-D 5.6, 5.9.2(b)(e)) ─────────────── */}
+      <HotWaterDesign project={project} onUpdateBatch={onUpdateBatch} />
+
+      {/* ── Customer design information (MIS 3005-D 5.9.2 (a)–(g)) ─────── */}
+      <CustomerDesignInfo project={project} />
+
       {/* ── SCOP Estimator ──────────────────────────────────────────────── */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-bold mb-1">Performance Estimator (SCOP)</h3>
@@ -930,7 +938,7 @@ export default function Summary({ project, onUpdateProject, onUpdateBatch }) {
                   </>
                 ) : (
                   <div className="text-sm text-gray-400 mt-4">
-                    Enter bedrooms or occupants, and the selected cylinder volume, in MCS031 to enable
+                    Enter bedrooms or occupants, and the cylinder volume, in Hot Water Design above
                   </div>
                 )}
               </div>

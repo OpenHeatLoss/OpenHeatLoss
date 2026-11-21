@@ -1,7 +1,7 @@
 {
   "_meta": {
     "source": "Stelrad Classic Compact datasheet",
-    "standard": "EN442, tested at \u0394T50 (75/65/20\u00b0C)",
+    "standard": "EN442, tested at ΔT50 (75/65/20°C)",
     "notes": "water_volume is litres per metre of radiator length. output_dt50 is absolute watts for the stated length."
   },
   "radiators": [
@@ -234,7 +234,7 @@
       "output_dt50": 1603,
       "water_volume": 2.59,
       "source": "Stelrad Classic Compact datasheet",
-      "notes": "n=1.28"
+      "notes": "n=1.28; Catalogue value, kept as published (conservative). The rest of this type/height series suggests about 1663 W"
     },
     {
       "manufacturer": "Stelrad",
@@ -429,10 +429,10 @@
       "type": "K1",
       "height": 600,
       "length": 2000,
-      "output_dt50": 2234,
+      "output_dt50": 1960,
       "water_volume": 3.3,
       "source": "Stelrad Classic Compact datasheet",
-      "notes": "n=1.29"
+      "notes": "n=1.29; Catalogue lists 2234 W (the 700x2000 figure; exceeds 600x2200). Corrected to 1960 W = 980 W/m x 2.0 m"
     },
     {
       "manufacturer": "Stelrad",

@@ -829,8 +829,18 @@ const designParams = {
       dhw_hp_output_kw           = CASE WHEN $79::boolean THEN $76::double precision ELSE dhw_hp_output_kw           END,
       dhw_reheat_agreed          = CASE WHEN $79::boolean THEN $77::smallint         ELSE dhw_reheat_agreed          END,
       dhw_reheat_time_agreed_min = CASE WHEN $79::boolean THEN $78::double precision ELSE dhw_reheat_time_agreed_min END,
+      -- Migration 030: MCS 031 no-EPC route. Same presence-flag pattern as
+      -- 028 ($87, key mcsDemandRoute): old tabs keep the stored values,
+      -- current clients can clear a field.
+      mcs_demand_route          = CASE WHEN $87::boolean THEN $80::text             ELSE mcs_demand_route          END,
+      mcs_appendix_a_reason     = CASE WHEN $87::boolean THEN $81::text             ELSE mcs_appendix_a_reason     END,
+      mcs_appendix_a_note       = CASE WHEN $87::boolean THEN $82::text             ELSE mcs_appendix_a_note       END,
+      mcs_listed_scop           = CASE WHEN $87::boolean THEN $83::double precision ELSE mcs_listed_scop           END,
+      mcs_listed_scop_source    = CASE WHEN $87::boolean THEN $84::text             ELSE mcs_listed_scop_source    END,
+      mcs_dhw_efficiency        = CASE WHEN $87::boolean THEN $85::double precision ELSE mcs_dhw_efficiency        END,
+      mcs_dhw_efficiency_source = CASE WHEN $87::boolean THEN $86::text             ELSE mcs_dhw_efficiency_source END,
       updated_at = NOW()
-    WHERE project_id = $80`,
+    WHERE project_id = $88`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
@@ -889,7 +899,16 @@ const designParams = {
       data.dhwReheatAgreed ? 1 : 0,                             // $77
       positiveOrNull(data.dhwReheatTimeAgreedMin),              // $78
       hasDhwFields(data),                                       // $79
-      projectId,                                                // $80
+      // Migration 030 — MCS 031 no-EPC route ($80–$86, gated by $87)
+      oneOfOrNull(data.mcsDemandRoute, MCS_DEMAND_ROUTES),       // $80
+      oneOfOrNull(data.mcsAppendixAReason, APPENDIX_A_REASONS),  // $81
+      textOrNull(data.mcsAppendixANote),                        // $82
+      positiveOrNull(data.mcsListedScop),                       // $83
+      textOrNull(data.mcsListedScopSource),                     // $84
+      positiveOrNull(data.mcsDhwEfficiency),                    // $85
+      textOrNull(data.mcsDhwEfficiencySource),                  // $86
+      hasMcsRouteFields(data),                                  // $87
+      projectId,                                                // $88
     ]
   ),
 };
@@ -911,6 +930,18 @@ function textOrNull(v) {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   return s === '' ? null : s;
+}
+
+// Migration 030 helpers. Present when the client sent the mcsDemandRoute key
+// (current payloads always do, null included; pre-030 tabs never do).
+// Enumerated values outside the list are stored as NULL, never as typed.
+const MCS_DEMAND_ROUTES  = ['epc', 'appendix_a'];
+const APPENDIX_A_REASONS = ['demand_changing', 'not_entitled', 'cannot_obtain'];
+function hasMcsRouteFields(data) {
+  return !!data && Object.prototype.hasOwnProperty.call(data, 'mcsDemandRoute');
+}
+function oneOfOrNull(v, allowed) {
+  return allowed.includes(v) ? v : null;
 }
 
 // ---------------------------------------------------------------------------

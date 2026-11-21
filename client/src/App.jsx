@@ -287,6 +287,28 @@ function App() {
       mcsBedrooms:           dp.mcs_bedrooms              || 0,
       mcsOccupants:          dp.mcs_occupants             || 0,
 
+      // DHW cylinder design (migration 028). No defaults: null / '' is
+      // "not entered" and is shown as missing, never as an assumed value.
+      dhwCylinderManufacturer: dp.dhw_cylinder_manufacturer  ?? '',
+      dhwCylinderModel:        dp.dhw_cylinder_model         ?? '',
+      dhwCylinderIsNew:        dp.dhw_cylinder_is_new == null ? null : !!dp.dhw_cylinder_is_new,
+      dhwCoilAreaM2:           dp.dhw_coil_area_m2           ?? null,
+      dhwHeatupTimeMin:        dp.dhw_heatup_time_min        ?? null,
+      dhwHeatupConditions:     dp.dhw_heatup_conditions      ?? '',
+      dhwHpOutputKw:           dp.dhw_hp_output_kw           ?? null,
+      dhwReheatAgreed:         !!dp.dhw_reheat_agreed,
+      dhwReheatTimeAgreedMin:  dp.dhw_reheat_time_agreed_min ?? null,
+
+      // MCS 031 no-EPC route (migration 030). NULL route = EPC, as for every
+      // project before it. No defaults for the figures: blank is "not entered".
+      mcsDemandRoute:          dp.mcs_demand_route          ?? null,
+      mcsAppendixAReason:      dp.mcs_appendix_a_reason     ?? null,
+      mcsAppendixANote:        dp.mcs_appendix_a_note       ?? '',
+      mcsListedScop:           dp.mcs_listed_scop           ?? null,
+      mcsListedScopSource:     dp.mcs_listed_scop_source    ?? '',
+      mcsDhwEfficiency:        dp.mcs_dhw_efficiency        ?? null,
+      mcsDhwEfficiencySource:  dp.mcs_dhw_efficiency_source ?? '',
+
       // Legacy ventilation fields — retained so existing saved data isn't lost
       useSAPVentilation:        dp.use_sap_ventilation         || false,
       buildingCategory:         dp.building_category           || 'B',

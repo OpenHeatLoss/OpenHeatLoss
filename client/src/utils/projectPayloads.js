@@ -111,5 +111,26 @@ export const buildDesignParamsPayload = (proj, overrides = {}) => ({
   defrostPct:             proj.defrostPct             ?? 5,
   balancePoint:           proj.balancePoint           ?? 12.5,
   scopEmitterType:        proj.scopEmitterType        || 'radiator',
+  // Migration 028 — DHW cylinder design. `?? null` is deliberate: JSON drops
+  // undefined keys, and the server only writes these columns when the keys
+  // are present (dhwReheatAgreed is the marker), so they must always be sent.
+  dhwCylinderManufacturer: proj.dhwCylinderManufacturer ?? null,
+  dhwCylinderModel:        proj.dhwCylinderModel        ?? null,
+  dhwCylinderIsNew:        proj.dhwCylinderIsNew        ?? null,
+  dhwCoilAreaM2:           proj.dhwCoilAreaM2           ?? null,
+  dhwHeatupTimeMin:        proj.dhwHeatupTimeMin        ?? null,
+  dhwHeatupConditions:     proj.dhwHeatupConditions     ?? null,
+  dhwHpOutputKw:           proj.dhwHpOutputKw           ?? null,
+  dhwReheatAgreed:         proj.dhwReheatAgreed ? 1 : 0,
+  dhwReheatTimeAgreedMin:  proj.dhwReheatTimeAgreedMin  ?? null,
+  // Migration 030 — MCS 031 no-EPC route. Always sent (`?? null`), with
+  // mcsDemandRoute as the server's presence marker — same as the DHW block.
+  mcsDemandRoute:          proj.mcsDemandRoute          ?? null,
+  mcsAppendixAReason:      proj.mcsAppendixAReason      ?? null,
+  mcsAppendixANote:        proj.mcsAppendixANote        ?? null,
+  mcsListedScop:           proj.mcsListedScop           ?? null,
+  mcsListedScopSource:     proj.mcsListedScopSource     ?? null,
+  mcsDhwEfficiency:        proj.mcsDhwEfficiency        ?? null,
+  mcsDhwEfficiencySource:  proj.mcsDhwEfficiencySource  ?? null,
   ...overrides,
 });

@@ -2626,6 +2626,153 @@ const MIGRATIONS = [
       console.log('  Migration 027 complete: rooms.emitter_shortfall_accepted / emitter_shortfall_reason');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Migration 028 — Domestic hot water cylinder design (MIS 3005-D 5.6, 5.9.2(e))
+  //
+  // What the customer must be told about a new cylinder: specification and
+  // recovery rate, plus the reheat time agreed with them (5.6.4).
+  //
+  //   dhw_cylinder_manufacturer / _model — free text
+  //   dhw_cylinder_is_new          — SMALLINT 0/1, NULL = not stated
+  //   dhw_coil_area_m2             — HP coil surface area (5.6.5 check)
+  //   dhw_heatup_time_min          — manufacturer's heat-up time, as published
+  //   dhw_heatup_conditions        — the test conditions behind that figure
+  //                                  (many published figures are not at
+  //                                  domestic heat pump outputs)
+  //   dhw_hp_output_kw             — heat pump output available for DHW;
+  //                                  NULL = use the rated output
+  //   dhw_reheat_agreed            — SMALLINT 0/1, reheat time agreed (5.6.4)
+  //   dhw_reheat_time_agreed_min   — the agreed reheat time
+  //
+  // Cylinder volume stays in mcs_cylinder_volume (read by MCS 031 and SCOP).
+  // Schema only: every column is NULL / 0 for existing projects, which is
+  // "not entered". Idempotent via addColumnIfMissing.
+  // ---------------------------------------------------------------------------
+  {
+    version: '028',
+    description: 'DHW cylinder design fields on design_params (spec, recovery, agreed reheat)',
+    run: async () => {
+      await addColumnIfMissing('design_params', 'dhw_cylinder_manufacturer',  'TEXT');
+      await addColumnIfMissing('design_params', 'dhw_cylinder_model',         'TEXT');
+      await addColumnIfMissing('design_params', 'dhw_cylinder_is_new',        'SMALLINT');
+      await addColumnIfMissing('design_params', 'dhw_coil_area_m2',           'DOUBLE PRECISION');
+      await addColumnIfMissing('design_params', 'dhw_heatup_time_min',        'DOUBLE PRECISION');
+      await addColumnIfMissing('design_params', 'dhw_heatup_conditions',      'TEXT');
+      await addColumnIfMissing('design_params', 'dhw_hp_output_kw',           'DOUBLE PRECISION');
+      await addColumnIfMissing('design_params', 'dhw_reheat_agreed',          'SMALLINT NOT NULL DEFAULT 0');
+      await addColumnIfMissing('design_params', 'dhw_reheat_time_agreed_min', 'DOUBLE PRECISION');
+      console.log('  Migration 028 complete: design_params DHW cylinder design fields');
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Migration 029 — Reference data corrections (seed check 2026-11-19)
+  //
+  // Found by checking each radiator's W/m against the rest of its type and
+  // height. All four anomalies are the manufacturers' published figures —
+  // catalogue typos, confirmed against the datasheets by Simon.
+  //
+  // Policy: correct an OVERSTATED output downward (sizing with it gives a room
+  // less heat than designed). Keep an UNDERSTATED output as published — it is
+  // conservative and matches the datasheet an assessor would check — and
+  // record the anomaly in notes.
+  //
+  //   Stelrad Classic Compact K1 600×2000: published 2234 W, which is the
+  //     700×2000 figure (and more than the 600×2200 at 2156 W). Corrected to
+  //     1960 W = 980 W/m × 2.0 m, the 600 series' value.
+  //   Stelrad K1 450×2200 (1603), K-Rad Type 11 300×800 (366),
+  //   K-Rad Type 22 900×400 (908): kept, notes added.
+  //
+  // construction_library: the floor_exposed band M as-built row for Wales was
+  // seeded twice — 0.18 (from a row listing England/Wales/NI/IoM) and 0.15
+  // (Scotland and Wales row, whose note says Wales is 0.15). Lookups got
+  // whichever came first. The 0.18 Welsh row is removed.
+  //
+  // Every statement matches on the old value, so it is idempotent and leaves
+  // any row already changed by hand alone. Seed JSONs corrected to match.
+  // ---------------------------------------------------------------------------
+  {
+    version: '029',
+    description: 'Correct Stelrad K1 600x2000 output; annotate catalogue anomalies; remove duplicate Welsh band M floor U-value',
+    run: async () => {
+      const k1 = await query(`
+        UPDATE radiator_specs
+        SET output_dt50 = 1960,
+            notes = CONCAT_WS('; ', NULLIF(notes, ''),
+              'Catalogue lists 2234 W (the 700x2000 figure; exceeds 600x2200). Corrected to 1960 W = 980 W/m x 2.0 m (migration 029)')
+        WHERE scope = 'global' AND manufacturer = 'Stelrad' AND model = 'Classic Compact'
+          AND type = 'K1' AND height = 600 AND length = 2000 AND output_dt50 = 2234
+      `);
+      console.log(`  Stelrad K1 600x2000 corrected: ${k1.rowCount} row(s)`);
+
+      const anomalies = [
+        ['Stelrad',         'Classic Compact', 'K1',           450, 2200, 1603, 'about 1663 W'],
+        ['K-Rad (Kartell)', 'Kompact',         'K1 / Type 11', 300,  800,  366, 'about 418 W'],
+        ['K-Rad (Kartell)', 'Kompact',         'K2 / Type 22', 900,  400,  908, 'about 980 W'],
+      ];
+      for (const [mfr, model, type, h, l, w, expected] of anomalies) {
+        const note = `Catalogue value, kept as published (conservative). The rest of this type/height series suggests ${expected} (migration 029)`;
+        const r = await query(`
+          UPDATE radiator_specs
+          SET notes = CONCAT_WS('; ', NULLIF(notes, ''), $7::text)
+          WHERE scope = 'global' AND manufacturer = $1 AND model = $2 AND type = $3
+            AND height = $4 AND length = $5 AND output_dt50 = $6
+            AND COALESCE(notes, '') NOT LIKE '%migration 029%'
+        `, [mfr, model, type, h, l, w, note]);
+        console.log(`  ${mfr} ${type} ${h}x${l} annotated: ${r.rowCount} row(s)`);
+      }
+
+      const floor = await query(`
+        DELETE FROM construction_library
+        WHERE element_type = 'floor_exposed' AND region = 'wales' AND age_band = 'M'
+          AND insulation_type = 'as_built' AND u_value = 0.18
+          AND EXISTS (
+            SELECT 1 FROM construction_library c2
+            WHERE c2.element_type = 'floor_exposed' AND c2.region = 'wales' AND c2.age_band = 'M'
+              AND c2.insulation_type = 'as_built' AND c2.u_value = 0.15
+          )
+      `);
+      console.log(`  Duplicate Welsh band M exposed floor row removed: ${floor.rowCount} row(s)`);
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Migration 030 — MCS 031 without a valid EPC (MCS 031 2.1 / Appendix A)
+  //
+  // A valid EPC has not expired AND its heat demand won't change (e.g. an
+  // extension the heat pump will serve). Where none can be used, the annual
+  // demand comes from the room-by-room heat loss and the electricity from the
+  // heat pump's SCoP as listed on the MCS website. See client/src/utils/
+  // mcsAppendixA.js.
+  //
+  //   mcs_demand_route          — 'epc' | 'appendix_a'; NULL = EPC (all
+  //                               existing projects)
+  //   mcs_appendix_a_reason     — 'demand_changing' | 'not_entitled' |
+  //                               'cannot_obtain'
+  //   mcs_appendix_a_note       — free text, printed on the estimate
+  //   mcs_listed_scop           — space heating SCoP from the MCS website
+  //   mcs_listed_scop_source    — where it came from (printed)
+  //   mcs_dhw_efficiency        — water heating efficiency, as a ratio
+  //   mcs_dhw_efficiency_source — where it came from (printed)
+  //
+  // Schema only: NULL for every existing project, which is the EPC route —
+  // nothing changes for them. Idempotent via addColumnIfMissing.
+  // ---------------------------------------------------------------------------
+  {
+    version: '030',
+    description: 'MCS 031 no-EPC route (Appendix A): route, reason, listed SCoP and DHW efficiency with sources',
+    run: async () => {
+      await addColumnIfMissing('design_params', 'mcs_demand_route',          'TEXT');
+      await addColumnIfMissing('design_params', 'mcs_appendix_a_reason',     'TEXT');
+      await addColumnIfMissing('design_params', 'mcs_appendix_a_note',       'TEXT');
+      await addColumnIfMissing('design_params', 'mcs_listed_scop',           'DOUBLE PRECISION');
+      await addColumnIfMissing('design_params', 'mcs_listed_scop_source',    'TEXT');
+      await addColumnIfMissing('design_params', 'mcs_dhw_efficiency',        'DOUBLE PRECISION');
+      await addColumnIfMissing('design_params', 'mcs_dhw_efficiency_source', 'TEXT');
+      console.log('  Migration 030 complete: design_params MCS 031 no-EPC route fields');
+    },
+  },
 ];
 
 async function runMigrations() {

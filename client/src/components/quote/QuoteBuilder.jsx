@@ -1,6 +1,9 @@
 // client/src/components/quote/QuoteBuilder.jsx
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../utils/api';
+import { buildCustomerDesignSummaryPayload } from '../../utils/buildCustomerDesignSummaryPayload';
+import { packIssues, confirmPackIssues } from '../../utils/packChecks';
+import { buildMcsPerformancePayload } from '../../utils/buildMcsPerformancePayload';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1381,43 +1384,18 @@ export default function QuoteBuilder({ project, currentCompany, currentUser }) {
         quoteRef: reference, companyName: currentCompany?.name || '',
       };
 
-      // MCS performance — same conditional pattern as RadiatorSizing.jsx's
-      // handleGenerateCustomerPack
-      let mcsPerformanceData = null;
-      const s031 = project.mcsCalculationSnapshot;
-      if (s031 && s031.spf && s031.spf > 0) {
-        mcsPerformanceData = {
-          projectName: project.name || 'Untitled Project',
-          location: project.location || '',
-          designer: project.designer || '',
-          customerTitle: project.customerTitle || '',
-          customerFirstName: project.customerFirstName || '',
-          customerSurname: project.customerSurname || '',
-          customerAddress: propertyAddress,
-          customerPostcode: project.customerPostcode || '',
-          customerTelephone: project.customerTelephone || '',
-          customerEmail: project.customerEmail || '',
-          spaceHeatingDemand: s031.spaceHeatingDemand,
-          hotWaterDemand: s031.hotWaterDemand,
-          totalFloorArea: s031.totalFloorArea,
-          wattsPerM2: s031.wattsPerM2,
-          heatPumpCapacity: s031.heatPumpCapacity,
-          heatPumpType: s031.heatPumpType,
-          systemProvides: project.mcsSystemProvides === 'space_and_hw' ? 'Space heat and hot water' :
-            project.mcsSystemProvides === 'space_only' ? 'Space heating only' : 'Hybrid',
-          emitterType: project.mcsEmitterType === 'existing_radiators' ? 'Existing radiators' :
-            project.mcsEmitterType === 'upgraded_radiators' ? 'Mostly upgraded radiators' :
-            project.mcsEmitterType === 'mostly_ufh' ? 'Mostly underfloor' : '50% radiators, 50% UFH',
-          flowTempBand: s031.flowTempBand,
-          spf: s031.spf,
-          lowEstimate: s031.lowEstimate,
-          highEstimate: s031.highEstimate,
-          stars: s031.stars,
-          warningNotes: s031.warningNotes,
-        };
-      }
+      // MCS 031 — from the saved snapshot via the shared builder (null if none)
+      const mcsPerformanceData = buildMcsPerformancePayload(project);
 
-      const response = await api.generateQuotePack({ quoteData, clientData, mcsPerformanceData });
+      // Customer design summary (MIS 3005-D 5.9.2) — saved project data, the
+      // same document as the Heat Loss Summary's "Download PDF". Incomplete →
+      // ask: print with "To be confirmed", or stop to fix it.
+      const customerDesignData = buildCustomerDesignSummaryPayload(project);
+      // Pre-flight: design summary completeness + MCS 031 estimate status.
+      // OK generates as it stands; Cancel stops so it can be put right.
+      if (!confirmPackIssues(packIssues(project, customerDesignData), 'quote pack')) return;   // finally{} resets the flag
+
+      const response = await api.generateQuotePack({ quoteData, clientData, mcsPerformanceData, customerDesignData });
 
       if (response.ok) {
         const blob = await response.blob();
@@ -1494,7 +1472,7 @@ export default function QuoteBuilder({ project, currentCompany, currentUser }) {
               title={
                 !currentCompany?.quote_cover_letter_template && !currentCompany?.contract_terms_template
                   ? 'Tip: add your quote cover letter and contract wording in Settings → Company Details'
-                  : 'Generate quote, cover letter, and contract pack'
+                  : 'Generate quote, cover letter, design summary and contract pack'
               }
               className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition"
             >

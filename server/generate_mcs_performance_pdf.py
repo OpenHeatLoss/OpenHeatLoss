@@ -11,8 +11,32 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 import json
+import math
+import re
 import sys
 from datetime import datetime
+from xml.sax.saxutils import escape
+
+
+def num(v, dp=0, unit=''):
+    """Format a number; '—' for a missing value instead of crashing on None."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return '\u2014'
+    if not math.isfinite(f):
+        return '\u2014'
+    return f"{f:.{dp}f}{(' ' + unit) if unit else ''}"
+
+
+def postcode_prefix(data):
+    """The letters MCS 031 looks up degree days by (BA1 1AA -> BA).
+    Prefer the value the client sends; fall back to the same rule as
+    mcsData.js getPostcodePrefix."""
+    if data.get('postcodePrefix'):
+        return data['postcodePrefix']
+    m = re.match(r'[A-Z]+', (data.get('customerPostcode') or '').replace(' ', '').upper())
+    return m.group(0) if m else 'N/A'
 
 def create_mcs_performance_pdf(data, output_filename):
     """
@@ -51,6 +75,10 @@ def create_mcs_performance_pdf(data, output_filename):
         spaceBefore=12
     )
     
+    # Where the annual demand came from (MCS 031 2.1 EPC, or Appendix A)
+    appendix = data.get('demandRoute') == 'appendix_a'
+    aa = data.get('appendixA') or {}
+
     # Build document
     story = []
     
@@ -67,7 +95,8 @@ def create_mcs_performance_pdf(data, output_filename):
         ["Project Name:", data.get('projectName', 'N/A')],
         ["Location:", data.get('location', 'N/A')],
         ["Designer:", data.get('designer', 'N/A')],
-        ["Calculation Date:", data.get('calculatedAt', datetime.now().strftime('%d/%m/%Y'))],
+        # No fallback to today: an undated estimate must not look freshly calculated
+        ["Calculation Date:", data.get('calculatedAt') or 'Not recorded'],
         ["Report Generated:", datetime.now().strftime('%d/%m/%Y')]
     ]
     project_table = Table(project_data, colWidths=[5*cm, 12*cm])
@@ -110,8 +139,14 @@ def create_mcs_performance_pdf(data, output_filename):
     story.append(Spacer(1, 0.5*cm))
     
     # Star Rating
-    stars = data.get('stars', 0)
-    star_rating = '⭐' * stars if stars > 0 else 'No stars'
+    try:
+        stars = int(data.get('stars') or 0)
+    except (TypeError, ValueError):
+        stars = 0
+    # U+2B50 (⭐) has no glyph in the PDF base fonts and printed as black
+    # squares; U+2605 (★) is in ZapfDingbats, which reportlab uses for it.
+    star = '\u2605'   # kept out of the f-string: backslashes there need Python 3.12+
+    star_rating = f"{star * stars}  ({stars} of 6)" if stars > 0 else 'No stars'
     
     star_data = [
         ["System Emitter Star Rating", star_rating],
@@ -138,10 +173,10 @@ def create_mcs_performance_pdf(data, output_filename):
     # Energy Requirements
     story.append(Paragraph("Your Energy Requirements", heading_style))
     energy_data = [
-        ["Energy required for heating", f"{data.get('spaceHeatingDemand', 0):.0f} kWh"],
-        ["Demand supplied by heat pump", f"{data.get('spaceHeatingDemand', 0):.0f} kWh"],
-        ["Energy required for hot water", f"{data.get('hotWaterDemand', 0):.0f} kWh"],
-        ["Demand supplied by heat pump", f"{data.get('hotWaterDemand', 0):.0f} kWh"]
+        ["Energy required for heating", num(data.get('spaceHeatingDemand'), 0, 'kWh')],
+        ["Demand supplied by heat pump", num(data.get('spaceHeatingDemand'), 0, 'kWh')],
+        ["Energy required for hot water", num(data.get('hotWaterDemand'), 0, 'kWh')],
+        ["Demand supplied by heat pump", num(data.get('hotWaterDemand'), 0, 'kWh')]
     ]
     energy_table = Table(energy_data, colWidths=[12*cm, 5*cm])
     energy_table.setStyle(TableStyle([
@@ -162,9 +197,10 @@ def create_mcs_performance_pdf(data, output_filename):
     # Property Information
     story.append(Paragraph("Your Property", heading_style))
     property_data = [
-        ["Postcode prefix", data.get('customerPostcode', 'N/A')],
-        ["Total property floorspace", f"{data.get('totalFloorArea', 0):.0f} m²"],
-        ["Average watts per square metre", f"{data.get('wattsPerM2', 0):.1f} W/m²"]
+        # Was the full postcode under a "prefix" label
+        ["Postcode prefix", postcode_prefix(data)],
+        ["Total property floorspace", num(data.get('totalFloorArea'), 0, 'm²')],
+        ["Average watts per square metre", num(data.get('wattsPerM2'), 1, 'W/m²')]
     ]
     property_table = Table(property_data, colWidths=[12*cm, 5*cm])
     property_table.setStyle(TableStyle([
@@ -186,7 +222,9 @@ def create_mcs_performance_pdf(data, output_filename):
     # Proposed System
     story.append(Paragraph("Proposed System", heading_style))
     system_data = [
-        ["Heat pump capacity", f"{data.get('heatPumpCapacity', 0):.1f} kW (indicative)"],
+        ["Heat pump capacity",
+         f"{num(data.get('heatPumpCapacity'), 1, 'kW')} "
+         + ("(full heat loss)" if appendix else "(indicative)")],
         ["Heat pump type", data.get('heatPumpType', 'N/A')],
         ["System provides", data.get('systemProvides', 'N/A')],
         ["Heating system", data.get('emitterType', 'N/A')],
@@ -210,11 +248,18 @@ def create_mcs_performance_pdf(data, output_filename):
     
     # Performance
     story.append(Paragraph("Performance", heading_style))
+    if appendix:
+        # Appendix A: space heating ÷ the listed SCoP; hot water ÷ its efficiency
+        head_row = ["Heat pump SCoP for space heating (MCS listed)", num(aa.get('listedScop'), 2)]
+    else:
+        head_row = ["Seasonal Performance Factor (SPF)", num(data.get('spf'), 1)]
     performance_data = [
-        ["Seasonal Performance Factor (SPF)", f"{data.get('spf', 0):.1f}"],
-        ["Low estimate", f"{data.get('lowEstimate', 0):.0f} kWh"],
-        ["High estimate", f"{data.get('highEstimate', 0):.0f} kWh"]
+        head_row,
+        ["Low estimate", num(data.get('lowEstimate'), 0, 'kWh')],
+        ["High estimate", num(data.get('highEstimate'), 0, 'kWh')]
     ]
+    if appendix and aa.get('dhwEfficiency'):
+        performance_data.insert(1, ["Heat pump SCoP for hot water", num(aa.get('dhwEfficiency'), 2)])
     performance_table = Table(performance_data, colWidths=[12*cm, 5*cm])
     performance_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#dcfce7')),
@@ -235,11 +280,22 @@ def create_mcs_performance_pdf(data, output_filename):
     story.append(Paragraph("<i>You can convert these figures to approximate running costs</i>", styles['Normal']))
     story.append(Spacer(1, 0.5*cm))
     
+    # How the demand was estimated — MCS 031 Appendix A requires the method
+    # and factors to be clearly described and justified
+    if appendix:
+        story.append(Paragraph("How Your Energy Demand Was Estimated", heading_style))
+        for line in (aa.get('methodStatement') or []):
+            story.append(Paragraph(f"\u2022 {escape(str(line))}", styles['Normal']))
+            story.append(Spacer(1, 0.15*cm))
+        story.append(Spacer(1, 0.3*cm))
+
     # Warning Notes
     if data.get('warningNotes') and len(data.get('warningNotes', [])) > 0:
         story.append(Paragraph("Applicable Warning Notes", heading_style))
         for note in data.get('warningNotes', []):
-            story.append(Paragraph(f"<b>Note {note['number']}:</b> {note['text']}", styles['Normal']))
+            story.append(Paragraph(
+                f"<b>Note {escape(str(note.get('number', '')))}:</b> {escape(str(note.get('text', '')))}",
+                styles['Normal']))
             story.append(Spacer(1, 0.2*cm))
         story.append(Spacer(1, 0.3*cm))
     
@@ -255,11 +311,16 @@ def create_mcs_performance_pdf(data, output_filename):
         borderPadding=8,
         backColor=colors.HexColor('#fef2f2')
     )
-    story.append(Paragraph(
-        "<b>Important Note:</b> This is not a detailed system design. It offers a reasonable estimate of likely "
-        "performance and a description of the likely design. Details may change after the heat loss survey and design.",
-        important_style
-    ))
+    # MCS 031 v4.02's note ends "Details may change after the heat loss survey
+    # and design / this estimate is based on a full heat loss survey and design
+    # (delete as appropriate)". EPC route: the first (it isn't based on the
+    # full heat loss). No-EPC route: the second — its figures come from the
+    # room-by-room heat loss (Simon, 21 Nov).
+    important_text = ("<b>Important Note:</b> This is not a detailed system design. It offers a reasonable estimate of likely "
+                      "performance and a description of the likely design. "
+                      + ("This estimate is based on a full heat loss survey and design." if appendix
+                         else "Details may change after the heat loss survey and design."))
+    story.append(Paragraph(important_text, important_style))
     
     # Build PDF
     doc.build(story)

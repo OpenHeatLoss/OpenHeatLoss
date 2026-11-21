@@ -4,6 +4,10 @@ import { getMCSDataFromPostcode } from '../../utils/mcsData';
 import { getSPFAndStars, renderStars, getFlowTempRanges } from '../../utils/mcsSPFLookup';
 import { getWarningNotes, MCS031_NOTES_VERSION } from '../../utils/mcsWarningNotes';
 import { dailyHotWaterDemand } from '../../utils/dhwCalculations';
+import { buildMcsPerformancePayload } from '../../utils/buildMcsPerformancePayload';
+import { mcsSnapshotStatus } from '../../utils/mcsSnapshotStatus';
+import { getPostcodePrefix } from '../../utils/mcsData';
+import { appendixADemand, isAppendixA, APPENDIX_A_REASONS, MCS031_DHW_DEFAULT, MCS031_DHW_DEFAULT_SOURCE } from '../../utils/mcsAppendixA';
 
 // Smallest valid flow − return difference. Must match MIN_DT in
 // RadiatorSizing.jsx and FLOW_RETURN_MIN_DT in server validation.js.
@@ -64,53 +68,54 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
     occupants: project.mcsOccupants,
   });
 
-  // Snapshot stored on project — persists across sessions
-  const snapshot = project.mcsCalculationSnapshot || null;
-
-  // Detect whether current inputs differ from the saved snapshot
-  const inputFingerprint = JSON.stringify({
-    epcSpaceHeatingDemand: project.epcSpaceHeatingDemand,
-    epcHotWaterDemand: project.epcHotWaterDemand,
-    epcTotalFloorArea: project.epcTotalFloorArea,
-    mcsHeatPumpType: project.mcsHeatPumpType,
-    mcsEmitterType: project.mcsEmitterType,
-    mcsUFHType: project.mcsUFHType,
-    mcsSystemProvides: project.mcsSystemProvides,
-    designFlowTemp: project.designFlowTemp,
-    mcsCylinderVolume: project.mcsCylinderVolume,
-    mcsPasteurizationFreq: project.mcsPasteurizationFreq,
-    customerPostcode: project.customerPostcode,
-  });
-  const inputsChangedSinceSnapshot = snapshot && snapshot.inputFingerprint !== inputFingerprint;
-  // Snapshots saved before the notes table was regenerated from the official
-  // calculator carry no notesVersion — their warning notes may be wrong.
-  const snapshotOutdated = snapshot && snapshot.notesVersion !== MCS031_NOTES_VERSION;
-  const needsRecalc = inputsChangedSinceSnapshot || snapshotOutdated;
+  // Snapshot stored on project — persists across sessions. Staleness is
+  // worked out in mcsSnapshotStatus so the packs give the same answer.
+  // (stale = inputs changed OR notes table outdated; the banner says which.)
+  const {
+    snapshot,
+    fingerprint:   inputFingerprint,
+    inputsChanged: inputsChangedSinceSnapshot,
+    stale:         needsRecalc,
+  } = mcsSnapshotStatus(project);
 
   // Extract postcode data
   const mcsData = getMCSDataFromPostcode(project.customerPostcode);
   const degreeDays = mcsData?.degreeDays || 2033;
   const outdoorLowTemp = mcsData?.lowTemp || -3;
 
-  // MCS Calculations (Section 2 of MCS 031)
-  const spaceHeatingDemand = project.epcSpaceHeatingDemand || 0;
-  const hotWaterDemand = project.epcHotWaterDemand || 0;
-  const totalFloorArea = project.epcTotalFloorArea || 0;
+  // Where the annual demand comes from: a valid EPC (MCS 031 2.1) or, where
+  // none can be used, MCS 031 Appendix A from the room-by-room heat loss.
+  const appendixA = isAppendixA(project);
+  const aa = appendixA ? appendixADemand(project) : null;
+  // 'hybrid' was removed from System Provides (Simon, 21 Nov). A project
+  // still holding it must choose again before calculating.
+  const legacyHybrid = project.mcsSystemProvides === 'hybrid';
 
-  // Calculate specific heat loss (W/K)
-  const specificHeatLoss = spaceHeatingDemand > 0 && degreeDays > 0
-    ? (1000 * spaceHeatingDemand) / (24 * degreeDays)
-    : 0;
+  // MCS Calculations (Section 2 of MCS 031)
+  const spaceHeatingDemand = appendixA ? aa.spaceHeatingKwh : (project.epcSpaceHeatingDemand || 0);
+  const hotWaterDemand = appendixA ? aa.hotWaterKwh : (project.epcHotWaterDemand || 0);
+  const totalFloorArea = appendixA ? aa.totalFloorArea : (project.epcTotalFloorArea || 0);
+
+  // Calculate specific heat loss (W/K) — EPC route derives it from the EPC
+  // demand; Appendix A takes it from the heat loss calculation.
+  const specificHeatLoss = appendixA
+    ? aa.specificHeatLossWK
+    : spaceHeatingDemand > 0 && degreeDays > 0
+      ? (1000 * spaceHeatingDemand) / (24 * degreeDays)
+      : 0;
 
   // Calculate total heat loss (W)
   const designInternalTemp = 21;
   const totalHeatLoss = specificHeatLoss * (designInternalTemp - outdoorLowTemp);
 
-  // Calculate W/m²
-  const wattsPerM2 = totalFloorArea > 0 ? totalHeatLoss / totalFloorArea : 0;
+  // Calculate W/m² — Appendix A: the heat loss calculation's own figure
+  const wattsPerM2 = appendixA
+    ? aa.wattsPerM2
+    : totalFloorArea > 0 ? totalHeatLoss / totalFloorArea : 0;
 
-  // Indicative heat pump capacity (kW)
-  const heatPumpCapacity = totalHeatLoss / 1000;
+  // Heat pump capacity (kW): indicative from the EPC, or the design load
+  // from the full heat loss calculation on the Appendix A route
+  const heatPumpCapacity = appendixA ? aa.heatPumpCapacityKw : totalHeatLoss / 1000;
 
   // Get SPF and stars using accurate lookup
   const flowTemp = project.designFlowTemp || 50;
@@ -123,9 +128,16 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   const ufhType = project.mcsUFHType || 'screed';
   const warningNotes = getWarningNotes(wattsPerM2, flowTemp, emitterType, ufhType, heatPumpType);
 
-  // Annual electricity consumption calculations
-  const annualElecSpace = spaceHeatingDemand / spf;
-  const annualElecWater = hotWaterDemand / 1.7; // From SAP 2012 Table 4a
+  // Annual electricity consumption calculations. EPC route: SPF from the
+  // MCS 031 table and 1.7 for hot water (SAP 2012 Table 4a). Appendix A:
+  // the heat pump's listed SCoP and its water heating efficiency.
+  const annualElecSpace = appendixA
+    ? (aa.listedScop ? spaceHeatingDemand / aa.listedScop : 0)
+    : spaceHeatingDemand / spf;
+  const annualElecWater = appendixA
+    ? (aa.providesHw && aa.dhwEfficiency ? hotWaterDemand / aa.dhwEfficiency : 0)
+    : hotWaterDemand / 1.7;
+  const canCalculate = !legacyHybrid && (appendixA ? aa.ok : (spaceHeatingDemand > 0 && totalFloorArea > 0));
 
   // Immersion heater for pasteurization
   const cylinderVolume = project.mcsCylinderVolume || 0;
@@ -173,6 +185,18 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
       specificHeatLoss,
       heatLossBand,
       notesVersion: MCS031_NOTES_VERSION,
+      demandRoute: appendixA ? 'appendix_a' : 'epc',
+      ...(appendixA ? {
+        appendixA: {
+          reason: aa.reason, reasonText: aa.reasonText, note: aa.note,
+          degreeDays: aa.degreeDays, postcodePrefix: aa.postcodePrefix,
+          dailyLitres: aa.dailyLitres, occupantsN: aa.occupantsN,
+          listedScop: aa.listedScop, listedScopSource: aa.listedScopSource,
+          dhwEfficiency: aa.providesHw ? aa.dhwEfficiency : null,
+          dhwEfficiencySource: aa.providesHw ? aa.dhwEfficiencySource : '',
+          methodStatement: aa.methodStatement,
+        },
+      } : {}),
     };
     onUpdate('mcsCalculationSnapshot', newSnapshot);
     onSave?.({ mcsCalculationSnapshot: newSnapshot });
@@ -181,45 +205,10 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
   const handleExportPDF = async () => {
     if (!snapshot) return;
     try {
-      // Use frozen snapshot values for audit integrity
-      const s = snapshot;
-      const calcDate = new Date(s.calculatedAt).toLocaleDateString('en-GB', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      });
-      const pdfData = {
-        projectName: project.name || 'Untitled Project',
-        location: project.location || '',
-        designer: project.designer || '',
-        customerTitle: project.customerTitle || '',
-        customerFirstName: project.customerFirstName || '',
-        customerSurname: project.customerSurname || '',
-        customerAddress: [
-          project.customerAddressLine1, project.customerAddressLine2,
-          project.customerTown, project.customerCounty, project.customerPostcode,
-        ].filter(Boolean).join(', '),
-        customerPostcode: project.customerPostcode || '',
-        customerTelephone: project.customerTelephone || '',
-        customerEmail: project.customerEmail || '',
-        calculatedAt: calcDate,
-        spaceHeatingDemand: s.spaceHeatingDemand,
-        hotWaterDemand: s.hotWaterDemand,
-        totalFloorArea: s.totalFloorArea,
-        wattsPerM2: s.wattsPerM2,
-        heatPumpCapacity: s.heatPumpCapacity,
-        heatPumpType: s.heatPumpType,
-        systemProvides: s.systemProvides === 'space_and_hw' ? 'Space heat and hot water' :
-                       s.systemProvides === 'space_only' ? 'Space heating only' : 'Hybrid',
-        emitterType: s.emitterType === 'existing_radiators' ? 'Existing radiators' :
-                     s.emitterType === 'upgraded_radiators' ? 'Mostly upgraded radiators' :
-                     s.emitterType === 'mostly_ufh' ? 'Mostly underfloor' : '50% radiators, 50% UFH',
-        flowTempBand: s.flowTempBand,
-        spf: s.spf,
-        lowEstimate: s.lowEstimate,
-        highEstimate: s.highEstimate,
-        stars: s.stars,
-        warningNotes: s.warningNotes
-      };
+      // Frozen snapshot values for audit integrity — shared builder, so the
+      // customer pack and quote pack print the same document.
+      const pdfData = buildMcsPerformancePayload(project);
+      if (!pdfData) { alert('No saved MCS 031 calculation to export — calculate first.'); return; }
 
       // Call API to generate PDF
       const response = await fetch('/api/generate-pdf/performance', {
@@ -252,7 +241,159 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
 
   return (
     <div className="space-y-6">
+      {/* Source of the annual energy demand */}
+      <div>
+        <h3 className="font-semibold text-lg mb-3">Annual Energy Demand</h3>
+        <div className="flex flex-col gap-2 text-sm">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="radio" name="mcsDemandRoute" className="mt-1"
+              checked={!appendixA}
+              onChange={() => { onUpdate('mcsDemandRoute', 'epc'); onSave?.({ mcsDemandRoute: 'epc' }); }}
+            />
+            <span><span className="font-semibold">From a valid EPC</span> (MCS 031 2.1) — not expired, and the
+              heat demand won't change through an extension or refurbishment the heat pump will serve.</span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="radio" name="mcsDemandRoute" className="mt-1"
+              checked={appendixA}
+              onChange={() => { onUpdate('mcsDemandRoute', 'appendix_a'); onSave?.({ mcsDemandRoute: 'appendix_a' }); }}
+            />
+            <span><span className="font-semibold">No valid EPC can be used</span> (MCS 031 Appendix A) — calculated
+              from the room-by-room heat loss. If a valid EPC can be obtained, get one and lodge it instead.</span>
+          </label>
+        </div>
+      </div>
+
+      {appendixA && (
+        <div className="bg-indigo-50 border border-indigo-300 rounded-lg p-4 space-y-4">
+          {!aa.heatLoss.complete && (
+            <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-sm text-red-800">
+              <div className="font-semibold">Complete the room-by-room heat loss first.</div>
+              <div className="mt-1">
+                Without a valid EPC, this estimate is calculated from the heat loss: annual demand, floor area,
+                W/m² and heat pump capacity all come from it.
+              </div>
+              <ul className="list-disc pl-5 mt-1">
+                {aa.heatLoss.noRooms && <li>No rooms have been added yet.</li>}
+                {aa.heatLoss.noArea.length > 0 && <li>No floor area: {aa.heatLoss.noArea.join(', ')}</li>}
+                {aa.heatLoss.noElements.length > 0 && <li>No walls, windows, floors or roofs entered: {aa.heatLoss.noElements.join(', ')}</li>}
+              </ul>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold mb-1">Why a valid EPC can't be used</label>
+              <select
+                value={project.mcsAppendixAReason || ''}
+                onChange={(e) => { const v = e.target.value || null; onUpdate('mcsAppendixAReason', v); onSave?.({ mcsAppendixAReason: v }); }}
+                className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select…</option>
+                {Object.entries(APPENDIX_A_REASONS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1">Detail (printed on the estimate)</label>
+              <input
+                type="text"
+                value={project.mcsAppendixANote || ''}
+                onChange={(e) => onUpdate('mcsAppendixANote', e.target.value)}
+                onBlur={(e) => onSave?.({ mcsAppendixANote: e.target.value.trim() || null })}
+                placeholder="e.g. Two-storey rear extension in 2027 to be heated by the heat pump"
+                className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1">Heat pump SCoP for space heating (MCS website)</label>
+              <div className="text-xs text-gray-600 mb-1">The listed SCoP at the design flow temperature ({project.designFlowTemp ?? '—'} °C), or the nearest listed flow temperature above it.</div>
+              <input
+                type="number" step="0.01" min="0"
+                value={project.mcsListedScop || ''}
+                onChange={(e) => onUpdate('mcsListedScop', parseFloat(e.target.value) || null)}
+                onBlur={(e) => onSave?.({ mcsListedScop: parseFloat(e.target.value) || null })}
+                placeholder="e.g. 3.85"
+                className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                value={project.mcsListedScopSource || ''}
+                onChange={(e) => onUpdate('mcsListedScopSource', e.target.value)}
+                onBlur={(e) => onSave?.({ mcsListedScopSource: e.target.value.trim() || null })}
+                placeholder="Source — e.g. MCS product directory, model, flow temperature it applies to"
+                className="w-full border border-gray-300 rounded px-3 py-2 mt-2 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {aa.providesHw && (
+              <div>
+                <label className="block text-sm font-semibold mb-1">Heat pump SCoP for hot water</label>
+                <div className="text-xs text-gray-600 mb-1">
+                  The MCS listing has no separate hot water figure. Enter the listed SCoP at the flow temperature
+                  the heat pump uses to heat the cylinder — usually 55 °C. If you don't have it, use 1.7: the
+                  figure MCS 031 itself uses for hot water (SAP 2012 Table 4a).
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={project.mcsDhwEfficiency || ''}
+                    onChange={(e) => onUpdate('mcsDhwEfficiency', parseFloat(e.target.value) || null)}
+                    onBlur={(e) => onSave?.({ mcsDhwEfficiency: parseFloat(e.target.value) || null })}
+                    placeholder="e.g. 2.9 (listed SCoP at 55 °C)"
+                    className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdate('mcsDhwEfficiency', MCS031_DHW_DEFAULT);
+                      onUpdate('mcsDhwEfficiencySource', MCS031_DHW_DEFAULT_SOURCE);
+                      onSave?.({ mcsDhwEfficiency: MCS031_DHW_DEFAULT, mcsDhwEfficiencySource: MCS031_DHW_DEFAULT_SOURCE });
+                    }}
+                    className="whitespace-nowrap text-sm border border-indigo-400 text-indigo-700 rounded px-3 hover:bg-indigo-100"
+                    title="Use the hot water figure MCS 031 uses on the EPC route"
+                  >
+                    Use 1.7
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={project.mcsDhwEfficiencySource || ''}
+                  onChange={(e) => onUpdate('mcsDhwEfficiencySource', e.target.value)}
+                  onBlur={(e) => onSave?.({ mcsDhwEfficiencySource: e.target.value.trim() || null })}
+                  placeholder="Source — e.g. MCS product directory, model, SCoP at 55 °C"
+                  className="w-full border border-gray-300 rounded px-3 py-2 mt-2 text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="bg-white border border-indigo-200 rounded px-3 py-2">
+              <div className="text-xs text-gray-600">Space heating</div>
+              <div className="font-bold text-indigo-900">{aa.degreeDays ? `${Math.round(aa.spaceHeatingKwh).toLocaleString('en-GB')} kWh/yr` : '—'}</div>
+              <div className="text-xs text-gray-500">{aa.specificHeatLossWK.toFixed(1)} W/K × {aa.degreeDays ?? '—'} degree days</div>
+            </div>
+            <div className="bg-white border border-indigo-200 rounded px-3 py-2">
+              <div className="text-xs text-gray-600">Hot water</div>
+              <div className="font-bold text-indigo-900">{aa.providesHw ? (aa.dailyLitres ? `${Math.round(aa.hotWaterKwh).toLocaleString('en-GB')} kWh/yr` : '—') : 'Not supplied'}</div>
+              <div className="text-xs text-gray-500">{aa.providesHw && aa.dailyLitres ? `${aa.dailyLitres} L/day, 10 → 50 °C` : ''}</div>
+            </div>
+            <div className="bg-white border border-indigo-200 rounded px-3 py-2">
+              <div className="text-xs text-gray-600">From the heat loss</div>
+              <div className="font-bold text-indigo-900">{aa.totalFloorArea.toFixed(0)} m² · {aa.wattsPerM2.toFixed(1)} W/m²</div>
+              <div className="text-xs text-gray-500">Design load {aa.heatPumpCapacityKw.toFixed(1)} kW</div>
+            </div>
+          </div>
+          {aa.missing.length > 0 && (
+            <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-2">
+              Still needed before calculating: {aa.missing.join('; ')}.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* EPC Data Input */}
+      {!appendixA && (
       <div>
         <h3 className="font-semibold text-lg mb-3">Energy Performance Certificate (EPC) Data</h3>
         <div className="grid grid-cols-3 gap-4">
@@ -297,6 +438,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* System Configuration */}
       <div>
@@ -348,14 +490,20 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
           <div>
             <label className="block text-sm font-semibold mb-1">System Provides</label>
             <select
-              value={project.mcsSystemProvides || 'space_and_hw'}
-              onChange={(e) => { onUpdate('mcsSystemProvides', e.target.value); onSave?.({ mcsSystemProvides: e.target.value }); }}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              value={legacyHybrid ? '' : (project.mcsSystemProvides || 'space_and_hw')}
+              onChange={(e) => { if (!e.target.value) return; onUpdate('mcsSystemProvides', e.target.value); onSave?.({ mcsSystemProvides: e.target.value }); }}
+              className={`w-full border rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 ${legacyHybrid ? 'border-amber-500' : 'border-gray-300'}`}
             >
+              {legacyHybrid && <option value="">Select…</option>}
               <option value="space_and_hw">Space heat and hot water</option>
               <option value="space_only">Space heating only</option>
-              <option value="hybrid">Hybrid (Combining heat pump and boiler)</option>
             </select>
+            {legacyHybrid && (
+              <div className="text-xs text-amber-800 mt-1">
+                This project was set to Hybrid, which is no longer an option: a hybrid system is outside
+                the grant scheme and doesn't need an MCS 031 estimate. Choose what the heat pump provides.
+              </div>
+            )}
           </div>
 
           <div>
@@ -491,7 +639,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
       <div className="flex gap-3 flex-wrap">
         <button
           onClick={handleCalculate}
-          disabled={!spaceHeatingDemand || !totalFloorArea}
+          disabled={!canCalculate}
           className={`text-white px-6 py-3 rounded font-semibold transition disabled:bg-gray-400 disabled:cursor-not-allowed ${
             needsRecalc
               ? 'bg-amber-600 hover:bg-amber-700'
@@ -505,12 +653,14 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
 
         {snapshot && (
           <>
+            {snapshot.demandRoute !== 'appendix_a' && (
             <button
               onClick={() => setShowGraph(!showGraph)}
               className="bg-purple-600 text-white px-6 py-3 rounded hover:bg-purple-700 font-semibold transition"
             >
               {showGraph ? 'Hide' : 'Show'} Performance Graph
             </button>
+            )}
             <button
               onClick={handleExportPDF}
               className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 font-semibold transition"
@@ -522,7 +672,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
       </div>
 
       {/* Performance Graph */}
-      {snapshot && showGraph && (
+      {snapshot && showGraph && snapshot.demandRoute !== 'appendix_a' && (
         <div className="border-2 border-purple-600 rounded-lg p-6 bg-white">
           <h3 className="text-xl font-bold mb-4 text-center">System Performance vs Flow Temperature</h3>
           <PerformanceGraph data={getGraphData()} currentFlowTemp={snapshot.flowTempBand} />
@@ -587,7 +737,7 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="flex justify-between p-2 bg-gray-50 rounded">
                 <span>Your postcode prefix</span>
-                <span className="font-semibold">{project.customerPostcode || 'Not set'}</span>
+                <span className="font-semibold">{getPostcodePrefix(project.customerPostcode) || 'Not set'}</span>
               </div>
               <div className="flex justify-between p-2 bg-gray-50 rounded">
                 <span>Total property floorspace</span>
@@ -613,7 +763,9 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
                 <div>
                   <span>Heat pump capacity</span>
                   <div className="text-xs text-gray-600 mt-1">
-                    Indicative only - may change after full heat loss calculation
+                    {snapshot.demandRoute === 'appendix_a'
+                      ? 'Design load from the full room-by-room heat loss calculation'
+                      : 'Indicative only - may change after full heat loss calculation'}
                   </div>
                 </div>
                 <span className="font-semibold">{snapshot.heatPumpCapacity.toFixed(1)} kW</span>
@@ -626,7 +778,8 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
                 <span>System provides</span>
                 <span className="font-semibold text-right text-xs">
                   {snapshot.systemProvides === 'space_and_hw' ? 'Space heat and hot water' :
-                   snapshot.systemProvides === 'space_only' ? 'Space heating only' : 'Hybrid'}
+                   snapshot.systemProvides === 'space_only' ? 'Space heating only' :
+                   snapshot.systemProvides === 'hybrid' ? 'Hybrid — no longer an option, recalculate' : '—'}
                 </span>
               </div>
               <div className="flex justify-between p-2 bg-gray-50 rounded">
@@ -648,10 +801,20 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
           <div className="mb-6">
             <h4 className="font-bold text-lg mb-3 text-gray-800">Performance</h4>
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="p-3 bg-green-50 rounded border border-green-300">
-                <span className="block text-gray-700 mb-1">Seasonal Performance Factor</span>
-                <span className="font-bold text-2xl text-green-700">{snapshot.spf.toFixed(1)}</span>
-              </div>
+              {snapshot.demandRoute === 'appendix_a' ? (
+                <div className="p-3 bg-green-50 rounded border border-green-300">
+                  <span className="block text-gray-700 mb-1">Heat pump SCoP (MCS listed)</span>
+                  <span className="font-bold text-2xl text-green-700">{snapshot.appendixA?.listedScop}</span>
+                  {snapshot.appendixA?.dhwEfficiency && (
+                    <span className="block text-xs text-gray-600 mt-1">Hot water SCoP {snapshot.appendixA.dhwEfficiency}</span>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 bg-green-50 rounded border border-green-300">
+                  <span className="block text-gray-700 mb-1">Seasonal Performance Factor</span>
+                  <span className="font-bold text-2xl text-green-700">{snapshot.spf.toFixed(1)}</span>
+                </div>
+              )}
               <div className="col-span-2 p-3 bg-gray-50 rounded">
                 <div className="mb-2 font-semibold">Estimate of energy consumption:</div>
                 <div className="flex justify-between items-center">
@@ -672,6 +835,16 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
             </div>
           </div>
 
+          {/* How the demand was estimated (Appendix A must be described and justified) */}
+          {snapshot.demandRoute === 'appendix_a' && snapshot.appendixA?.methodStatement?.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-bold text-lg mb-3 text-gray-800">How your energy demand was estimated</h4>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+                {snapshot.appendixA.methodStatement.map((line, i) => <li key={i}>{line}</li>)}
+              </ul>
+            </div>
+          )}
+
           {/* Warning Notes */}
           {snapshot.warningNotes && snapshot.warningNotes.length > 0 && (
             <div className="mb-6">
@@ -690,7 +863,10 @@ export default function MCSPerformanceEstimator({ project, onUpdate, onSave }) {
           <div className="border-t-2 border-gray-300 pt-4">
             <p className="text-sm font-semibold text-gray-700">
               <strong>Important Note:</strong> This is not a detailed system design. It offers a reasonable estimate of likely
-              performance and a description of the likely design. Details may change after the heat loss survey and design.
+              performance and a description of the likely design.{' '}
+              {snapshot.demandRoute === 'appendix_a'
+                ? 'This estimate is based on a full heat loss survey and design.'
+                : 'Details may change after the heat loss survey and design.'}
             </p>
           </div>
         </div>

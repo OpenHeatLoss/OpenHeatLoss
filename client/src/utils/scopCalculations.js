@@ -34,6 +34,16 @@ export const UK_BIN_HOURS = [
 
 const T_ANNUAL_AVG_UK  = 9.0;
 const T_COLD_FEED      = 10.0;
+const RHO_CP           = 0.00116; // kWh/(L·K)
+
+// Annual heat to reheat the daily draw-off from the cold feed (no losses,
+// no pasteurisation). Shared by the DHW SCOP below and the MCS 031 no-EPC
+// (Appendix A) hot water load, so both use the same constants.
+export function annualDhwReheatKwh(dailyLitres, storeTemp = 55) {
+  if (!(dailyLitres > 0)) return 0;
+  return dailyLitres * (storeTemp - T_COLD_FEED) * RHO_CP * 365;
+}
+export const DHW_COLD_FEED_C = T_COLD_FEED;
 
 // Balance point temperature — outdoor temp below which heating is needed.
 // 15.5°C is the EN 12831 design cutoff but overestimates demand because it
@@ -200,10 +210,7 @@ export function calculateDHWScop({
   if (!dailyLitres || dailyLitres <= 0) return null;
   if (!cylinderLitres || cylinderLitres <= 0) return null;
 
-  const RHO_CP = 0.00116; // kWh/(L·K)
-
-  const deltaReheat     = storeTemp - T_COLD_FEED;
-  const annualReheatKwh = dailyLitres * deltaReheat * RHO_CP * 365;
+  const annualReheatKwh = annualDhwReheatKwh(dailyLitres, storeTemp);
 
   const deltaPast = 60 - storeTemp;
   const pastKwh   = deltaPast > 0 ? cylinderLitres * deltaPast * RHO_CP * 52 : 0;

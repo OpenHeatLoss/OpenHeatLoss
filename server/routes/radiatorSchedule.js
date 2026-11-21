@@ -4,6 +4,7 @@ const router  = express.Router();
 
 const {
   radiatorSchedule,
+  radiatorSpecs,
   getProjectForRoom,
   getProjectForScheduleItem,
   ownsProject,
@@ -15,6 +16,26 @@ const {
 // See server.js: app.use('/api', radiatorScheduleRoutes(requireAuthOrAnon));
 //
 // This pattern avoids duplicating the JWT_SECRET and middleware logic.
+
+// A schedule row may only reference a radiator spec the caller can see —
+// the same rule as GET /api/radiator-specs (global/library, own company, or
+// own anonymous session). Otherwise a row could point at another company's
+// private spec: its details leaked through the materials import, and the
+// ON DELETE CASCADE meant that company deleting its spec would silently
+// remove this project's schedule row.
+async function canUseSpec(specId, req) {
+  if (specId == null) return true;
+  const spec = await radiatorSpecs.getById(specId);
+  if (!spec) return false;
+  if (spec.scope === 'global' || spec.scope === 'library') return true;
+  if (spec.scope === 'company')   return !!req.user && spec.company_id === req.user.companyId;
+  if (spec.scope === 'anonymous') return !req.user && spec.session_token === req.anonToken;
+  return false;
+}
+
+// 500 responses no longer echo error.message (raw database errors) to the
+// client; the detail stays in the server log.
+const SERVER_ERROR = 'Server error — please try again';
 
 module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
   // ---------------------------------------------------------------------------
@@ -31,7 +52,7 @@ module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
       res.json(schedule);
     } catch (error) {
       console.error('Error fetching radiator schedule:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: SERVER_ERROR });
     }
   });
 
@@ -43,11 +64,14 @@ module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
     try {
       const project = await getProjectForRoom(req.body.roomId);
       if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+      if (!(await canUseSpec(req.body.radiatorSpecId, req))) {
+        return res.status(403).json({ error: 'Not authorised to use this radiator spec' });
+      }
       const result = await radiatorSchedule.create(req.body);
       res.json({ id: result.id });
     } catch (error) {
       console.error('Error creating radiator schedule entry:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: SERVER_ERROR });
     }
   });
 
@@ -59,11 +83,14 @@ module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
     try {
       const project = await getProjectForScheduleItem(req.params.id);
       if (!ownsProject(project, req)) return res.status(403).json({ error: 'Not authorised' });
+      if (!(await canUseSpec(req.body.radiatorSpecId, req))) {
+        return res.status(403).json({ error: 'Not authorised to use this radiator spec' });
+      }
       await radiatorSchedule.update(req.params.id, req.body);
       res.json({ success: true });
     } catch (error) {
       console.error('Error updating radiator schedule entry:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: SERVER_ERROR });
     }
   });
 
@@ -79,7 +106,7 @@ module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting radiator schedule entry:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: SERVER_ERROR });
     }
   });
 
@@ -95,7 +122,7 @@ module.exports = function radiatorScheduleRoutes(requireAuthOrAnon) {
       res.json({ success: true });
     } catch (error) {
       console.error('Error marking schedule complete:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: SERVER_ERROR });
     }
   });
 
