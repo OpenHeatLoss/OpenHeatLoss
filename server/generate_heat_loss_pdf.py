@@ -13,6 +13,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 import json
+from xml.sax.saxutils import escape as xml_escape
 import sys
 from datetime import datetime
 
@@ -126,6 +127,10 @@ def create_heat_loss_pdf(data, output_filename):
         ['Location:', Paragraph(data.get('location', 'N/A'), wrap_style)],
         ['Designer:', data.get('designer', 'N/A')],
         ['External Design Temp:', f"{data.get('externalTemp', -3)}°C"],
+        # Basis of the figure (MCS 031 postcode / CIBSE / other). Older
+        # payloads without it print nothing extra.
+        *([['Design Temp Basis:', Paragraph(xml_escape(data['externalTempBasisText']), wrap_style)]]
+          if data.get('externalTempBasisText') else []),
     ]
     cust_name = f"{data.get('customerTitle','')} {data.get('customerFirstName','')} {data.get('customerSurname','')}".strip()
     cust = [

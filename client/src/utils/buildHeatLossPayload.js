@@ -33,6 +33,7 @@ import {
   EMITTER_EXPONENTS,
 } from './scopCalculations';
 import { dailyHotWaterDemand } from './dhwCalculations';
+import { externalTempBasisText } from './designTemp';
 
 export function buildHeatLossPayload(project, opts = {}) {
   const flowTemp   = opts.flowTemp   ?? project.designFlowTemp   ?? 50;
@@ -217,6 +218,8 @@ export function buildHeatLossPayload(project, opts = {}) {
     customerPostcode:  project.customerPostcode  || '',
     customerTelephone: project.customerTelephone || '',
     externalTemp,
+    // Migration 031 — where the design temperature came from (one line)
+    externalTempBasisText: externalTempBasisText(project),
     referenceTemp,
     // EN 12831 figures
     totalGeneratorLoad,

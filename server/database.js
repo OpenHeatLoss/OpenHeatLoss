@@ -839,8 +839,12 @@ const designParams = {
       mcs_listed_scop_source    = CASE WHEN $87::boolean THEN $84::text             ELSE mcs_listed_scop_source    END,
       mcs_dhw_efficiency        = CASE WHEN $87::boolean THEN $85::double precision ELSE mcs_dhw_efficiency        END,
       mcs_dhw_efficiency_source = CASE WHEN $87::boolean THEN $86::text             ELSE mcs_dhw_efficiency_source END,
+      -- Migration 031: external design temperature basis. Presence flag $90
+      -- (key externalTempBasis): old tabs keep the stored basis.
+      external_temp_basis  = CASE WHEN $90::boolean THEN $88::text ELSE external_temp_basis  END,
+      external_temp_source = CASE WHEN $90::boolean THEN $89::text ELSE external_temp_source END,
       updated_at = NOW()
-    WHERE project_id = $88`,
+    WHERE project_id = $91`,
     [
       data.externalTemp,          data.annualAvgTemp,         data.designFlowTemp,
       data.designReturnTemp,      data.airDensity,            data.specificHeat,
@@ -908,7 +912,11 @@ const designParams = {
       positiveOrNull(data.mcsDhwEfficiency),                    // $85
       textOrNull(data.mcsDhwEfficiencySource),                  // $86
       hasMcsRouteFields(data),                                  // $87
-      projectId,                                                // $88
+      // Migration 031 — external design temperature basis ($88–$89, gated by $90)
+      oneOfOrNull(data.externalTempBasis, EXTERNAL_TEMP_BASES), // $88
+      textOrNull(data.externalTempSource),                      // $89
+      hasKey(data, 'externalTempBasis'),                        // $90
+      projectId,                                                // $91
     ]
   ),
 };
@@ -942,6 +950,12 @@ function hasMcsRouteFields(data) {
 }
 function oneOfOrNull(v, allowed) {
   return allowed.includes(v) ? v : null;
+}
+
+// Migration 031. Same presence-flag pattern, keyed on externalTempBasis.
+const EXTERNAL_TEMP_BASES = ['mcs031', 'cibse', 'other'];
+function hasKey(data, key) {
+  return !!data && Object.prototype.hasOwnProperty.call(data, key);
 }
 
 // ---------------------------------------------------------------------------

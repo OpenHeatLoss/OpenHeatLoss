@@ -16,7 +16,7 @@ import MCS020SoundCalculator from './components/mcs/MCS020SoundCalculator';
 import QuoteBuilder from './components/quote/QuoteBuilder';
 import SettingsPage from './components/settings/SettingsPage';
 import AdminPage from './components/admin/AdminPage';
-import { getMCSDataFromPostcode } from './utils/mcsData';
+import { externalTempBasisOf, postcodeLookupFields, hasPostcodeLookup } from './utils/designTemp';
 import { buildRoomPayload, buildDesignParamsPayload } from './utils/projectPayloads';
 import { airPermeabilitySnapshot } from './utils/q50Selection';
 import { AuthModal, ResetPasswordModal } from './components/auth/AuthModal';
@@ -309,6 +309,11 @@ function App() {
       mcsDhwEfficiency:        dp.mcs_dhw_efficiency        ?? null,
       mcsDhwEfficiencySource:  dp.mcs_dhw_efficiency_source ?? '',
 
+      // External design temperature basis (migration 031). NULL = not
+      // recorded; inferred below for rows saved before 031.
+      externalTempBasis:       dp.external_temp_basis       ?? null,
+      externalTempSource:      dp.external_temp_source      ?? '',
+
       // Legacy ventilation fields — retained so existing saved data isn't lost
       useSAPVentilation:        dp.use_sap_ventilation         || false,
       buildingCategory:         dp.building_category           || 'B',
@@ -530,20 +535,25 @@ function App() {
       })),
     };
 
-    // If the project has a postcode but externalTemp is still at the seeded
-    // default (-3), apply MCS data automatically and persist it.
+    // Pre-031 rows: a figure equal to the stored lookup value came from the
+    // lookup. In memory only — saved with the next design params save.
+    if (!project.externalTempBasis) {
+      project.externalTempBasis = externalTempBasisOf(project);
+    }
+
+    // Postcode but the lookup has never been applied (e.g. address added
+    // outside the Project Info form): apply it once and persist. This used to
+    // run whenever externalTemp was -3, which silently replaced a deliberate
+    // -3 (e.g. CIBSE for Bath) with the postcode figure on every open. Now
+    // postcodeLookupFields only changes the design temperature when the
+    // lookup is its basis or none has ever been chosen.
     const postcode = project.customerPostcode;
-    if (postcode && project.externalTemp === -3) {
-      const mcs = getMCSDataFromPostcode(postcode);
-      if (mcs) {
-        project.externalTemp      = mcs.lowTemp;
-        project.mcsDegreeDays     = mcs.degreeDays;
-        project.mcsOutdoorLowTemp = mcs.lowTemp;
-        api.updateDesignParams(id, buildDesignParamsPayload(project, {
-          externalTemp:      mcs.lowTemp,
-          mcsDegreeDays:     mcs.degreeDays,
-          mcsOutdoorLowTemp: mcs.lowTemp,
-        })).catch(err => console.error('MCS auto-apply failed:', err));
+    if (postcode && !hasPostcodeLookup(project)) {
+      const fields = postcodeLookupFields(project, postcode);
+      if (fields) {
+        Object.assign(project, fields);
+        api.updateDesignParams(id, buildDesignParamsPayload(project, fields))
+          .catch(err => console.error('MCS auto-apply failed:', err));
       }
     }
     // B25: UI-only snapshot of the air permeability fields as opened, for the
@@ -869,13 +879,9 @@ const deleteProject = async (id) => {
 
   const applyMCSFromPostcode = async (projectId, postcode) => {
     if (!postcode) return;
-    const mcs = getMCSDataFromPostcode(postcode);
-    if (!mcs) return;
-    await api.updateDesignParams(projectId, buildDesignParamsPayload(currentProject, {
-      externalTemp:      mcs.lowTemp,
-      mcsDegreeDays:     mcs.degreeDays,
-      mcsOutdoorLowTemp: mcs.lowTemp,
-    }));
+    const fields = postcodeLookupFields(currentProject, postcode);
+    if (!fields) return;
+    await api.updateDesignParams(projectId, buildDesignParamsPayload(currentProject, fields));
   };
 
   const handleSaveInstallAddress = async (installDraft) => {
@@ -904,14 +910,12 @@ const deleteProject = async (id) => {
       });
     }
 
-    // Apply MCS design temperature from postcode if available
-    const mcs = getMCSDataFromPostcode(installDraft.customerPostcode);
-    if (mcs) {
-      await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject, {
-        externalTemp:      mcs.lowTemp,
-        mcsDegreeDays:     mcs.degreeDays,
-        mcsOutdoorLowTemp: mcs.lowTemp,
-      }));
+    // Refresh the MCS postcode figures (degree days feed MCS 031). The design
+    // temperature follows only if the lookup is its basis — a CIBSE or other
+    // figure is kept (utils/designTemp.js).
+    const fields = postcodeLookupFields(currentProject, installDraft.customerPostcode);
+    if (fields) {
+      await api.updateDesignParams(currentProject.id, buildDesignParamsPayload(currentProject, fields));
     }
     await loadProject(currentProject.id, true);
   };

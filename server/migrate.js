@@ -2773,6 +2773,32 @@ const MIGRATIONS = [
       console.log('  Migration 030 complete: design_params MCS 031 no-EPC route fields');
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // Migration 031 — external design temperature basis (heat loss report)
+  //
+  // The design temperature is a design choice: the MCS 031 postcode figure or
+  // a CIBSE design temperature for the nearest location (or another stated
+  // source). The basis is printed on the heat loss report next to the figure,
+  // and the postcode lookup only changes the figure while the lookup is its
+  // basis. See client/src/utils/designTemp.js.
+  //
+  //   external_temp_basis  — 'mcs031' | 'cibse' | 'other'; NULL = not recorded
+  //   external_temp_source — detail, e.g. "CIBSE DHDG 2026, Bath"
+  //
+  // Schema only. Existing rows stay NULL; the client infers 'mcs031' where
+  // the figure equals the stored lookup value, otherwise shows "not
+  // recorded" until the designer picks one. Idempotent via addColumnIfMissing.
+  // ---------------------------------------------------------------------------
+  {
+    version: '031',
+    description: 'External design temperature basis and source',
+    run: async () => {
+      await addColumnIfMissing('design_params', 'external_temp_basis',  'TEXT');
+      await addColumnIfMissing('design_params', 'external_temp_source', 'TEXT');
+      console.log('  Migration 031 complete: design_params external_temp_basis / external_temp_source');
+    },
+  },
 ];
 
 async function runMigrations() {

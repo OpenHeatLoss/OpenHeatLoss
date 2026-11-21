@@ -132,5 +132,9 @@ export const buildDesignParamsPayload = (proj, overrides = {}) => ({
   mcsListedScopSource:     proj.mcsListedScopSource     ?? null,
   mcsDhwEfficiency:        proj.mcsDhwEfficiency        ?? null,
   mcsDhwEfficiencySource:  proj.mcsDhwEfficiencySource  ?? null,
+  // Migration 031 — external design temperature basis. Always sent; the
+  // externalTempBasis key is the server's presence marker.
+  externalTempBasis:       proj.externalTempBasis       ?? null,
+  externalTempSource:      proj.externalTempSource      ?? null,
   ...overrides,
 });

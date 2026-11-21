@@ -1,6 +1,7 @@
 // client/src/components/project/ProjectInfo.jsx
 import { useState } from 'react';
 import { getMCSDataFromPostcode } from '../../utils/mcsData';
+import { EXTERNAL_TEMP_BASIS_LABELS, externalTempBasisOf, hasPostcodeLookup, mcsBasisFields } from '../../utils/designTemp';
 import { REGIONAL_REFERENCE_TEMPS } from '../../utils/en12831VentilationData';
 import VentilationSettings from './VentilationSettings';
 
@@ -281,6 +282,85 @@ function BusGrantSection({ project, onUpdate }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// External design temperature + basis. The basis is printed on the heat loss
+// report. The postcode lookup only changes the figure while the basis is
+// "MCS 031 postcode lookup" (utils/designTemp.js). Saved with the project.
+// ---------------------------------------------------------------------------
+function ExternalDesignTemp({ project, onUpdate, onUpdateBatch }) {
+  const basis     = externalTempBasisOf(project);
+  const hasLookup = hasPostcodeLookup(project);
+  const lookupT   = project.mcsOutdoorLowTemp;
+  const batch     = (u) => onUpdateBatch ? onUpdateBatch(u) : Object.entries(u).forEach(([k, v]) => onUpdate(k, v));
+
+  const onTempChange = (e) => {
+    const t = parseFloat(e.target.value);
+    // Typing a different figure means it no longer comes from the lookup:
+    // clear the basis so the designer is asked to record one.
+    if (basis === 'mcs031' && t !== Number(lookupT)) {
+      batch({ externalTemp: t, externalTempBasis: null, externalTempSource: '' });
+    } else {
+      onUpdate('externalTemp', t);
+    }
+  };
+
+  const onBasisChange = (e) => {
+    const b = e.target.value || null;
+    if (b === 'mcs031') {
+      if (hasLookup) batch(mcsBasisFields(lookupT, project.mcsPostcodePrefix));
+      else batch({ externalTempBasis: 'mcs031', externalTempSource: '' });
+    } else {
+      const keepSource = basis === 'mcs031' ? '' : (project.externalTempSource || '');
+      batch({ externalTempBasis: b, externalTempSource: keepSource });
+    }
+  };
+
+  const placeholder = basis === 'cibse'
+    ? 'e.g. DHDG 2026, Bath (nearest location)'
+    : basis === 'other' ? 'State the source of this figure' : '';
+
+  return (
+    <div>
+      <label className="block text-sm font-semibold mb-1">External Design Temperature (°C)</label>
+      <input type="number" step="0.1" value={project.externalTemp} onChange={onTempChange}
+        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+
+      <label className="block text-xs font-semibold text-gray-600 mt-2 mb-1">Basis (printed on the heat loss report)</label>
+      <select value={basis || ''} onChange={onBasisChange} aria-label="External design temperature basis"
+        className={`w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+          basis ? 'border-gray-300' : 'border-amber-400 bg-amber-50'}`}>
+        <option value="">— Not recorded —</option>
+        {Object.entries(EXTERNAL_TEMP_BASIS_LABELS).map(([k, label]) => (
+          <option key={k} value={k}>{label}</option>
+        ))}
+      </select>
+
+      {(basis === 'cibse' || basis === 'other') && (
+        <input type="text" value={project.externalTempSource || ''} placeholder={placeholder}
+          aria-label="External design temperature source"
+          onChange={e => onUpdate('externalTempSource', e.target.value)}
+          className="w-full border border-gray-300 rounded px-3 py-2 mt-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      )}
+
+      {!basis && (
+        <p className="text-xs text-amber-600 mt-1">⚠ Record where this figure comes from — it is printed on the heat loss report.</p>
+      )}
+      {basis === 'mcs031' && (hasLookup ? (
+        <p className="text-xs text-gray-500 mt-1">
+          MCS 031 figure for postcode area {project.mcsPostcodePrefix || 'of the installation address'}: {lookupT}°C. Follows the postcode if the address changes.
+        </p>
+      ) : (
+        <p className="text-xs text-amber-600 mt-1">⚠ No postcode lookup yet — enter the installation postcode above.</p>
+      ))}
+      {basis && basis !== 'mcs031' && (
+        <p className="text-xs text-gray-500 mt-1">
+          Kept if the address changes.{hasLookup && <> MCS 031 postcode figure for comparison: {lookupT}°C.</>}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveDesignParams, onSaveContact, onUpdateClientAddress, onSaveInstallAddress, onLaunchSurvey, onApplyMVHR, onClearMVHR }) {
 
   // ── Customer contact details ──────────────────────────────────────────────
@@ -451,7 +531,7 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveDe
         <div className="mt-3">
           {installMCS ? (
             <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded">
-              ✓ {project.customerPostcode} — design temp {installMCS.lowTemp}°C · {installMCS.degreeDays} degree days
+              ✓ {project.customerPostcode} — MCS 031 low temp {installMCS.lowTemp}°C · {installMCS.degreeDays} degree days
             </span>
           ) : (
             <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded">
@@ -640,7 +720,10 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveDe
                 <div className="mt-3">
                   {getMCSDataFromPostcode(installDraft.postcode) ? (
                     <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded">
-                      ✓ {installDraft.postcode} — design temp {getMCSDataFromPostcode(installDraft.postcode).lowTemp}°C
+                      ✓ {installDraft.postcode} — MCS 031 low temp {getMCSDataFromPostcode(installDraft.postcode).lowTemp}°C
+                      {externalTempBasisOf(project) === 'mcs031' || !hasPostcodeLookup(project)
+                        ? ' — design temperature will follow'
+                        : ' — your design temperature is kept'}
                     </span>
                   ) : (
                     <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded">
@@ -662,29 +745,8 @@ export default function ProjectInfo({ project, onUpdate, onUpdateBatch, onSaveDe
         <h2 className="text-xl font-bold mb-4 pb-2 border-b-2 border-gray-300">Design Parameters</h2>
         <div className="grid grid-cols-2 gap-4">
 
-          {/* External design temperature — auto-set from postcode */}
-          <div>
-            <label className="block text-sm font-semibold mb-1">External Design Temperature (°C)</label>
-            <input type="number" step="0.1" value={project.externalTemp}
-              onChange={e => onUpdate('externalTemp', parseFloat(e.target.value))}
-              className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            {project.mcsOutdoorLowTemp !== 0 ? (
-              project.externalTemp !== project.mcsOutdoorLowTemp ? (
-                <p className="text-xs mt-1">
-                  <span className="text-amber-600 font-medium">✎ Custom value</span>
-                  <span className="text-gray-500"> — postcode default: {project.mcsOutdoorLowTemp}°C (MCS 031 Appendix B)</span>
-                </p>
-              ) : (
-                <p className="text-xs text-gray-500 mt-1">
-                  From postcode lookup (MCS 031 Appendix B) — editable. Custom values are preserved on save.
-                </p>
-              )
-            ) : (
-              <p className="text-xs text-gray-500 mt-1">
-                Auto-set from installation postcode using MCS 031 Appendix B. Enter postcode in Installation Address above.
-              </p>
-            )}
-          </div>
+          {/* External design temperature, with its basis (migration 031) */}
+          <ExternalDesignTemp project={project} onUpdate={onUpdate} onUpdateBatch={onUpdateBatch} />
 
           {/* Climate region — determines Te,ref for typical load / modulation check */}
           {(() => {
