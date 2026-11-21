@@ -877,13 +877,6 @@ const deleteProject = async (id) => {
     await loadProject(currentProject.id, true);
   };
 
-  const applyMCSFromPostcode = async (projectId, postcode) => {
-    if (!postcode) return;
-    const fields = postcodeLookupFields(currentProject, postcode);
-    if (!fields) return;
-    await api.updateDesignParams(projectId, buildDesignParamsPayload(currentProject, fields));
-  };
-
   const handleSaveInstallAddress = async (installDraft) => {
     if (currentProject.installationAddressId) {
       // Address row already exists — update it in place
